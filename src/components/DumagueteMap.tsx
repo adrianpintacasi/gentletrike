@@ -279,51 +279,67 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : 123.3075;
         const rotation = typeof driverHeading === 'number' ? driverHeading : 0;
 
+        // A navigation chevron in the Waze / Google Maps idiom: a solid blue
+        // arrowhead with a white outline so it stays legible over any tile.
         const riderIcon = L.divIcon({
           className: 'custom-rider-pin',
           html: `
             <div class="gt-heading-arrow" style="transform: rotate(${rotation}deg);">
-              <svg viewBox="0 0 24 24" width="34" height="34" fill="none">
-                <circle cx="12" cy="12" r="11" fill="#111827" stroke="#F59E0B" stroke-width="1.5"/>
-                <path d="M12 5.5 L16.5 17 L12 14.3 L7.5 17 Z" fill="#F59E0B"/>
+              <svg viewBox="0 0 40 40" width="40" height="40" fill="none">
+                <circle cx="20" cy="20" r="17" fill="#2563EB" fill-opacity="0.16"/>
+                <path d="M20 6 L31 32 L20 26.2 L9 32 Z"
+                      fill="#2563EB" stroke="#ffffff" stroke-width="2.4"
+                      stroke-linejoin="round"/>
               </svg>
             </div>
           `,
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
+          iconSize: [40, 40],
+          iconAnchor: [20, 20],
         });
 
         const riderMarker = L.marker([lat, lng], { icon: riderIcon }).addTo(map);
         markersRef.current['my_rider'] = riderMarker;
       }
 
-      // Render pooled passengers' pickups & dropoffs in rider view
+      // Each pooled passenger becomes two map pins along the route: green to
+      // collect them, red to drop them. The numbered badge keeps the pair
+      // identifiable when several passengers are aboard, without the map
+      // turning into a wall of text labels.
       pooledRides.forEach((ride, idx) => {
-        const pMarker = L.marker([ride.pickupLocation.lat, ride.pickupLocation.lng], {
-          icon: L.divIcon({
-            className: 'pooled-pickup-pin',
+        const pin = (colour: string, seat: number) =>
+          L.divIcon({
+            className: colour === 'emerald' ? 'pooled-pickup-pin' : 'pooled-dropoff-pin',
             html: `
-              <div class="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-sm">
-                Pax #${idx + 1} Pickup: ${ride.pickupLocation.name.split(' ')[0]}
+              <div class="relative filter drop-shadow-md">
+                <svg class="w-9 h-9 ${
+                  colour === 'emerald' ? 'text-emerald-600' : 'text-red-600'
+                }" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                </svg>
+                <span class="absolute inset-x-0 top-[6px] text-center text-[11px] font-black text-white">
+                  ${seat}
+                </span>
               </div>
             `,
-            iconSize: [110, 25],
-            iconAnchor: [55, 12],
-          }),
-        }).addTo(map);
+            iconSize: [36, 36],
+            iconAnchor: [18, 36],
+          });
+
+        const pMarker = L.marker([ride.pickupLocation.lat, ride.pickupLocation.lng], {
+          icon: pin('emerald', idx + 1),
+        })
+          .addTo(map)
+          .bindTooltip(`Pick up #${idx + 1}: ${ride.pickupLocation.name}`, {
+            direction: 'top',
+          });
 
         const dMarker = L.marker([ride.dropoffLocation.lat, ride.dropoffLocation.lng], {
-          icon: L.divIcon({
-            className: 'pooled-dropoff-pin',
-            html: `
-              <div class="bg-amber-400 text-gray-900 text-[10px] font-bold px-2 py-1 rounded-lg shadow-sm">
-                Pax #${idx + 1} Dropoff: ${ride.dropoffLocation.name.split(' ')[0]}
-              </div>
-            `,
-            iconSize: [110, 25],
-            iconAnchor: [55, 12],
-          }),
-        }).addTo(map);
+          icon: pin('red', idx + 1),
+        })
+          .addTo(map)
+          .bindTooltip(`Drop off #${idx + 1}: ${ride.dropoffLocation.name}`, {
+            direction: 'top',
+          });
 
         markersRef.current[`pooled_p_${ride.id}`] = pMarker;
         markersRef.current[`pooled_d_${ride.id}`] = dMarker;

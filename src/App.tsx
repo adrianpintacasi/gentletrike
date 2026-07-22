@@ -25,6 +25,7 @@ import { ActiveRideView } from './components/ActiveRideView';
 import { GentleAiAssistant } from './components/GentleAiAssistant';
 import { FareMatrixModal } from './components/FareMatrixModal';
 import { DriverModePanel } from './components/DriverModePanel';
+import { RideCompleteModal } from './components/RideCompleteModal';
 import {
   Bell,
   X,
@@ -59,6 +60,8 @@ export default function App() {
 
   // Server-backed state
   const [activeRide, setActiveRide] = useState<RideBooking | null>(null);
+  /** A just-finished trip, kept only until the rating prompt is dismissed. */
+  const [completedRide, setCompletedRide] = useState<RideBooking | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [myDriver, setMyDriver] = useState<Driver | null>(null);
 
@@ -166,7 +169,9 @@ export default function App() {
     } else if (status === 'in_transit') {
       showToast(`On the way to ${activeRide?.dropoffLocation.name}.`);
     } else if (status === 'completed') {
-      showToast('Trip completed! Daghang salamat!');
+      // Hold the finished ride so its rider details stay on screen for the
+      // rating prompt. The booking form only returns once that is dismissed.
+      if (activeRide) setCompletedRide(activeRide);
       setActiveRide(null);
     } else if (status === 'cancelled') {
       showToast('This trip was cancelled.');
@@ -349,6 +354,17 @@ export default function App() {
     } finally {
       setIsBooking(false);
     }
+  };
+
+  /** Dismiss the post-trip prompt and hand back a clean booking screen. */
+  const handleFinishTrip = () => {
+    setCompletedRide(null);
+    setPickup(null);
+    setDropoff(null);
+    setNotes('');
+    setPassengers(1);
+    setIsPakyawNegotiated(false);
+    setRoute(null);
   };
 
   const handleCancelRide = async () => {
@@ -573,6 +589,10 @@ export default function App() {
         isOpen={isFareGuideOpen}
         onClose={() => setIsFareGuideOpen(false)}
       />
+
+      {completedRide && (
+        <RideCompleteModal ride={completedRide} onClose={handleFinishTrip} />
+      )}
     </div>
   );
 }

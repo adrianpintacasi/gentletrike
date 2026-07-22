@@ -130,6 +130,19 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_messages_ride ON messages(ride_id);
 
+  -- One rating per completed trip. The unique index makes a second submission
+  -- an update rather than a duplicate.
+  CREATE TABLE IF NOT EXISTS ratings (
+    id         TEXT PRIMARY KEY,
+    ride_id    TEXT NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
+    driver_id  TEXT REFERENCES drivers(id),
+    stars      INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
+    comment    TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_ratings_ride ON ratings(ride_id);
+
   CREATE TABLE IF NOT EXISTS tmo_reports (
     id             TEXT PRIMARY KEY,
     reference_code TEXT NOT NULL UNIQUE,

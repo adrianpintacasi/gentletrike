@@ -419,6 +419,37 @@ api.post("/rides/:id/messages", (req, res) => {
   res.status(201).json({ ok: true, id });
 });
 
+/* ----------------------------------------------------------------- ratings */
+
+api.post("/rides/:id/rating", (req, res) => {
+  const { stars, comment } = req.body ?? {};
+  const value = Number(stars);
+
+  if (!Number.isInteger(value) || value < 1 || value > 5) {
+    return res.status(400).json({ error: "stars must be a whole number from 1 to 5" });
+  }
+
+  const ride = findRide(req.params.id);
+  if (!ride) return res.status(404).json({ error: "Ride not found" });
+
+  // Re-rating replaces the previous score rather than stacking another row.
+  run(
+    `INSERT INTO ratings (id, ride_id, driver_id, stars, comment)
+     VALUES (?,?,?,?,?)
+     ON CONFLICT(ride_id) DO UPDATE SET
+       stars = excluded.stars,
+       comment = excluded.comment,
+       created_at = datetime('now')`,
+    `rate_${randomUUID()}`,
+    req.params.id,
+    ride.driver_id,
+    value,
+    comment ? String(comment).slice(0, 500) : null
+  );
+
+  res.status(201).json({ ok: true, stars: value });
+});
+
 /* ------------------------------------------------------------- TMO reports */
 
 api.post("/tmo-reports", (req, res) => {

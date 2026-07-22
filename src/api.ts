@@ -136,6 +136,11 @@ export const listMessages = (rideId: string) =>
 export const sendMessage = (rideId: string, sender: 'user' | 'driver', text: string) =>
   post<{ ok: true; id: string }>(`/rides/${rideId}/messages`, { sender, text });
 
+/* ----------------------------------------------------------------- ratings */
+
+export const rateRide = (rideId: string, stars: number, comment?: string) =>
+  post<{ ok: true; stars: number }>(`/rides/${rideId}/rating`, { stars, comment });
+
 /* ------------------------------------------------------------- TMO reports */
 
 export const submitTmoReport = (input: {

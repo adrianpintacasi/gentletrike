@@ -72,10 +72,10 @@
 /* The rider's own heading arrow. Rotation is set inline from the GPS heading;
    the transition keeps turns smooth instead of snapping between fixes. */
 .gt-heading-arrow {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   transition: transform 0.4s ease-out;
-  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
+  filter: drop-shadow(0 2px 5px rgb(0 0 0 / 0.35));
 }
 
 @media (prefers-reduced-motion: reduce) {
