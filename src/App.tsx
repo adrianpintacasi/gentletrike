@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Driver,
   LocationPoint,
@@ -387,9 +387,17 @@ export default function App() {
 
   /* The pedicab whose position the map should follow. */
   const trackedDriver = isDriverMode ? myDriver : activeRide?.assignedDriver ?? null;
-  const driverLocation = trackedDriver
-    ? { lat: trackedDriver.currentLat, lng: trackedDriver.currentLng }
-    : null;
+
+  // Memoised on the coordinates themselves. A fresh object here on every
+  // render would churn the map's effect dependencies and, with nothing to
+  // route, spin into an endless render loop that leaves the map blank.
+  const driverLocation = useMemo(
+    () =>
+      trackedDriver
+        ? { lat: trackedDriver.currentLat, lng: trackedDriver.currentLng }
+        : null,
+    [trackedDriver?.currentLat, trackedDriver?.currentLng]
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900 antialiased">

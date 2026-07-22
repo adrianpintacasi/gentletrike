@@ -182,7 +182,9 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       };
     }
 
-    setRouteStreetCoords([]);
+    // Keep the existing reference when it is already empty. Handing back a new
+    // [] would be a state change, re-render, and re-run this effect forever.
+    setRouteStreetCoords((prev) => (prev.length === 0 ? prev : []));
   }, [pickup, dropoff, activeDriver, driverLocation, rideStatus, pooledRides, isDriverMode]);
 
   // Render Markers and Polyline (Sleek pins, no heavy black borders)
@@ -490,12 +492,21 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full min-h-[420px] bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-md">
-      {/* Leaflet Container with White Tile */}
-      <div
-        ref={mapContainerRef}
-        className={`w-full h-full z-0 bg-white ${nextPinTarget ? 'cursor-crosshair' : ''}`}
-      />
+    <div
+      className={`relative w-full h-full min-h-[420px] bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-md ${
+        nextPinTarget ? 'cursor-crosshair' : ''
+      }`}
+    >
+      {/*
+        Leaflet's container. Its className MUST stay a constant string.
+        Leaflet adds its own classes (leaflet-container, leaflet-grab, …) to
+        this element at runtime, and almost all of Leaflet's CSS is scoped
+        under .leaflet-container. If React ever re-renders with a different
+        className it overwrites the attribute wholesale, silently stripping
+        those classes and leaving a blank map. The cursor therefore lives on
+        the wrapper above, which React is free to control.
+      */}
+      <div ref={mapContainerRef} className="w-full h-full z-0 bg-white" />
 
       {/* Tapping the map always pins, so say plainly what the next tap will do.
           Sized and styled to match the Center button, and kept narrow enough
