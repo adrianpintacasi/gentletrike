@@ -200,7 +200,7 @@ export const VEHICLE_DETAILS = {
     eta: '2 mins',
   },
   multicab: {
-    title: 'Multicab / EasyRide',
+    title: 'EasyRide',
     subtitle: 'Group / Suburb Route',
     capacity: '12 passengers',
     baseFare: 15,

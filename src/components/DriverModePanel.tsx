@@ -225,7 +225,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                 >
                   <div className="space-y-1 min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 truncate">
-                      <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span className="truncate">{req.pickupLocation.name}</span>
                       <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
                       <span className="truncate">{req.dropoffLocation.name}</span>

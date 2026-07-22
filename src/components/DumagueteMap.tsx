@@ -218,13 +218,15 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
 
     const isInTransit = rideStatus === 'in_transit';
 
-    // 1. Render Pickup Marker (If NOT in transit) - Red Map Pin (No background padding circle)
+    // 1. Pickup — GREEN pin. Green means "get on here", red means "journey
+    //    ends here", and the rider's pooled pins below follow the same rule so
+    //    both sides of a trip read the map identically.
     if (pickup && !isInTransit) {
       const pickupIcon = L.divIcon({
         className: 'custom-pickup-pin',
         html: `
           <div class="relative flex flex-col items-center filter drop-shadow-md">
-            <svg class="w-9 h-9 text-red-600" viewBox="0 0 24 24" fill="currentColor">
+            <svg class="w-9 h-9 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
             </svg>
           </div>
@@ -236,13 +238,13 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       markersRef.current['pickup'] = pickupMarker;
     }
 
-    // 2. Render Destination Dropoff Marker - Green Map Pin (No background padding circle)
+    // 2. Destination — RED pin.
     if (dropoff) {
       const dropoffIcon = L.divIcon({
         className: 'custom-dropoff-pin',
         html: `
           <div class="relative flex flex-col items-center filter drop-shadow-md">
-            <svg class="w-9 h-9 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
+            <svg class="w-9 h-9 text-red-600" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
             </svg>
           </div>

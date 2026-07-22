@@ -181,7 +181,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
         {/* Pickup Search Field */}
         <div className="relative">
           <div className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-xl border border-gray-200 focus-within:border-gray-400 transition">
-            <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+            <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
             <div className="flex-1 min-w-0">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">
                 PICKUP LOCATION
@@ -277,7 +277,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
         {/* Dropoff Destination Search Field */}
         <div className="relative">
           <div className="flex items-center gap-2.5 p-3 bg-amber-50/60 rounded-xl border border-amber-200 focus-within:border-amber-400 transition">
-            <Navigation className="w-4 h-4 text-amber-600 shrink-0" />
+            <Navigation className="w-4 h-4 text-red-600 shrink-0" />
             <div className="flex-1 min-w-0">
               <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-0.5">
                 DESTINATION DROPOFF
