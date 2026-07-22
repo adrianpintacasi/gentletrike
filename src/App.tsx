@@ -10,7 +10,12 @@ import {
   VEHICLE_DETAILS,
 } from './data/dumagueteData';
 import * as api from './api';
-import { getStreetRoute, type RouteResult } from './utils/dumagueteRouting';
+import {
+  bearingDegrees,
+  getStreetRoute,
+  haversineKm,
+  type RouteResult,
+} from './utils/dumagueteRouting';
 import { totalFare } from './utils/fare';
 import { usePolling } from './hooks/usePolling';
 import { Navbar } from './components/Navbar';
@@ -56,6 +61,14 @@ export default function App() {
   const [activeRide, setActiveRide] = useState<RideBooking | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [myDriver, setMyDriver] = useState<Driver | null>(null);
+
+  // This device's own GPS while in rider mode. Used directly for the rider's
+  // arrow so it moves at GPS speed instead of lagging a server poll behind.
+  const [myPosition, setMyPosition] = useState<
+    { lat: number; lng: number; heading: number | null } | null
+  >(null);
+  const lastFixRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastHeadingRef = useRef<number | null>(null);
   const [incomingRequests, setIncomingRequests] = useState<RideBooking[]>([]);
   const [acceptedPooledRides, setAcceptedPooledRides] = useState<RideBooking[]>([]);
 
@@ -195,14 +208,30 @@ export default function App() {
     const driverId = myDriver.id;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        api
-          .updateDriver(driverId, {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          })
-          .catch(() => {
-            /* a dropped GPS ping is not worth interrupting the driver over */
-          });
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // coords.heading is null whenever the phone is still or the hardware
+        // does not supply one, so fall back to the bearing between fixes.
+        // Ignore jitter under 5 m, which would spin the arrow while parked.
+        let heading =
+          typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)
+            ? pos.coords.heading
+            : null;
+
+        const previous = lastFixRef.current;
+        if (heading === null && previous) {
+          const movedMetres = haversineKm(previous, { lat, lng }) * 1000;
+          if (movedMetres > 5) heading = bearingDegrees(previous, { lat, lng });
+        }
+        if (heading !== null) lastHeadingRef.current = heading;
+        lastFixRef.current = { lat, lng };
+
+        setMyPosition({ lat, lng, heading: lastHeadingRef.current });
+
+        api.updateDriver(driverId, { lat, lng }).catch(() => {
+          /* a dropped GPS ping is not worth interrupting the driver over */
+        });
       },
       () => {
         showToast('Location permission denied — passengers cannot see you move.');
@@ -391,13 +420,26 @@ export default function App() {
   // Memoised on the coordinates themselves. A fresh object here on every
   // render would churn the map's effect dependencies and, with nothing to
   // route, spin into an endless render loop that leaves the map blank.
-  const driverLocation = useMemo(
-    () =>
-      trackedDriver
-        ? { lat: trackedDriver.currentLat, lng: trackedDriver.currentLng }
-        : null,
-    [trackedDriver?.currentLat, trackedDriver?.currentLng]
-  );
+  //
+  // In rider mode the device's own GPS wins over the server's copy: it is the
+  // same pedicab, but local fixes arrive immediately rather than after a poll.
+  const driverLocation = useMemo(() => {
+    if (isDriverMode && myPosition) {
+      return { lat: myPosition.lat, lng: myPosition.lng };
+    }
+    return trackedDriver
+      ? { lat: trackedDriver.currentLat, lng: trackedDriver.currentLng }
+      : null;
+  }, [
+    isDriverMode,
+    myPosition?.lat,
+    myPosition?.lng,
+    trackedDriver?.currentLat,
+    trackedDriver?.currentLng,
+  ]);
+
+  /* Only the rider's own screen shows a heading arrow. */
+  const driverHeading = isDriverMode ? myPosition?.heading ?? null : null;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900 antialiased">
@@ -510,6 +552,7 @@ export default function App() {
             drivers={drivers}
             activeDriver={trackedDriver}
             driverLocation={driverLocation}
+            driverHeading={driverHeading}
             rideStatus={activeRide?.status}
             pooledRides={acceptedPooledRides}
             isDriverMode={isDriverMode}

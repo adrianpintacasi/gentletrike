@@ -17,8 +17,9 @@
 .custom-pickup-pin,
 .custom-dropoff-pin,
 .custom-driver-pin,
-.custom-merged-gps-pin,
+.custom-idle-driver-pin,
 .custom-rider-pin,
+.gt-radar-icon,
 .pooled-pickup-pin,
 .pooled-dropoff-pin {
   background: transparent !important;
@@ -38,6 +39,48 @@
 @keyframes scaleUp {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* Expanding rings over the pickup point while a rider is being found. */
+.gt-radar {
+  position: relative;
+  width: 0;
+  height: 0;
+}
+
+.gt-radar span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.28);
+  border: 2px solid rgba(245, 158, 11, 0.55);
+  animation: gt-radar-pulse 2.4s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+
+.gt-radar span:nth-child(2) { animation-delay: 0.8s; }
+.gt-radar span:nth-child(3) { animation-delay: 1.6s; }
+
+@keyframes gt-radar-pulse {
+  0%   { transform: scale(0.35); opacity: 0.95; }
+  100% { transform: scale(5.5);  opacity: 0; }
+}
+
+/* The rider's own heading arrow. Rotation is set inline from the GPS heading;
+   the transition keeps turns smooth instead of snapping between fixes. */
+.gt-heading-arrow {
+  width: 34px;
+  height: 34px;
+  transition: transform 0.4s ease-out;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-radar span { animation: none; opacity: 0.4; }
+  .gt-heading-arrow { transition: none; }
 }
 
 .animate-scaleUp {

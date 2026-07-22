@@ -39,6 +39,24 @@ export function haversineKm(a: LatLng, b: LatLng): number {
 }
 
 /**
+ * Compass bearing from `a` to `b`, in degrees clockwise from north (0–360).
+ *
+ * Used to point the rider's arrow when the GPS fix has no heading of its own,
+ * which is common on phones that are stationary or moving slowly.
+ */
+export function bearingDegrees(a: LatLng, b: LatLng): number {
+  const toRad = Math.PI / 180;
+  const φ1 = a.lat * toRad;
+  const φ2 = b.lat * toRad;
+  const Δλ = (b.lng - a.lng) * toRad;
+
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+
+  return (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
+}
+
+/**
  * How much longer the real route is than the straight line. Measured against
  * OSRM over six common Dumaguete routes (Silliman–Robinsons, Boulevard–Airport,
  * Pier 1–Robinsons, Market–Silliman, Boulevard–Valencia, Silliman–Boulevard):

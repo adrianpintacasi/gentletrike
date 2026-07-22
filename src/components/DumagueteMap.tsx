@@ -10,6 +10,8 @@ interface DumagueteMapProps {
   drivers: Driver[];
   activeDriver?: Driver | null;
   driverLocation?: { lat: number; lng: number } | null;
+  /** Compass heading of the rider's own device, for the arrow in driver mode. */
+  driverHeading?: number | null;
   rideStatus?: string;
   pooledRides?: RideBooking[];
   isDriverMode?: boolean;
@@ -24,6 +26,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   drivers = [],
   activeDriver,
   driverLocation,
+  driverHeading,
   rideStatus,
   pooledRides = [],
   isDriverMode = false,
@@ -142,13 +145,21 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   useEffect(() => {
     let waypoints: LatLng[] = [];
 
-    if (activeDriver && driverLocation && rideStatus === 'driver_arriving' && pickup) {
+    // Before pickup, the passenger wants to watch the rider closing in on them,
+    // so route from the pedicab to the pickup point. `driver_assigned` matters
+    // as much as `driver_arriving` — it is the status set the instant a rider
+    // accepts, and leaving it out meant the map still showed the whole trip.
+    const headingToPickup =
+      rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving';
+
+    if (headingToPickup && driverLocation && pickup) {
       waypoints = [
         { lat: driverLocation.lat, lng: driverLocation.lng },
         { lat: pickup.lat, lng: pickup.lng },
       ];
     } else if (rideStatus === 'in_transit' && driverLocation && dropoff) {
-      // Merged location during transit
+      // Passenger is aboard: the route becomes the run to the destination they
+      // pinned when booking.
       waypoints = [
         { lat: driverLocation.lat, lng: driverLocation.lng },
         { lat: dropoff.lat, lng: dropoff.lng },
@@ -243,50 +254,43 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       markersRef.current['dropoff'] = dropoffMarker;
     }
 
-    // 3. Merged GPS Pin when Passenger Hopped In / In Transit
-    if (isInTransit && driverLocation && activeDriver) {
-      const mergedIcon = L.divIcon({
-        className: 'custom-merged-gps-pin',
-        html: `
-          <div class="relative flex flex-col items-center">
-            <div class="flex items-center gap-1.5 bg-gray-900 text-amber-400 font-bold px-3 py-1.5 rounded-full shadow-lg border border-amber-400/40">
-              <span class="text-base">🛺</span>
-              <span class="text-xs text-white">+</span>
-              <span class="text-base">👤</span>
-            </div>
-            <div class="mt-1 bg-gray-900 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-md shadow-sm whitespace-nowrap uppercase tracking-widest">
-              PASSENGER ONBOARD
-            </div>
-          </div>
-        `,
-        iconSize: [110, 45],
-        iconAnchor: [55, 22],
+    // 3. Searching: pulse rings over the pickup point so the wait reads as
+    //    something actively happening rather than a frozen map.
+    if (pickup && rideStatus === 'searching_driver') {
+      const radarIcon = L.divIcon({
+        className: 'gt-radar-icon',
+        html: `<div class="gt-radar"><span></span><span></span><span></span></div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
       });
-
-      const mergedMarker = L.marker([driverLocation.lat, driverLocation.lng], { icon: mergedIcon }).addTo(map);
-      markersRef.current['merged_gps'] = mergedMarker;
+      const radarMarker = L.marker([pickup.lat, pickup.lng], {
+        icon: radarIcon,
+        interactive: false,
+        zIndexOffset: -500,
+      }).addTo(map);
+      markersRef.current['searching_radar'] = radarMarker;
     }
 
-    // 4. Active Rider / Driver Mode Pin
+    // 4. The rider's own device: a heading arrow, not a trike badge. It turns
+    //    with them so they can read it like a navigation cursor.
     if (isDriverMode) {
       if (driverLocation || activeDriver) {
         const lat = driverLocation ? driverLocation.lat : activeDriver ? activeDriver.currentLat : 9.3082;
         const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : 123.3075;
+        const rotation = typeof driverHeading === 'number' ? driverHeading : 0;
 
         const riderIcon = L.divIcon({
           className: 'custom-rider-pin',
           html: `
-            <div class="relative flex flex-col items-center">
-              <div class="w-10 h-10 bg-gray-900 text-amber-400 rounded-full shadow-lg border border-amber-400 flex items-center justify-center text-lg">
-                🛺
-              </div>
-              <div class="mt-1 bg-gray-900 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                MY LIVE RIDER LOCATION
-              </div>
+            <div class="gt-heading-arrow" style="transform: rotate(${rotation}deg);">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none">
+                <circle cx="12" cy="12" r="11" fill="#111827" stroke="#F59E0B" stroke-width="1.5"/>
+                <path d="M12 5.5 L16.5 17 L12 14.3 L7.5 17 Z" fill="#F59E0B"/>
+              </svg>
             </div>
           `,
-          iconSize: [40, 48],
-          iconAnchor: [20, 20],
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
         });
 
         const riderMarker = L.marker([lat, lng], { icon: riderIcon }).addTo(map);
@@ -347,8 +351,10 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           markersRef.current[`idle_${d.id}`] = marker;
         });
 
-      // Show assigned driver if matched
-      if (!isInTransit && activeDriver) {
+      // The matched pedicab. Deliberately the same trike-in-a-black-circle
+      // before and after pickup — the passenger keeps following one familiar
+      // marker for the whole trip instead of it changing shape mid-ride.
+      if (activeDriver) {
         const lat = driverLocation ? driverLocation.lat : activeDriver.currentLat;
         const lng = driverLocation ? driverLocation.lng : activeDriver.currentLng;
 
@@ -360,7 +366,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
                 🛺
               </div>
               <div class="mt-1 bg-gray-900 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                ${activeDriver.unitNumber}
+                ${isInTransit ? 'ONBOARD' : activeDriver.unitNumber}
               </div>
             </div>
           `,
@@ -405,6 +411,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     drivers,
     activeDriver,
     driverLocation,
+    driverHeading,
     rideStatus,
     routeStreetCoords,
     isDriverMode,
@@ -531,15 +538,27 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       </div>
 
       {/* Street Route Active Status Badge */}
-      <div className="absolute bottom-4 left-4 z-10 bg-gray-900/90 backdrop-blur-sm text-white px-3.5 py-2 rounded-xl border border-gray-800 shadow-lg text-[11px] font-medium flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-        <span>
-          {isDriverMode
-            ? 'Rider View: Active Route & Onboard Passengers Only'
-            : rideStatus === 'in_transit'
-            ? 'Passenger On Board'
-            : 'Dumaguete Street Route'}
-        </span>
+      <div className="absolute bottom-4 left-4 z-10 bg-gray-900/90 backdrop-blur-sm text-white px-3.5 py-2 rounded-xl border border-gray-800 shadow-lg text-[11px] font-medium flex items-center gap-2 max-w-[calc(100%-2rem)]">
+        {rideStatus === 'searching_driver' ? (
+          <>
+            {/* A spinner, not a pulse — the wait needs to look like work in progress. */}
+            <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+            <span className="truncate">Looking for a nearby rider in Dumaguete…</span>
+          </>
+        ) : (
+          <>
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="truncate">
+              {isDriverMode
+                ? 'Rider View: Active Route & Onboard Passengers Only'
+                : rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving'
+                ? 'Rider on the way to your pickup point'
+                : rideStatus === 'in_transit'
+                ? 'On board — heading to your destination'
+                : 'Dumaguete Street Route'}
+            </span>
+          </>
+        )}
       </div>
     </div>
   );
