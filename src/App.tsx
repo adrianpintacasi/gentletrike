@@ -35,7 +35,6 @@ import {
 /** How often each role asks the server what changed. */
 const PASSENGER_POLL_MS = 2500;
 const DRIVER_POLL_MS = 3000;
-const FLEET_POLL_MS = 8000;
 
 export default function App() {
   // Navigation & Modal States
@@ -62,7 +61,6 @@ export default function App() {
   const [activeRide, setActiveRide] = useState<RideBooking | null>(null);
   /** A just-finished trip, kept only until the rating prompt is dismissed. */
   const [completedRide, setCompletedRide] = useState<RideBooking | null>(null);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [myDriver, setMyDriver] = useState<Driver | null>(null);
 
   // This device's own GPS while in rider mode. Used directly for the rider's
@@ -178,18 +176,6 @@ export default function App() {
       setActiveRide(null);
     }
   }, [activeRide?.status, activeRide?.assignedDriver?.name, activeRide?.dropoffLocation.name, showToast]);
-
-  /* ------------------------------------------------------------- fleet map */
-
-  const pollFleet = useCallback(async () => {
-    try {
-      setDrivers(await api.listDrivers(true));
-    } catch {
-      /* the map simply shows no roaming pedicabs */
-    }
-  }, []);
-
-  usePolling(pollFleet, FLEET_POLL_MS);
 
   /* ----------------------------------------------------- driver mode: setup */
 
@@ -565,7 +551,6 @@ export default function App() {
           <DumagueteMap
             pickup={isDriverMode ? null : activeRide?.pickupLocation ?? pickup}
             dropoff={isDriverMode ? null : activeRide?.dropoffLocation ?? dropoff}
-            drivers={drivers}
             activeDriver={trackedDriver}
             driverLocation={driverLocation}
             driverHeading={driverHeading}

@@ -7,7 +7,6 @@ import { getStreetRoute, LatLng } from '../utils/dumagueteRouting';
 interface DumagueteMapProps {
   pickup: LocationPoint | null;
   dropoff: LocationPoint | null;
-  drivers: Driver[];
   activeDriver?: Driver | null;
   driverLocation?: { lat: number; lng: number } | null;
   /** Compass heading of the rider's own device, for the arrow in driver mode. */
@@ -23,7 +22,6 @@ interface DumagueteMapProps {
 export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   pickup,
   dropoff,
-  drivers = [],
   activeDriver,
   driverLocation,
   driverHeading,
@@ -281,17 +279,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : 123.3075;
         const rotation = typeof driverHeading === 'number' ? driverHeading : 0;
 
-        // A navigation chevron in the Waze / Google Maps idiom: a solid blue
-        // arrowhead with a white outline so it stays legible over any tile.
+        // A navigation chevron in the Waze / Google Maps idiom, in solid black.
+        // No outline — the light basemap already gives it plenty of contrast,
+        // and the drop shadow keeps it from disappearing over dark tiles.
         const riderIcon = L.divIcon({
           className: 'custom-rider-pin',
           html: `
             <div class="gt-heading-arrow" style="transform: rotate(${rotation}deg);">
               <svg viewBox="0 0 40 40" width="40" height="40" fill="none">
-                <circle cx="20" cy="20" r="17" fill="#2563EB" fill-opacity="0.16"/>
+                <circle cx="20" cy="20" r="17" fill="#111827" fill-opacity="0.12"/>
                 <path d="M20 6 L31 32 L20 26.2 L9 32 Z"
-                      fill="#2563EB" stroke="#ffffff" stroke-width="2.4"
-                      stroke-linejoin="round"/>
+                      fill="#111827" stroke-linejoin="round"/>
               </svg>
             </div>
           `,
@@ -347,27 +345,9 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         markersRef.current[`pooled_d_${ride.id}`] = dMarker;
       });
     } else {
-      // Passenger mode: every other pedicab currently on duty, so the map shows
-      // the real fleet rather than an empty city.
-      drivers
-        .filter((d) => d.isOnline && d.id !== activeDriver?.id)
-        .forEach((d) => {
-          const idleIcon = L.divIcon({
-            className: 'custom-idle-driver-pin',
-            html: `
-              <div class="w-7 h-7 bg-white text-gray-700 rounded-full shadow-md border border-gray-300 flex items-center justify-center text-sm opacity-90">
-                🛺
-              </div>
-            `,
-            iconSize: [28, 28],
-            iconAnchor: [14, 14],
-          });
-
-          const marker = L.marker([d.currentLat, d.currentLng], { icon: idleIcon })
-            .addTo(map)
-            .bindTooltip(`${d.unitNumber} • available`, { direction: 'top' });
-          markersRef.current[`idle_${d.id}`] = marker;
-        });
+      // Passenger mode deliberately shows no roaming pedicabs. Only the rider
+      // who has actually accepted this booking appears, so the map never
+      // implies a nearby trike the passenger has not been matched with.
 
       // The matched pedicab. Deliberately the same trike-in-a-black-circle
       // before and after pickup — the passenger keeps following one familiar
@@ -426,7 +406,6 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   }, [
     pickup,
     dropoff,
-    drivers,
     activeDriver,
     driverLocation,
     driverHeading,

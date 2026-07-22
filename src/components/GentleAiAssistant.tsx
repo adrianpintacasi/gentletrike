@@ -19,7 +19,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([
     {
       role: 'assistant',
-      text: 'Maayong adlaw! I am GentleTrike AI, your local Dumaguete guide. Ask me about pedicab fares, tourist spots like Rizal Boulevard or Casaroro Falls, Siquijor ferry schedules, or local food like Silvanas & Budbud Kabog!',
+      text: 'Maayong adlaw! I am Gently, your local Dumaguete guide. Ask me about pedicab fares, tourist spots like Rizal Boulevard or Casaroro Falls, Siquijor ferry schedules, or local food like Silvanas & Budbud Kabog!',
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -76,7 +76,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base leading-tight text-white">GentleTrike AI Guide</h3>
+              <h3 className="font-bold text-base leading-tight text-white">Gently</h3>
               <p className="text-xs text-gray-400 font-medium">Dumaguete Route & City Knowledge</p>
             </div>
           </div>
@@ -107,7 +107,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
           {loading && (
             <div className="bg-white border border-gray-200 p-3 rounded-xl self-start flex items-center gap-2 text-gray-800 font-semibold animate-pulse">
               <Sparkles className="w-4 h-4 text-amber-500 animate-spin" />
-              <span>Consulting GentleTrike AI...</span>
+              <span>Gently is thinking...</span>
             </div>
           )}
         </div>
@@ -137,7 +137,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Ask GentleTrike AI about Dumaguete pedicabs, fares, places..."
+            placeholder="Ask Gently about Dumaguete pedicabs, fares, places..."
             className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 font-medium focus:outline-none focus:bg-white focus:border-amber-400"
           />
           <button
