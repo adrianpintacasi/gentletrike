@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@layer utilities {
+  /* Hide scrollbars for clean chip rows */
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Custom Leaflet Pins */
+.leaflet-div-icon,
+.custom-landmark-pin,
+.custom-pickup-pin,
+.custom-dropoff-pin,
+.custom-driver-pin,
+.custom-merged-gps-pin,
+.custom-rider-pin,
+.pooled-pickup-pin,
+.pooled-dropoff-pin {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-scaleUp {
+  animation: scaleUp 0.2s ease-out forwards;
+}
+

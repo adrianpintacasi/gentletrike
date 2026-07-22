@@ -1,0 +1,6 @@
+{
+  "name": "GentleTrike - Dumaguete Public Hailing",
+  "description": "Public transport & ride hailing app designed for Dumaguete City featuring Pedicab, E-Trike, Habal-Habal, pooled multi-passenger rides along street routes, and Pabili delivery services.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

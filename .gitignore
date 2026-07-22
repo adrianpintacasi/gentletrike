@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+# Per-machine Claude Code settings, not part of the project
+.claude/settings.local.json
+# Local SQLite database (plus its WAL sidecar files)
+data/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+*.log
+.env*
+!.env.example

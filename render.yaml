@@ -1,0 +1,52 @@
+# Render blueprint. Commit this file, then on render.com choose
+# New > Blueprint and point it at your repo — Render reads everything below.
+#
+# Configured for the FREE plan as-is. See the note at the bottom for making
+# ride data survive restarts.
+services:
+  - type: web
+    name: gentletrike
+    runtime: node
+    plan: free
+    region: singapore # closest Render region to the Philippines
+
+    # --include=dev is defensive. NODE_ENV=production below sets npm's
+    # omit=dev, which skips the direct devDependencies that `npm run build`
+    # needs (esbuild, tailwindcss). Today the build survives anyway because
+    # both arrive as transitive deps of vite and @tailwindcss/vite, which are
+    # production deps — but that is an accident of hoisting, not a guarantee.
+    # The flag makes the build independent of it.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Must be 24+: the database uses Node's built-in node:sqlite module.
+      - key: NODE_VERSION
+        value: "24"
+      # Set the actual key in the Render dashboard (Environment tab).
+      # sync:false means "prompt me for this, don't read it from the repo",
+      # which keeps the secret out of git. Optional — without it the AI guide
+      # falls back to canned local fare answers.
+      - key: GEMINI_API_KEY
+        sync: false
+# ---------------------------------------------------------------------------
+# Making data persistent (paid plans only)
+#
+# On free, the filesystem is wiped on every restart and redeploy, so rides and
+# drivers reset. That is fine for a demo. To keep data, upgrade the plan and
+# add BOTH of the following:
+#
+#   1. Under envVars above:
+#        - key: DATABASE_PATH
+#          value: /var/data/gentletrike.db
+#
+#   2. At the same indent level as healthCheckPath:
+#        disk:
+#          name: gentletrike-data
+#          mountPath: /var/data
+#          sizeGB: 1
+# ---------------------------------------------------------------------------
