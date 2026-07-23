@@ -74,8 +74,11 @@
 .gt-heading-arrow {
   width: 40px;
   height: 40px;
-  transition: transform 0.4s ease-out;
+  /* Short enough that the compass feels live, long enough to smooth sensor
+     steps into continuous rotation. */
+  transition: transform 0.15s linear;
   filter: drop-shadow(0 2px 5px rgb(0 0 0 / 0.35));
+  transform-origin: 50% 50%;
 }
 
 @media (prefers-reduced-motion: reduce) {

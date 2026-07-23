@@ -37,6 +37,13 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const routePolylineGlowRef = useRef<L.Polyline | null>(null);
 
+  // Real-time compass rotation for the rider's arrow. Driven imperatively from
+  // the device-orientation sensor rather than React state, so it can update at
+  // sensor speed without re-rendering the whole map on every tick.
+  const arrowElRef = useRef<HTMLElement | null>(null);
+  const arrowRotationRef = useRef(0); // accumulated degrees (may exceed 360)
+  const compassActiveRef = useRef(false);
+
   const [routeStreetCoords, setRouteStreetCoords] = useState<LatLng[]>([]);
 
   // View-control state. `userAdjustedView` latches once the passenger moves the
@@ -299,6 +306,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
 
         const riderMarker = L.marker([lat, lng], { icon: riderIcon }).addTo(map);
         markersRef.current['my_rider'] = riderMarker;
+
+        // This effect recreates the arrow element, so re-grab it and, if the
+        // compass is already live, restore the accumulated rotation — otherwise
+        // it would snap back to the GPS-based angle baked into the icon HTML.
+        const el = riderMarker.getElement()?.querySelector(
+          '.gt-heading-arrow'
+        ) as HTMLElement | null;
+        arrowElRef.current = el;
+        if (el && compassActiveRef.current) {
+          el.style.transform = `rotate(${arrowRotationRef.current}deg)`;
+        }
       }
 
       // Each pooled passenger becomes two map pins along the route: green to
@@ -414,6 +432,62 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     isDriverMode,
     pooledRides,
   ]);
+
+  // Rotate the rider's arrow from the phone's compass, in real time, so it
+  // points where the device faces even while standing still — like Waze.
+  useEffect(() => {
+    if (!isDriverMode) return;
+    if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
+
+    const readHeading = (e: DeviceOrientationEvent): number | null => {
+      // iOS exposes a ready-made compass heading (0 = north, clockwise).
+      const iosHeading = (e as unknown as { webkitCompassHeading?: number })
+        .webkitCompassHeading;
+      if (typeof iosHeading === 'number' && !Number.isNaN(iosHeading)) {
+        return iosHeading;
+      }
+      // Elsewhere, absolute orientation gives alpha counter-clockwise from north.
+      if (e.absolute && typeof e.alpha === 'number') {
+        return (360 - e.alpha) % 360;
+      }
+      return null;
+    };
+
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      const target = readHeading(e);
+      if (target === null) return;
+
+      if (!compassActiveRef.current) {
+        // First real reading: adopt it outright so the arrow doesn't sweep
+        // from 0° on activation.
+        compassActiveRef.current = true;
+        arrowRotationRef.current = target;
+      } else {
+        // Accumulate the shortest signed turn, so 350°→10° nudges +20° rather
+        // than unwinding 340° the wrong way.
+        const current = arrowRotationRef.current;
+        const delta = (((target - current) % 360) + 540) % 360 - 180;
+        if (Math.abs(delta) < 1) return; // ignore sensor jitter
+        arrowRotationRef.current = current + delta;
+      }
+
+      const el = arrowElRef.current;
+      if (el) el.style.transform = `rotate(${arrowRotationRef.current}deg)`;
+    };
+
+    // deviceorientationabsolute is the reliable compass feed on Android/Chrome;
+    // fall back to the plain event where it is not offered.
+    const eventName =
+      'ondeviceorientationabsolute' in window
+        ? 'deviceorientationabsolute'
+        : 'deviceorientation';
+
+    window.addEventListener(eventName, handleOrientation as EventListener, true);
+    return () => {
+      window.removeEventListener(eventName, handleOrientation as EventListener, true);
+      compassActiveRef.current = false;
+    };
+  }, [isDriverMode]);
 
   /**
    * Frame the trip exactly once, when it is genuinely new.
@@ -534,9 +608,16 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         </button>
       </div>
 
-      {/* Street Route Active Status Badge */}
+      {/* Street Route Active Status Badge. Driver mode is checked first — the
+          passenger's "searching" message must never leak onto the rider's own
+          map, even when this same device also has a booking in flight. */}
       <div className="absolute bottom-4 left-4 z-10 bg-gray-900/90 backdrop-blur-sm text-white px-3.5 py-2 rounded-xl border border-gray-800 shadow-lg text-[11px] font-medium flex items-center gap-2 max-w-[calc(100%-2rem)]">
-        {rideStatus === 'searching_driver' ? (
+        {isDriverMode ? (
+          <>
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="truncate">Rider View: your live location &amp; assigned trips</span>
+          </>
+        ) : rideStatus === 'searching_driver' ? (
           <>
             {/* A spinner, not a pulse — the wait needs to look like work in progress. */}
             <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
@@ -546,9 +627,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           <>
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
             <span className="truncate">
-              {isDriverMode
-                ? 'Rider View: Active Route & Onboard Passengers Only'
-                : rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving'
+              {rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving'
                 ? 'Rider on the way to your pickup point'
                 : rideStatus === 'in_transit'
                 ? 'On board — heading to your destination'

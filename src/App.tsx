@@ -185,6 +185,19 @@ export default function App() {
       setMyDriver(driver);
       setIsDriverMode(true);
       showToast(`Signed in as ${driver.name} (${driver.unitNumber})`);
+
+      // iOS only delivers compass events after an explicit permission grant,
+      // and that request must come from a user gesture — which this tap is.
+      const OrientationEvent = window.DeviceOrientationEvent as unknown as {
+        requestPermission?: () => Promise<'granted' | 'denied'>;
+      };
+      if (typeof OrientationEvent?.requestPermission === 'function') {
+        try {
+          await OrientationEvent.requestPermission();
+        } catch {
+          /* denied or dismissed — the arrow simply falls back to GPS heading */
+        }
+      }
     } catch (err) {
       reportError(err, 'Could not sign in to Rider Mode. Is the server running?');
     }
