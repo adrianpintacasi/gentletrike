@@ -29,8 +29,8 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     id: 'robinsons_place',
     name: 'Robinsons Place Dumaguete',
     address: 'Calindagan, Dumaguete City',
-    lat: 9.299,
-    lng: 123.303,
+    lat: 9.2987,
+    lng: 123.3027,
     popularFor: 'Shopping mall, Cinema & Transport terminal',
   },
   {
