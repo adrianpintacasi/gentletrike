@@ -613,10 +613,20 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           map, even when this same device also has a booking in flight. */}
       <div className="absolute bottom-4 left-4 z-10 bg-gray-900/90 backdrop-blur-sm text-white px-3.5 py-2 rounded-xl border border-gray-800 shadow-lg text-[11px] font-medium flex items-center gap-2 max-w-[calc(100%-2rem)]">
         {isDriverMode ? (
-          <>
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-            <span className="truncate">Rider View: your live location &amp; assigned trips</span>
-          </>
+          pooledRides.length === 0 ? (
+            <>
+              {/* Idle and on duty — waiting for a booking to come in. */}
+              <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+              <span className="truncate">Searching for passengers…</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="truncate">
+                {pooledRides.length} passenger{pooledRides.length > 1 ? 's' : ''} on your route
+              </span>
+            </>
+          )
         ) : rideStatus === 'searching_driver' ? (
           <>
             {/* A spinner, not a pulse — the wait needs to look like work in progress. */}
