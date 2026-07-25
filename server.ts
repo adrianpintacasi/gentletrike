@@ -4,6 +4,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { api } from "./server/routes";
+import { initDb } from "./server/db";
 
 const app = express();
 // Hosts (Render, Railway, Fly, Cloud Run) inject the port they expect us to bind.
@@ -78,6 +79,9 @@ When answering the user:
 });
 
 async function startServer() {
+  // Create the tables and seed the fleet in Postgres before serving requests.
+  await initDb();
+
   // Registered after every real /api route, but before the SPA fallbacks below.
   // Without this an unmatched API path falls through to the HTML shell — in dev
   // to Vite's middleware, in production to the catch-all — and the client ends

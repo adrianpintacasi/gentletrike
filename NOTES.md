@@ -37,22 +37,30 @@ idle, first hit takes ~50s to wake).
 | Map | Leaflet + CartoDB Positron tiles | no API key needed |
 | Routing | OSRM public server | real road geometry + distance |
 | Backend | Express (Node) | one process serves API **and** the built SPA |
-| Database | **`node:sqlite`** (built into Node 24) | no native module, no compiler |
+| Database | **Neon Postgres** via `pg` | cloud Postgres; persists + shared across the team |
 | AI guide | Google Gemini (`@google/genai`) | optional; falls back to canned answers |
 | Dev / build | tsx (dev), esbuild + Vite (prod) | |
 | Host | Render (free plan) | auto-deploys on push to `main` |
 
-### Why `node:sqlite` and not `better-sqlite3`
+### Database: from `node:sqlite` to Neon Postgres
 
-The original plan used `better-sqlite3`, a **native C++ addon**. It has no
-prebuilt binary for Node 24 on Windows, so `npm install` tried to compile it and
-demanded Visual Studio C++ Build Tools (multi-GB) — which this machine does not
-have. Node 24 ships SQLite **built in** (`node:sqlite`), so the database needs no
-dependency and no toolchain. The trade-off: **Node 24+ is required** (pinned in
-`package.json` `engines` and `render.yaml` `NODE_VERSION`).
+The app first used **`node:sqlite`** (SQLite built into Node 24) — zero
+dependencies, no compiler. It worked, but on the free host the SQLite *file* was
+wiped on every restart, so accounts and rides couldn't survive and each machine
+had its own separate copy. The app now uses **Neon Postgres** (managed cloud
+database) via the **`pg`** driver: data persists across restarts and the whole
+team + the live site share one database.
+
+`pg` is **pure JavaScript**, so it still installs with no native build step. The
+connection is in `DATABASE_URL` (`.env` locally, Render env in production). The
+SQLite→Postgres differences are handled centrally in [server/db.ts](server/db.ts):
+a tiny translator maps `?` placeholders to `$1,$2…` and `datetime('now')` to a
+UTC text timestamp, `tx()` uses a pooled client tracked with AsyncLocalStorage,
+and the query helpers are async.
 
 > **Rule for this project:** never reintroduce a native/compiled dependency
-> without a confirmed Windows prebuild. Prefer built-in or pure-JS packages.
+> without a confirmed Windows prebuild. Prefer built-in or pure-JS packages
+> (`pg` qualifies).
 
 ---
 
@@ -65,7 +73,7 @@ dependency and no toolchain. The trade-off: **Node 24+ is required** (pinned in
         │  GET  /api/rides/:id  (poll) │  POST /api/rides/:id/accept
         │  GET  /messages       (poll) │  POST /api/rides/:id/status
         │                              │  PATCH /api/drivers/:id  ← live GPS
-        └──────────►  Express + node:sqlite  ◄──────────┘
+        └──────────►  Express + Neon Postgres  ◄──────────┘
                      (also serves the built SPA)
 ```
 
@@ -98,7 +106,7 @@ There is no login. Each browser generates a UUID into `localStorage`
 | Path | Responsibility |
 | ---- | -------------- |
 | [server.ts](server.ts) | Express entry; Vite middleware in dev, static `dist/` in prod; Gemini endpoint |
-| [server/db.ts](server/db.ts) | `node:sqlite` setup, schema, fleet seed, typed query helpers, row→JSON mapping |
+| [server/db.ts](server/db.ts) | Postgres (`pg`) pool, schema, fleet seed, async query helpers, row→JSON mapping |
 | [server/routes.ts](server/routes.ts) | the `/api` surface |
 | [src/api.ts](src/api.ts) | typed client for the API + the device id |
 | [src/hooks/usePolling.ts](src/hooks/usePolling.ts) | visibility-aware polling hook |
@@ -143,8 +151,8 @@ There is no login. Each browser generates a UUID into `localStorage`
 ### Database tables
 
 `drivers`, `rides`, `ride_declines`, `messages`, `ratings`, `tmo_reports`.
-Runs in **WAL mode** so a passenger's read can proceed while a rider's write is
-in flight.
+Postgres handles concurrent reads during writes natively (MVCC), so a
+passenger's poll never blocks on a rider's write.
 
 ---
 
@@ -233,9 +241,9 @@ old JS bundle.
 ### Free-tier caveats (fine for a demo)
 
 - Sleeps after ~15 min idle; first hit ~50s to wake. Open it a minute early.
-- **No persistent disk**, so the SQLite file resets on every restart/redeploy —
-  rides and driver stats do not survive overnight. The paid fix (a disk +
-  `DATABASE_PATH`) is documented at the bottom of `render.yaml`.
+- Data lives in **Neon Postgres**, not on the server's disk, so rides and driver
+  stats **survive** restarts and redeploys. (Render's own filesystem is still
+  ephemeral, but the app no longer stores anything there.)
 
 ---
 
@@ -249,13 +257,13 @@ old JS bundle.
   clears.)
 - **ETA is a formula, not learned.** It uses OSRM's duration (or
   distance ÷ 18 km/h offline). The natural first ML feature would be an ETA
-  model — but the real blocker is data: the app doesn't yet log *actual* trip
-  duration (`started_at` / `completed_at`), and the free tier resets the DB.
-  Step zero is logging real durations so training data can accumulate.
+  model — but the app doesn't yet log *actual* trip duration
+  (`started_at` / `completed_at`). Now that data persists in Postgres, step zero
+  is logging real durations so training data can accumulate.
 - **OSRM has no live traffic**, so "fastest route" is based on typical road
   speeds. Real-time traffic would mean a paid routing API.
-- **Persistence** — for anything beyond a demo, move to a paid disk or Postgres.
-  SQLite is one file on one server; it can't be shared across scaled instances.
+- **Persistence** — done: the app runs on Neon Postgres, so data persists and can
+  be shared across teammates and multiple server instances.
 
 ---
 

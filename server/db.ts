@@ -1,73 +1,99 @@
-import fs from "fs";
-import path from "path";
-import { DatabaseSync } from "node:sqlite";
-import type { StatementSync, SQLInputValue } from "node:sqlite";
+import { Pool } from "pg";
+import type { PoolClient } from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { INITIAL_DRIVERS } from "../src/data/dumagueteData";
 
-// SQLite ships inside Node 24 itself (node:sqlite), so there is no native module
-// to compile and no C++ toolchain to install — it just runs.
+// GentleTrike stores its data in a cloud Postgres database (Neon), so data
+// survives restarts and every teammate + the live site share the same data.
+// `pg` is a pure-JavaScript driver — no native module, no C++ toolchain — so it
+// installs cleanly on Windows without Visual Studio Build Tools.
 
-// On Render/Railway set DATABASE_PATH to a mounted disk (e.g. /var/data/gentletrike.db)
-// so rides survive restarts. Without a disk the file lives on ephemeral storage and
-// resets on every deploy — fine for a demo, not for real data.
-const DB_PATH =
-  process.env.DATABASE_PATH || path.join(process.cwd(), "data", "gentletrike.db");
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error(
+    "DATABASE_URL is not set. Copy .env.example to .env and paste your Neon connection string."
+  );
+}
 
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+export const pool = new Pool({
+  connectionString,
+  // Neon requires SSL. rejectUnauthorized:false avoids the "self-signed
+  // certificate" error that trips up managed Postgres providers.
+  ssl: { rejectUnauthorized: false },
+});
 
-export const db = new DatabaseSync(DB_PATH);
+// A query inside tx() must run on that transaction's own connection — not a
+// random one from the pool — or BEGIN/COMMIT wouldn't cover it. AsyncLocalStorage
+// carries the active transaction's client through the awaits so callers don't
+// have to thread it through by hand.
+const txStore = new AsyncLocalStorage<PoolClient>();
+const conn = (): Pool | PoolClient => txStore.getStore() ?? pool;
 
-// WAL lets the passenger's poll read while a driver's accept is writing.
-db.exec("PRAGMA journal_mode = WAL");
-db.exec("PRAGMA foreign_keys = ON");
+// The routes were written for SQLite. Two SQLite-isms are translated to Postgres
+// in this one place, so the query strings elsewhere barely change:
+//   ?               -> $1, $2, ...  (Postgres numbered placeholders)
+//   datetime('now') -> a UTC text timestamp in SQLite's exact old format,
+//                      keeping created_at/updated_at byte-identical to before.
+const NOW_SQL = "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')";
+
+function translate(sql: string): string {
+  let i = 0;
+  return sql
+    .replace(/datetime\('now'\)/g, NOW_SQL)
+    .replace(/\?/g, () => `$${++i}`);
+}
+
+async function query(sql: string, params: unknown[]) {
+  return conn().query(translate(sql), params as unknown[]);
+}
 
 /**
- * Run `fn` inside a transaction, rolling back if it throws.
- *
- * node:sqlite has no `.transaction()` wrapper of its own, and these are all
- * synchronous statements, so a plain BEGIN/COMMIT is enough.
+ * These three helpers are the single place row types are asserted, so the route
+ * handlers can work with real row types. All async now — Postgres is over the
+ * network, unlike the old in-process SQLite file.
  */
-export function tx<T>(fn: () => T): T {
-  db.exec("BEGIN");
-  try {
-    const result = fn();
-    db.exec("COMMIT");
-    return result;
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
+export async function selectOne<T>(sql: string, ...params: unknown[]): Promise<T | undefined> {
+  const r = await query(sql, params);
+  return r.rows[0] as T | undefined;
 }
 
-// Preparing the same SQL on every poll is wasted work, so hand out cached
-// statements keyed by the query text.
-const statementCache = new Map<string, StatementSync>();
-
-function stmt(sql: string): StatementSync {
-  let cached = statementCache.get(sql);
-  if (!cached) {
-    cached = db.prepare(sql);
-    statementCache.set(sql, cached);
-  }
-  return cached;
+export async function selectAll<T>(sql: string, ...params: unknown[]): Promise<T[]> {
+  const r = await query(sql, params);
+  return r.rows as T[];
 }
 
-// node:sqlite hands back untyped `Record<string, SQLOutputValue>` rows. These
-// three helpers are the single place that assertion happens, so the route
-// handlers can work with real row types.
-export function selectOne<T>(sql: string, ...params: SQLInputValue[]): T | undefined {
-  return stmt(sql).get(...params) as unknown as T | undefined;
+export async function run(sql: string, ...params: unknown[]): Promise<{ changes: number }> {
+  const r = await query(sql, params);
+  return { changes: r.rowCount ?? 0 };
 }
 
-export function selectAll<T>(sql: string, ...params: SQLInputValue[]): T[] {
-  return stmt(sql).all(...params) as unknown as T[];
+/**
+ * Run `fn` inside a transaction on a single dedicated connection, rolling back
+ * if it throws. Queries called inside `fn` automatically use that same
+ * connection (via the AsyncLocalStorage above).
+ */
+export async function tx<T>(fn: () => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  return txStore.run(client, async () => {
+    try {
+      await client.query("BEGIN");
+      const result = await fn();
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
 }
 
-export function run(sql: string, ...params: SQLInputValue[]) {
-  return stmt(sql).run(...params);
-}
-
-db.exec(`
+// Postgres has no `rowid`, so `messages` carries an explicit `seq` (auto-
+// incrementing) column to preserve insertion order as a tiebreaker within the
+// same second. Otherwise the schema mirrors the old SQLite one; integer columns
+// (0/1) still stand in for booleans so the app code is unchanged.
+const SCHEMA = `
   CREATE TABLE IF NOT EXISTS drivers (
     id              TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
@@ -84,7 +110,7 @@ db.exec(`
     claimed_by      TEXT,
     earnings_today  INTEGER NOT NULL DEFAULT 0,
     trips_today     INTEGER NOT NULL DEFAULT 0,
-    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at      TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
   CREATE TABLE IF NOT EXISTS rides (
@@ -103,8 +129,8 @@ db.exec(`
     notes                TEXT,
     driver_id            TEXT REFERENCES drivers(id),
     status               TEXT NOT NULL DEFAULT 'searching_driver',
-    created_at           TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at           TEXT NOT NULL DEFAULT ${NOW_SQL},
+    updated_at           TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
   CREATE INDEX IF NOT EXISTS idx_rides_status    ON rides(status);
@@ -116,16 +142,17 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS ride_declines (
     ride_id    TEXT NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
     driver_id  TEXT NOT NULL REFERENCES drivers(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT ${NOW_SQL},
     PRIMARY KEY (ride_id, driver_id)
   );
 
   CREATE TABLE IF NOT EXISTS messages (
+    seq        BIGSERIAL,
     id         TEXT PRIMARY KEY,
     ride_id    TEXT NOT NULL REFERENCES rides(id) ON DELETE CASCADE,
     sender     TEXT NOT NULL,
     text       TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
   CREATE INDEX IF NOT EXISTS idx_messages_ride ON messages(ride_id);
@@ -138,7 +165,7 @@ db.exec(`
     driver_id  TEXT REFERENCES drivers(id),
     stars      INTEGER NOT NULL CHECK (stars BETWEEN 1 AND 5),
     comment    TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_ratings_ride ON ratings(ride_id);
@@ -152,25 +179,23 @@ db.exec(`
     demanded_fare  INTEGER,
     details        TEXT,
     contact_number TEXT,
-    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at     TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
-`);
+`;
 
 /**
- * Seed the pedicab fleet once. Existing rows are left alone so a redeploy does
- * not wipe a driver's live status or today's earnings.
+ * Seed the pedicab fleet once. `ON CONFLICT DO NOTHING` leaves existing rows
+ * alone so a redeploy does not wipe a driver's live status or today's earnings.
  */
-function seedDrivers() {
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO drivers
-      (id, name, vehicle_type, unit_number, plate_number, rating,
-       trips_completed, phone, avatar, current_lat, current_lng, is_online)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,0)
-  `);
-
-  tx(() => {
+async function seedDrivers() {
+  await tx(async () => {
     for (const d of INITIAL_DRIVERS) {
-      insert.run(
+      await run(
+        `INSERT INTO drivers
+          (id, name, vehicle_type, unit_number, plate_number, rating,
+           trips_completed, phone, avatar, current_lat, current_lng, is_online)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,0)
+         ON CONFLICT (id) DO NOTHING`,
         d.id,
         d.name,
         d.vehicleType,
@@ -187,7 +212,11 @@ function seedDrivers() {
   });
 }
 
-seedDrivers();
+/** Create the tables and seed the fleet. Call once at server startup. */
+export async function initDb() {
+  await pool.query(SCHEMA);
+  await seedDrivers();
+}
 
 export interface DriverRow {
   id: string;

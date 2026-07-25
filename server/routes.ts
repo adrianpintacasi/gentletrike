@@ -13,6 +13,17 @@ import {
 
 export const api = Router();
 
+// Express 4 does not catch errors thrown from async handlers, so every async
+// handler is wrapped: a rejected promise becomes a clean 500 instead of a
+// hung request with no response.
+const wrap =
+  (fn: (req: any, res: any) => Promise<unknown>) =>
+  (req: any, res: any) =>
+    fn(req, res).catch((err: unknown) => {
+      console.error(err);
+      if (!res.headersSent) res.status(500).json({ error: "Server error" });
+    });
+
 const RIDE_STATUSES = [
   "searching_driver",
   "driver_assigned",
@@ -36,8 +47,8 @@ const findDriver = (id: string) =>
 const findRide = (id: string) =>
   selectOne<RideRow>("SELECT * FROM rides WHERE id = ?", id);
 
-function rideWithDriver(row: RideRow) {
-  const driver = row.driver_id ? findDriver(row.driver_id) : null;
+async function rideWithDriver(row: RideRow) {
+  const driver = row.driver_id ? await findDriver(row.driver_id) : null;
   return toRide(row, driver);
 }
 
@@ -50,321 +61,364 @@ api.get("/health", (_req, res) => {
 /* ----------------------------------------------------------------- drivers */
 
 /** Fleet for the passenger map. `?online=1` limits it to riders on duty. */
-api.get("/drivers", (req, res) => {
-  const rows =
-    req.query.online === "1"
-      ? selectAll<DriverRow>("SELECT * FROM drivers WHERE is_online = 1")
-      : selectAll<DriverRow>("SELECT * FROM drivers");
-  res.json({ drivers: rows.map(toDriver) });
-});
+api.get(
+  "/drivers",
+  wrap(async (req, res) => {
+    const rows =
+      req.query.online === "1"
+        ? await selectAll<DriverRow>("SELECT * FROM drivers WHERE is_online = 1")
+        : await selectAll<DriverRow>("SELECT * FROM drivers");
+    res.json({ drivers: rows.map(toDriver) });
+  })
+);
 
 /**
  * Claim a pedicab unit for this device. Without accounts, "logging in as a
  * driver" is just taking an unclaimed unit; the same clientId reclaims the
  * same unit on reload.
  */
-api.post("/drivers/claim", (req, res) => {
-  const { clientId, driverId } = req.body ?? {};
-  if (!clientId) return res.status(400).json({ error: "clientId is required" });
+api.post(
+  "/drivers/claim",
+  wrap(async (req, res) => {
+    const { clientId, driverId } = req.body ?? {};
+    if (!clientId) return res.status(400).json({ error: "clientId is required" });
 
-  const existing = selectOne<DriverRow>(
-    "SELECT * FROM drivers WHERE claimed_by = ?",
-    clientId
-  );
-  if (existing && (!driverId || existing.id === driverId)) {
-    return res.json({ driver: toDriver(existing) });
-  }
-
-  const claimed = tx(() => {
-    // Release whatever this device held before, then take the requested unit
-    // (or the first free one).
-    run(
-      "UPDATE drivers SET claimed_by = NULL, is_online = 0 WHERE claimed_by = ?",
+    const existing = await selectOne<DriverRow>(
+      "SELECT * FROM drivers WHERE claimed_by = ?",
       clientId
     );
+    if (existing && (!driverId || existing.id === driverId)) {
+      return res.json({ driver: toDriver(existing) });
+    }
 
-    const target = driverId
-      ? selectOne<DriverRow>(
-          "SELECT * FROM drivers WHERE id = ? AND (claimed_by IS NULL OR claimed_by = ?)",
-          driverId,
-          clientId
-        )
-      : selectOne<DriverRow>(
-          "SELECT * FROM drivers WHERE claimed_by IS NULL LIMIT 1"
-        );
+    const claimed = await tx(async () => {
+      // Release whatever this device held before, then take the requested unit
+      // (or the first free one).
+      await run(
+        "UPDATE drivers SET claimed_by = NULL, is_online = 0 WHERE claimed_by = ?",
+        clientId
+      );
 
-    if (!target) return null;
+      const target = driverId
+        ? await selectOne<DriverRow>(
+            "SELECT * FROM drivers WHERE id = ? AND (claimed_by IS NULL OR claimed_by = ?)",
+            driverId,
+            clientId
+          )
+        : await selectOne<DriverRow>(
+            "SELECT * FROM drivers WHERE claimed_by IS NULL LIMIT 1"
+          );
 
-    run(
-      "UPDATE drivers SET claimed_by = ?, updated_at = datetime('now') WHERE id = ?",
-      clientId,
-      target.id
-    );
-    return findDriver(target.id) ?? null;
-  });
+      if (!target) return null;
 
-  if (!claimed) {
-    return res
-      .status(409)
-      .json({ error: "That pedicab unit is already in use on another device" });
-  }
-  res.json({ driver: toDriver(claimed) });
-});
+      await run(
+        "UPDATE drivers SET claimed_by = ?, updated_at = datetime('now') WHERE id = ?",
+        clientId,
+        target.id
+      );
+      return (await findDriver(target.id)) ?? null;
+    });
 
-api.get("/drivers/:id", (req, res) => {
-  const row = findDriver(req.params.id);
-  if (!row) return res.status(404).json({ error: "Driver not found" });
-  res.json({ driver: toDriver(row) });
-});
+    if (!claimed) {
+      return res
+        .status(409)
+        .json({ error: "That pedicab unit is already in use on another device" });
+    }
+    res.json({ driver: toDriver(claimed) });
+  })
+);
+
+api.get(
+  "/drivers/:id",
+  wrap(async (req, res) => {
+    const row = await findDriver(req.params.id);
+    if (!row) return res.status(404).json({ error: "Driver not found" });
+    res.json({ driver: toDriver(row) });
+  })
+);
 
 /** Live GPS ping + duty status from the driver's phone. */
-api.patch("/drivers/:id", (req, res) => {
-  if (!findDriver(req.params.id)) {
-    return res.status(404).json({ error: "Driver not found" });
-  }
-
-  const { lat, lng, isOnline } = req.body ?? {};
-  const sets: string[] = [];
-  const values: (string | number)[] = [];
-
-  if (typeof lat === "number" && typeof lng === "number") {
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.status(400).json({ error: "lat/lng must be finite numbers" });
+api.patch(
+  "/drivers/:id",
+  wrap(async (req, res) => {
+    if (!(await findDriver(req.params.id))) {
+      return res.status(404).json({ error: "Driver not found" });
     }
-    sets.push("current_lat = ?", "current_lng = ?");
-    values.push(lat, lng);
-  }
-  if (typeof isOnline === "boolean") {
-    sets.push("is_online = ?");
-    values.push(isOnline ? 1 : 0);
-  }
-  if (sets.length === 0) {
-    return res.status(400).json({ error: "Nothing to update" });
-  }
 
-  sets.push("updated_at = datetime('now')");
-  run(`UPDATE drivers SET ${sets.join(", ")} WHERE id = ?`, ...values, req.params.id);
+    const { lat, lng, isOnline } = req.body ?? {};
+    const sets: string[] = [];
+    const values: (string | number)[] = [];
 
-  res.json({ driver: toDriver(findDriver(req.params.id)!) });
-});
+    if (typeof lat === "number" && typeof lng === "number") {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ error: "lat/lng must be finite numbers" });
+      }
+      sets.push("current_lat = ?", "current_lng = ?");
+      values.push(lat, lng);
+    }
+    if (typeof isOnline === "boolean") {
+      sets.push("is_online = ?");
+      values.push(isOnline ? 1 : 0);
+    }
+    if (sets.length === 0) {
+      return res.status(400).json({ error: "Nothing to update" });
+    }
+
+    sets.push("updated_at = datetime('now')");
+    await run(
+      `UPDATE drivers SET ${sets.join(", ")} WHERE id = ?`,
+      ...values,
+      req.params.id
+    );
+
+    res.json({ driver: toDriver((await findDriver(req.params.id))!) });
+  })
+);
 
 /** Every live ride this driver is carrying (the pooled route). */
-api.get("/drivers/:id/rides", (req, res) => {
-  const rows = selectAll<RideRow>(
-    `SELECT * FROM rides
-      WHERE driver_id = ?
-        AND status IN ('driver_assigned','driver_arriving','in_transit')
-      ORDER BY created_at ASC`,
-    req.params.id
-  );
-  res.json({ rides: rows.map(rideWithDriver) });
-});
+api.get(
+  "/drivers/:id/rides",
+  wrap(async (req, res) => {
+    const rows = await selectAll<RideRow>(
+      `SELECT * FROM rides
+        WHERE driver_id = ?
+          AND status IN ('driver_assigned','driver_arriving','in_transit')
+        ORDER BY created_at ASC`,
+      req.params.id
+    );
+    res.json({ rides: await Promise.all(rows.map(rideWithDriver)) });
+  })
+);
 
 /* ------------------------------------------------------------------- rides */
 
 /** Passenger books a trip. */
-api.post("/rides", (req, res) => {
-  const {
-    passengerId,
-    pickupLocation,
-    dropoffLocation,
-    vehicleType,
-    passengers,
-    distanceKm,
-    estimatedMinutes,
-    baseFare,
-    totalFare,
-    isPakyawNegotiated,
-    paymentMethod,
-    notes,
-  } = req.body ?? {};
+api.post(
+  "/rides",
+  wrap(async (req, res) => {
+    const {
+      passengerId,
+      pickupLocation,
+      dropoffLocation,
+      vehicleType,
+      passengers,
+      distanceKm,
+      estimatedMinutes,
+      baseFare,
+      totalFare,
+      isPakyawNegotiated,
+      paymentMethod,
+      notes,
+    } = req.body ?? {};
 
-  if (!passengerId) return res.status(400).json({ error: "passengerId is required" });
-  if (!pickupLocation?.name || !Number.isFinite(pickupLocation?.lat)) {
-    return res.status(400).json({ error: "A valid pickupLocation is required" });
-  }
-  if (!dropoffLocation?.name || !Number.isFinite(dropoffLocation?.lat)) {
-    return res.status(400).json({ error: "A valid dropoffLocation is required" });
-  }
+    if (!passengerId) return res.status(400).json({ error: "passengerId is required" });
+    if (!pickupLocation?.name || !Number.isFinite(pickupLocation?.lat)) {
+      return res.status(400).json({ error: "A valid pickupLocation is required" });
+    }
+    if (!dropoffLocation?.name || !Number.isFinite(dropoffLocation?.lat)) {
+      return res.status(400).json({ error: "A valid dropoffLocation is required" });
+    }
 
-  const id = `ride_${randomUUID()}`;
-  run(
-    `INSERT INTO rides
-      (id, passenger_id, pickup, dropoff, vehicle_type, passengers, distance_km,
-       estimated_minutes, base_fare, total_fare, is_pakyaw_negotiated,
-       payment_method, notes, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'searching_driver')`,
-    id,
-    passengerId,
-    JSON.stringify(pickupLocation),
-    JSON.stringify(dropoffLocation),
-    vehicleType ?? "pedicab_standard",
-    Number(passengers) || 1,
-    Number(distanceKm) || 0,
-    Number(estimatedMinutes) || 0,
-    Math.round(Number(baseFare) || 0),
-    Math.round(Number(totalFare) || 0),
-    isPakyawNegotiated ? 1 : 0,
-    paymentMethod === "gcash" ? "gcash" : "cash",
-    notes ? String(notes).slice(0, 500) : null
-  );
+    const id = `ride_${randomUUID()}`;
+    await run(
+      `INSERT INTO rides
+        (id, passenger_id, pickup, dropoff, vehicle_type, passengers, distance_km,
+         estimated_minutes, base_fare, total_fare, is_pakyaw_negotiated,
+         payment_method, notes, status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'searching_driver')`,
+      id,
+      passengerId,
+      JSON.stringify(pickupLocation),
+      JSON.stringify(dropoffLocation),
+      vehicleType ?? "pedicab_standard",
+      Number(passengers) || 1,
+      Number(distanceKm) || 0,
+      Number(estimatedMinutes) || 0,
+      Math.round(Number(baseFare) || 0),
+      Math.round(Number(totalFare) || 0),
+      isPakyawNegotiated ? 1 : 0,
+      paymentMethod === "gcash" ? "gcash" : "cash",
+      notes ? String(notes).slice(0, 500) : null
+    );
 
-  run(
-    "INSERT INTO messages (id, ride_id, sender, text) VALUES (?,?,?,?)",
-    `msg_${randomUUID()}`,
-    id,
-    "system",
-    "GentleTrike ride requested! Looking for the nearest Dumaguete motorcab rider..."
-  );
+    await run(
+      "INSERT INTO messages (id, ride_id, sender, text) VALUES (?,?,?,?)",
+      `msg_${randomUUID()}`,
+      id,
+      "system",
+      "GentleTrike ride requested! Looking for the nearest Dumaguete motorcab rider..."
+    );
 
-  res.status(201).json({ ride: rideWithDriver(findRide(id)!) });
-});
+    res.status(201).json({ ride: await rideWithDriver((await findRide(id))!) });
+  })
+);
 
 /** Open queue for drivers — excludes anything this driver already declined. */
-api.get("/rides/open", (req, res) => {
-  const driverId = typeof req.query.driverId === "string" ? req.query.driverId : null;
+api.get(
+  "/rides/open",
+  wrap(async (req, res) => {
+    const driverId = typeof req.query.driverId === "string" ? req.query.driverId : null;
 
-  const rows = selectAll<RideRow>(
-    `SELECT * FROM rides
-      WHERE status = 'searching_driver'
-        AND driver_id IS NULL
-        AND (? IS NULL OR id NOT IN (SELECT ride_id FROM ride_declines WHERE driver_id = ?))
-      ORDER BY created_at ASC
-      LIMIT 50`,
-    driverId,
-    driverId
-  );
+    const rows = await selectAll<RideRow>(
+      `SELECT * FROM rides
+        WHERE status = 'searching_driver'
+          AND driver_id IS NULL
+          AND (? IS NULL OR id NOT IN (SELECT ride_id FROM ride_declines WHERE driver_id = ?))
+        ORDER BY created_at ASC
+        LIMIT 50`,
+      driverId,
+      driverId
+    );
 
-  res.json({ rides: rows.map((r) => toRide(r, null)) });
-});
+    res.json({ rides: rows.map((r) => toRide(r, null)) });
+  })
+);
 
 /** A passenger's own live rides. */
-api.get("/passengers/:id/rides", (req, res) => {
-  const rows = selectAll<RideRow>(
-    `SELECT * FROM rides
-      WHERE passenger_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})
-      ORDER BY created_at DESC`,
-    req.params.id,
-    ...LIVE_STATUSES
-  );
-  res.json({ rides: rows.map(rideWithDriver) });
-});
+api.get(
+  "/passengers/:id/rides",
+  wrap(async (req, res) => {
+    const rows = await selectAll<RideRow>(
+      `SELECT * FROM rides
+        WHERE passenger_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})
+        ORDER BY created_at DESC`,
+      req.params.id,
+      ...LIVE_STATUSES
+    );
+    res.json({ rides: await Promise.all(rows.map(rideWithDriver)) });
+  })
+);
 
-api.get("/rides/:id", (req, res) => {
-  const row = findRide(req.params.id);
-  if (!row) return res.status(404).json({ error: "Ride not found" });
-  res.json({ ride: rideWithDriver(row) });
-});
+api.get(
+  "/rides/:id",
+  wrap(async (req, res) => {
+    const row = await findRide(req.params.id);
+    if (!row) return res.status(404).json({ error: "Ride not found" });
+    res.json({ ride: await rideWithDriver(row) });
+  })
+);
 
 /**
  * Driver accepts. The WHERE clause carries the race: only the first request to
  * land finds driver_id still NULL, so a second driver tapping Accept at the
  * same moment gets a 409 instead of silently stealing the trip.
  */
-api.post("/rides/:id/accept", (req, res) => {
-  const { driverId } = req.body ?? {};
-  if (!driverId) return res.status(400).json({ error: "driverId is required" });
+api.post(
+  "/rides/:id/accept",
+  wrap(async (req, res) => {
+    const { driverId } = req.body ?? {};
+    if (!driverId) return res.status(400).json({ error: "driverId is required" });
 
-  const driver = findDriver(driverId);
-  if (!driver) return res.status(404).json({ error: "Driver not found" });
+    const driver = await findDriver(driverId);
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
 
-  const result = run(
-    `UPDATE rides
-        SET driver_id = ?, status = 'driver_assigned', updated_at = datetime('now')
-      WHERE id = ? AND driver_id IS NULL AND status = 'searching_driver'`,
-    driverId,
-    req.params.id
-  );
-
-  if (Number(result.changes) === 0) {
-    if (!findRide(req.params.id)) {
-      return res.status(404).json({ error: "Ride not found" });
-    }
-    return res
-      .status(409)
-      .json({ error: "This trip was already taken by another rider" });
-  }
-
-  run(
-    "INSERT INTO messages (id, ride_id, sender, text) VALUES (?,?,?,?)",
-    `msg_${randomUUID()}`,
-    req.params.id,
-    "driver",
-    `Maayong adlaw! I am ${driver.name}. On my way to your pickup point!`
-  );
-
-  res.json({ ride: rideWithDriver(findRide(req.params.id)!) });
-});
-
-/** Driver passes on a trip — hidden for them, still open for everyone else. */
-api.post("/rides/:id/decline", (req, res) => {
-  const { driverId } = req.body ?? {};
-  if (!driverId) return res.status(400).json({ error: "driverId is required" });
-  if (!findRide(req.params.id)) {
-    return res.status(404).json({ error: "Ride not found" });
-  }
-
-  run(
-    "INSERT OR IGNORE INTO ride_declines (ride_id, driver_id) VALUES (?,?)",
-    req.params.id,
-    driverId
-  );
-
-  res.json({ ok: true });
-});
-
-api.post("/rides/:id/status", (req, res) => {
-  const { status } = req.body ?? {};
-  if (!RIDE_STATUSES.includes(status)) {
-    return res
-      .status(400)
-      .json({ error: `status must be one of: ${RIDE_STATUSES.join(", ")}` });
-  }
-
-  const row = findRide(req.params.id);
-  if (!row) return res.status(404).json({ error: "Ride not found" });
-  if (row.status === "completed" || row.status === "cancelled") {
-    return res.status(409).json({ error: `Ride is already ${row.status}` });
-  }
-
-  tx(() => {
-    run(
-      "UPDATE rides SET status = ?, updated_at = datetime('now') WHERE id = ?",
-      status,
+    const result = await run(
+      `UPDATE rides
+          SET driver_id = ?, status = 'driver_assigned', updated_at = datetime('now')
+        WHERE id = ? AND driver_id IS NULL AND status = 'searching_driver'`,
+      driverId,
       req.params.id
     );
 
-    // Credit the rider once, at completion — never on accept.
-    if (status === "completed" && row.driver_id) {
-      run(
-        `UPDATE drivers
-            SET trips_completed = trips_completed + 1,
-                trips_today     = trips_today + 1,
-                earnings_today  = earnings_today + ?,
-                updated_at      = datetime('now')
-          WHERE id = ?`,
-        row.total_fare,
-        row.driver_id
-      );
+    if (Number(result.changes) === 0) {
+      if (!(await findRide(req.params.id))) {
+        return res.status(404).json({ error: "Ride not found" });
+      }
+      return res
+        .status(409)
+        .json({ error: "This trip was already taken by another rider" });
     }
-  });
 
-  res.json({ ride: rideWithDriver(findRide(req.params.id)!) });
-});
+    await run(
+      "INSERT INTO messages (id, ride_id, sender, text) VALUES (?,?,?,?)",
+      `msg_${randomUUID()}`,
+      req.params.id,
+      "driver",
+      `Maayong adlaw! I am ${driver.name}. On my way to your pickup point!`
+    );
 
-api.post("/rides/:id/cancel", (req, res) => {
-  const row = findRide(req.params.id);
-  if (!row) return res.status(404).json({ error: "Ride not found" });
-  if (row.status === "completed") {
-    return res.status(409).json({ error: "Completed rides cannot be cancelled" });
-  }
+    res.json({ ride: await rideWithDriver((await findRide(req.params.id))!) });
+  })
+);
 
-  run(
-    "UPDATE rides SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
-    req.params.id
-  );
-  res.json({ ride: rideWithDriver(findRide(req.params.id)!) });
-});
+/** Driver passes on a trip — hidden for them, still open for everyone else. */
+api.post(
+  "/rides/:id/decline",
+  wrap(async (req, res) => {
+    const { driverId } = req.body ?? {};
+    if (!driverId) return res.status(400).json({ error: "driverId is required" });
+    if (!(await findRide(req.params.id))) {
+      return res.status(404).json({ error: "Ride not found" });
+    }
+
+    await run(
+      "INSERT INTO ride_declines (ride_id, driver_id) VALUES (?,?) ON CONFLICT DO NOTHING",
+      req.params.id,
+      driverId
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+api.post(
+  "/rides/:id/status",
+  wrap(async (req, res) => {
+    const { status } = req.body ?? {};
+    if (!RIDE_STATUSES.includes(status)) {
+      return res
+        .status(400)
+        .json({ error: `status must be one of: ${RIDE_STATUSES.join(", ")}` });
+    }
+
+    const row = await findRide(req.params.id);
+    if (!row) return res.status(404).json({ error: "Ride not found" });
+    if (row.status === "completed" || row.status === "cancelled") {
+      return res.status(409).json({ error: `Ride is already ${row.status}` });
+    }
+
+    await tx(async () => {
+      await run(
+        "UPDATE rides SET status = ?, updated_at = datetime('now') WHERE id = ?",
+        status,
+        req.params.id
+      );
+
+      // Credit the rider once, at completion — never on accept.
+      if (status === "completed" && row.driver_id) {
+        await run(
+          `UPDATE drivers
+              SET trips_completed = trips_completed + 1,
+                  trips_today     = trips_today + 1,
+                  earnings_today  = earnings_today + ?,
+                  updated_at      = datetime('now')
+            WHERE id = ?`,
+          row.total_fare,
+          row.driver_id
+        );
+      }
+    });
+
+    res.json({ ride: await rideWithDriver((await findRide(req.params.id))!) });
+  })
+);
+
+api.post(
+  "/rides/:id/cancel",
+  wrap(async (req, res) => {
+    const row = await findRide(req.params.id);
+    if (!row) return res.status(404).json({ error: "Ride not found" });
+    if (row.status === "completed") {
+      return res.status(409).json({ error: "Completed rides cannot be cancelled" });
+    }
+
+    await run(
+      "UPDATE rides SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
+      req.params.id
+    );
+    res.json({ ride: await rideWithDriver((await findRide(req.params.id))!) });
+  })
+);
 
 /* ---------------------------------------------------------------- messages */
 
@@ -375,105 +429,120 @@ interface MessageRow {
   created_at: string;
 }
 
-api.get("/rides/:id/messages", (req, res) => {
-  if (!findRide(req.params.id)) {
-    return res.status(404).json({ error: "Ride not found" });
-  }
-  const rows = selectAll<MessageRow>(
-    "SELECT * FROM messages WHERE ride_id = ? ORDER BY created_at ASC, rowid ASC",
-    req.params.id
-  );
+api.get(
+  "/rides/:id/messages",
+  wrap(async (req, res) => {
+    if (!(await findRide(req.params.id))) {
+      return res.status(404).json({ error: "Ride not found" });
+    }
+    const rows = await selectAll<MessageRow>(
+      "SELECT * FROM messages WHERE ride_id = ? ORDER BY created_at ASC, seq ASC",
+      req.params.id
+    );
 
-  res.json({
-    messages: rows.map((m) => ({
-      id: m.id,
-      sender: m.sender,
-      text: m.text,
-      time: m.created_at,
-    })),
-  });
-});
+    res.json({
+      messages: rows.map((m) => ({
+        id: m.id,
+        sender: m.sender,
+        text: m.text,
+        time: m.created_at,
+      })),
+    });
+  })
+);
 
-api.post("/rides/:id/messages", (req, res) => {
-  const { sender, text } = req.body ?? {};
-  if (!findRide(req.params.id)) {
-    return res.status(404).json({ error: "Ride not found" });
-  }
-  if (!text || !String(text).trim()) {
-    return res.status(400).json({ error: "text is required" });
-  }
-  if (!["user", "driver", "system"].includes(sender)) {
-    return res.status(400).json({ error: "sender must be user, driver or system" });
-  }
+api.post(
+  "/rides/:id/messages",
+  wrap(async (req, res) => {
+    const { sender, text } = req.body ?? {};
+    if (!(await findRide(req.params.id))) {
+      return res.status(404).json({ error: "Ride not found" });
+    }
+    if (!text || !String(text).trim()) {
+      return res.status(400).json({ error: "text is required" });
+    }
+    if (!["user", "driver", "system"].includes(sender)) {
+      return res.status(400).json({ error: "sender must be user, driver or system" });
+    }
 
-  const id = `msg_${randomUUID()}`;
-  run(
-    "INSERT INTO messages (id, ride_id, sender, text) VALUES (?,?,?,?)",
-    id,
-    req.params.id,
-    sender,
-    String(text).slice(0, 1000)
-  );
-  run("UPDATE rides SET updated_at = datetime('now') WHERE id = ?", req.params.id);
+    const id = `msg_${randomUUID()}`;
+    await run(
+      "INSERT INTO messages (id, ride_id, sender, text) VALUES (?,?,?,?)",
+      id,
+      req.params.id,
+      sender,
+      String(text).slice(0, 1000)
+    );
+    await run(
+      "UPDATE rides SET updated_at = datetime('now') WHERE id = ?",
+      req.params.id
+    );
 
-  res.status(201).json({ ok: true, id });
-});
+    res.status(201).json({ ok: true, id });
+  })
+);
 
 /* ----------------------------------------------------------------- ratings */
 
-api.post("/rides/:id/rating", (req, res) => {
-  const { stars, comment } = req.body ?? {};
-  const value = Number(stars);
+api.post(
+  "/rides/:id/rating",
+  wrap(async (req, res) => {
+    const { stars, comment } = req.body ?? {};
+    const value = Number(stars);
 
-  if (!Number.isInteger(value) || value < 1 || value > 5) {
-    return res.status(400).json({ error: "stars must be a whole number from 1 to 5" });
-  }
+    if (!Number.isInteger(value) || value < 1 || value > 5) {
+      return res.status(400).json({ error: "stars must be a whole number from 1 to 5" });
+    }
 
-  const ride = findRide(req.params.id);
-  if (!ride) return res.status(404).json({ error: "Ride not found" });
+    const ride = await findRide(req.params.id);
+    if (!ride) return res.status(404).json({ error: "Ride not found" });
 
-  // Re-rating replaces the previous score rather than stacking another row.
-  run(
-    `INSERT INTO ratings (id, ride_id, driver_id, stars, comment)
-     VALUES (?,?,?,?,?)
-     ON CONFLICT(ride_id) DO UPDATE SET
-       stars = excluded.stars,
-       comment = excluded.comment,
-       created_at = datetime('now')`,
-    `rate_${randomUUID()}`,
-    req.params.id,
-    ride.driver_id,
-    value,
-    comment ? String(comment).slice(0, 500) : null
-  );
+    // Re-rating replaces the previous score rather than stacking another row.
+    await run(
+      `INSERT INTO ratings (id, ride_id, driver_id, stars, comment)
+       VALUES (?,?,?,?,?)
+       ON CONFLICT(ride_id) DO UPDATE SET
+         stars = excluded.stars,
+         comment = excluded.comment,
+         created_at = datetime('now')`,
+      `rate_${randomUUID()}`,
+      req.params.id,
+      ride.driver_id,
+      value,
+      comment ? String(comment).slice(0, 500) : null
+    );
 
-  res.status(201).json({ ok: true, stars: value });
-});
+    res.status(201).json({ ok: true, stars: value });
+  })
+);
 
 /* ------------------------------------------------------------- TMO reports */
 
-api.post("/tmo-reports", (req, res) => {
-  const { rideId, driverId, violationType, demandedFare, details, contactNumber } =
-    req.body ?? {};
+api.post(
+  "/tmo-reports",
+  wrap(async (req, res) => {
+    const { rideId, driverId, violationType, demandedFare, details, contactNumber } =
+      req.body ?? {};
 
-  if (!violationType) {
-    return res.status(400).json({ error: "violationType is required" });
-  }
+    if (!violationType) {
+      return res.status(400).json({ error: "violationType is required" });
+    }
 
-  const referenceCode = `TMO-DUM-${Math.floor(100000 + Math.random() * 900000)}`;
-  run(
-    `INSERT INTO tmo_reports
-      (id, reference_code, ride_id, driver_id, violation_type, demanded_fare, details, contact_number)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    `tmo_${randomUUID()}`,
-    referenceCode,
-    rideId ?? null,
-    driverId ?? null,
-    violationType,
-    Number.isFinite(Number(demandedFare)) ? Math.round(Number(demandedFare)) : null,
-    details ? String(details).slice(0, 2000) : null,
-    contactNumber ?? null
-  );
+    const referenceCode = `TMO-DUM-${Math.floor(100000 + Math.random() * 900000)}`;
+    await run(
+      `INSERT INTO tmo_reports
+        (id, reference_code, ride_id, driver_id, violation_type, demanded_fare, details, contact_number)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      `tmo_${randomUUID()}`,
+      referenceCode,
+      rideId ?? null,
+      driverId ?? null,
+      violationType,
+      Number.isFinite(Number(demandedFare)) ? Math.round(Number(demandedFare)) : null,
+      details ? String(details).slice(0, 2000) : null,
+      contactNumber ?? null
+    );
 
-  res.status(201).json({ referenceCode });
-});
+    res.status(201).json({ referenceCode });
+  })
+);
