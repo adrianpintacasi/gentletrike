@@ -1,27 +1,31 @@
 import { Driver, LocationPoint, RideBooking, TransportMode } from './types';
+import type { User, UserRole } from './types/auth';
 
-/**
- * Stable per-device id. There are no accounts in GentleTrike — this is what
- * lets a phone reclaim its own ride (or its pedicab unit) after a reload.
- */
-function readOrCreateClientId(): string {
-  const KEY = 'gentletrike:clientId';
+const AUTH_TOKEN_KEY = 'gentletrike:authToken';
+
+function readAuthToken(): string | null {
   try {
-    const existing = localStorage.getItem(KEY);
-    if (existing) return existing;
-    const fresh =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem(KEY, fresh);
-    return fresh;
+    return localStorage.getItem(AUTH_TOKEN_KEY);
   } catch {
-    // Private browsing with storage blocked: fall back to a per-session id.
-    return `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    return null;
   }
 }
 
-export const CLIENT_ID = readOrCreateClientId();
+function writeAuthToken(token: string): void {
+  try {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } catch {
+    /* private browsing — session only */
+  }
+}
+
+export function clearAuthToken(): void {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -31,9 +35,14 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = readAuthToken();
+  const headers: Record<string, string> = {};
+  if (init?.body) headers['Content-Type'] = 'application/json';
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
   });
 
   const raw = await res.text();
@@ -58,6 +67,58 @@ const post = <T>(path: string, body: unknown) =>
 const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
+/* ------------------------------------------------------------------- auth */
+
+function persistAuth(user: User, token: string): User {
+  writeAuthToken(token);
+  return user;
+}
+
+export const register = (
+  email: string,
+  password: string,
+  name: string,
+  role: UserRole,
+  unitNumber?: string
+) =>
+  post<{ user: User; token: string }>('/auth/register', {
+    email,
+    password,
+    name,
+    role,
+    unitNumber,
+  }).then(({ user, token }) => persistAuth(user, token));
+
+export const login = (email: string, password: string) =>
+  post<{ user: User; token: string }>('/auth/login', { email, password }).then(
+    ({ user, token }) => persistAuth(user, token)
+  );
+
+export const logout = async () => {
+  try {
+    await post<{ ok: true }>('/auth/logout', {});
+  } finally {
+    clearAuthToken();
+  }
+};
+
+export const getMe = () =>
+  request<{ user: User }>('/auth/me').then((r) => r.user);
+
+export const listUsers = () =>
+  request<{ users: User[] }>('/auth/users').then((r) => r.users);
+
+export const createUser = (data: Partial<User> & { password?: string; unitNumber?: string }) =>
+  request<{ user: User }>('/auth/users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }).then((r) => r.user);
+
+export const deleteUser = (id: string) =>
+  request<{ ok: boolean }>(`/auth/users/${id}`, {
+    method: 'DELETE',
+  }).then((r) => r.ok);
+
 /* ----------------------------------------------------------------- drivers */
 
 export const listDrivers = (onlineOnly = false) =>
@@ -66,9 +127,7 @@ export const listDrivers = (onlineOnly = false) =>
   );
 
 export const claimDriver = (driverId?: string) =>
-  post<{ driver: Driver }>('/drivers/claim', { clientId: CLIENT_ID, driverId }).then(
-    (r) => r.driver
-  );
+  post<{ driver: Driver }>('/drivers/claim', { driverId }).then((r) => r.driver);
 
 export const updateDriver = (
   driverId: string,
@@ -95,9 +154,7 @@ export interface CreateRideInput {
 }
 
 export const createRide = (input: CreateRideInput) =>
-  post<{ ride: RideBooking }>('/rides', { ...input, passengerId: CLIENT_ID }).then(
-    (r) => r.ride
-  );
+  post<{ ride: RideBooking }>('/rides', input).then((r) => r.ride);
 
 export const getRide = (rideId: string) =>
   request<{ ride: RideBooking }>(`/rides/${rideId}`).then((r) => r.ride);
@@ -108,9 +165,7 @@ export const listOpenRides = (driverId: string) =>
   ).then((r) => r.rides);
 
 export const listMyRides = () =>
-  request<{ rides: RideBooking[] }>(
-    `/passengers/${encodeURIComponent(CLIENT_ID)}/rides`
-  ).then((r) => r.rides);
+  request<{ rides: RideBooking[] }>('/me/rides').then((r) => r.rides);
 
 export const acceptRide = (rideId: string, driverId: string) =>
   post<{ ride: RideBooking }>(`/rides/${rideId}/accept`, { driverId }).then(

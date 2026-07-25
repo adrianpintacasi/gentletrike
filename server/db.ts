@@ -181,6 +181,24 @@ const SCHEMA = `
     contact_number TEXT,
     created_at     TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    role          TEXT NOT NULL CHECK (role IN ('passenger', 'rider', 'admin')),
+    created_at    TEXT NOT NULL DEFAULT ${NOW_SQL}
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ${NOW_SQL}
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `;
 
 /**
@@ -212,10 +230,24 @@ async function seedDrivers() {
   });
 }
 
+/**
+ * Before accounts, `claimed_by` held a browser clientId. Those rows block real
+ * riders from claiming a unit until we clear claims that no longer match a user.
+ */
+async function releaseOrphanedDriverClaims() {
+  await run(
+    `UPDATE drivers d
+        SET claimed_by = NULL, is_online = 0
+      WHERE d.claimed_by IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = d.claimed_by)`
+  );
+}
+
 /** Create the tables and seed the fleet. Call once at server startup. */
 export async function initDb() {
   await pool.query(SCHEMA);
   await seedDrivers();
+  await releaseOrphanedDriverClaims();
 }
 
 export interface DriverRow {

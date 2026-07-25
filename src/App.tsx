@@ -10,6 +10,8 @@ import {
   VEHICLE_DETAILS,
 } from './data/dumagueteData';
 import * as api from './api';
+import { useAuth } from './context/AuthContext';
+import { AuthPage } from './components/AuthPage';
 import {
   bearingDegrees,
   getStreetRoute,
@@ -22,6 +24,7 @@ import { Navbar } from './components/Navbar';
 import { DumagueteMap } from './components/DumagueteMap';
 import { RideBookingPanel } from './components/RideBookingPanel';
 import { ActiveRideView } from './components/ActiveRideView';
+import { AdminDashboard } from './components/AdminDashboard';
 import { GentleAiAssistant } from './components/GentleAiAssistant';
 import { FareMatrixModal } from './components/FareMatrixModal';
 import { DriverModePanel } from './components/DriverModePanel';
@@ -37,8 +40,35 @@ const PASSENGER_POLL_MS = 2500;
 const DRIVER_POLL_MS = 3000;
 
 export default function App() {
+  const { user, isLoading, logout } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-sans">
+        <p className="text-sm font-bold text-gray-600">Loading GentleTrike...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  return <MainApp user={user} onLogout={() => void logout()} />;
+}
+
+function MainApp({
+  user,
+  onLogout,
+}: {
+  user: { id: string; name: string; role: 'passenger' | 'rider' | 'admin' };
+  onLogout: () => void;
+}) {
+  const canUseRiderMode = user.role === 'rider' || user.role === 'admin';
+  const isPassenger = user.role === 'passenger' || user.role === 'admin';
   // Navigation & Modal States
   const [isDriverMode, setIsDriverMode] = useState(false);
+  const [isAdminMode, setIsAdminMode] = useState(false);
   const [isAiGuideOpen, setIsAiGuideOpen] = useState(false);
   const [isFareGuideOpen, setIsFareGuideOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -128,6 +158,7 @@ export default function App() {
 
   // Reclaim an in-flight trip after a reload or a phone lock.
   useEffect(() => {
+    if (!isPassenger) return;
     api
       .listMyRides()
       .then((rides) => {
@@ -136,7 +167,7 @@ export default function App() {
       .catch(() => {
         /* first load with no server yet — the booking form still works */
       });
-  }, []);
+  }, [isPassenger]);
 
   const activeRideId = activeRide?.id ?? null;
   const previousStatus = useRef<string | null>(null);
@@ -202,6 +233,14 @@ export default function App() {
       reportError(err, 'Could not sign in to Rider Mode. Is the server running?');
     }
   }, [reportError, showToast]);
+
+  // Auto-enter driver mode for riders upon login
+  useEffect(() => {
+    if (user.role === 'rider' && !myDriver && !isDriverMode) {
+      void enterDriverMode();
+    }
+  }, [user.role, myDriver, isDriverMode, enterDriverMode]);
+
 
   // Publish this phone's real GPS while on duty, so passengers watching the map
   // see the actual pedicab move rather than a scripted animation.
@@ -459,7 +498,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900 antialiased">
       <Navbar
+        user={user}
         isDriverMode={isDriverMode}
+        isAdminMode={isAdminMode}
+        canUseRiderMode={canUseRiderMode}
         onToggleDriverMode={(driverMode) => {
           if (driverMode) {
             void enterDriverMode();
@@ -467,8 +509,9 @@ export default function App() {
             setIsDriverMode(false);
           }
         }}
+        onToggleAdminMode={setIsAdminMode}
         onOpenAiGuide={() => setIsAiGuideOpen(true)}
-        onOpenFareGuide={() => setIsFareGuideOpen(true)}
+        onLogout={onLogout}
       />
 
       {toastMessage && (
@@ -484,7 +527,10 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {isAdminMode ? (
+        <AdminDashboard />
+      ) : (
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-5 w-full space-y-4">
           {isDriverMode ? (
             myDriver ? (
@@ -503,6 +549,10 @@ export default function App() {
                 Signing in to Rider Mode...
               </div>
             )
+          ) : !isPassenger ? (
+            <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-md text-center text-xs font-bold text-gray-600">
+              Your account is set up as a rider. Switch to Rider Mode to accept trips.
+            </div>
           ) : activeRide ? (
             <ActiveRideView
               ride={activeRide}
@@ -575,6 +625,7 @@ export default function App() {
           />
         </div>
       </main>
+      )}
 
       <GentleAiAssistant
         isOpen={isAiGuideOpen}

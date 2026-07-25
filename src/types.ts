@@ -39,7 +39,7 @@ export interface Driver {
 
 export interface RideBooking {
   id: string;
-  /** The device that booked the trip (see CLIENT_ID in src/api.ts). */
+  /** The signed-in user who booked the trip. */
   passengerId?: string;
   pickupLocation: LocationPoint;
   dropoffLocation: LocationPoint;

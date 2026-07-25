@@ -1,5 +1,16 @@
 import { randomUUID } from "crypto";
 import { Router } from "express";
+import { authRoutes } from "./authRoutes";
+import {
+  attachUser,
+  requireAuth,
+  requireRole,
+} from "./auth";
+import {
+  createRiderDriver,
+  isSeedDriverId,
+  RiderProfileError,
+} from "./riderProfile";
 import {
   run,
   selectAll,
@@ -7,11 +18,15 @@ import {
   toDriver,
   toRide,
   tx,
-  type DriverRow,
-  type RideRow,
 } from "./db";
+import type { DriverRow, RideRow } from "./db";
 
 export const api = Router();
+
+api.use((req, res, next) => {
+  attachUser(req, res, next).catch(next);
+});
+api.use("/auth", authRoutes);
 
 // Express 4 does not catch errors thrown from async handlers, so every async
 // handler is wrapped: a rejected promise becomes a clean 500 instead of a
@@ -73,58 +88,70 @@ api.get(
 );
 
 /**
- * Claim a pedicab unit for this device. Without accounts, "logging in as a
- * driver" is just taking an unclaimed unit; the same clientId reclaims the
- * same unit on reload.
+ * Load or create the signed-in rider's own pedicab profile (not demo fleet rows).
  */
 api.post(
   "/drivers/claim",
+  requireAuth,
+  requireRole("rider", "admin"),
   wrap(async (req, res) => {
-    const { clientId, driverId } = req.body ?? {};
-    if (!clientId) return res.status(400).json({ error: "clientId is required" });
+    const userId = req.user!.id;
+    const { unitNumber } = req.body ?? {};
+    const unitRaw =
+      unitNumber !== undefined && unitNumber !== null
+        ? String(unitNumber).trim()
+        : "";
 
     const existing = await selectOne<DriverRow>(
       "SELECT * FROM drivers WHERE claimed_by = ?",
-      clientId
+      userId
     );
-    if (existing && (!driverId || existing.id === driverId)) {
+
+    if (existing) {
+      if (isSeedDriverId(existing.id)) {
+        if (!unitRaw) {
+          return res.status(400).json({
+            error: "Enter your pedicab number to set up your rider profile.",
+            code: "RIDER_PROFILE_REQUIRED",
+          });
+        }
+        try {
+          await run(
+            "UPDATE drivers SET claimed_by = NULL, is_online = 0 WHERE id = ?",
+            existing.id
+          );
+          const created = await createRiderDriver(
+            userId,
+            req.user!.name,
+            unitRaw
+          );
+          return res.json({ driver: toDriver(created) });
+        } catch (err) {
+          if (err instanceof RiderProfileError) {
+            return res.status(409).json({ error: err.message });
+          }
+          throw err;
+        }
+      }
       return res.json({ driver: toDriver(existing) });
     }
 
-    const claimed = await tx(async () => {
-      // Release whatever this device held before, then take the requested unit
-      // (or the first free one).
-      await run(
-        "UPDATE drivers SET claimed_by = NULL, is_online = 0 WHERE claimed_by = ?",
-        clientId
-      );
-
-      const target = driverId
-        ? await selectOne<DriverRow>(
-            "SELECT * FROM drivers WHERE id = ? AND (claimed_by IS NULL OR claimed_by = ?)",
-            driverId,
-            clientId
-          )
-        : await selectOne<DriverRow>(
-            "SELECT * FROM drivers WHERE claimed_by IS NULL LIMIT 1"
-          );
-
-      if (!target) return null;
-
-      await run(
-        "UPDATE drivers SET claimed_by = ?, updated_at = datetime('now') WHERE id = ?",
-        clientId,
-        target.id
-      );
-      return (await findDriver(target.id)) ?? null;
-    });
-
-    if (!claimed) {
-      return res
-        .status(409)
-        .json({ error: "That pedicab unit is already in use on another device" });
+    if (!unitRaw) {
+      return res.status(400).json({
+        error: "Enter your pedicab number to start accepting rides.",
+        code: "RIDER_PROFILE_REQUIRED",
+      });
     }
-    res.json({ driver: toDriver(claimed) });
+
+    try {
+      const created = await createRiderDriver(userId, req.user!.name, unitRaw);
+      res.json({ driver: toDriver(created) });
+    } catch (err) {
+      if (err instanceof RiderProfileError) {
+        return res.status(409).json({ error: err.message });
+      }
+      throw err;
+    }
   })
 );
 
@@ -195,9 +222,11 @@ api.get(
 /** Passenger books a trip. */
 api.post(
   "/rides",
+  requireAuth,
+  requireRole("passenger", "admin"),
   wrap(async (req, res) => {
+    const passengerId = req.user!.id;
     const {
-      passengerId,
       pickupLocation,
       dropoffLocation,
       vehicleType,
@@ -211,7 +240,6 @@ api.post(
       notes,
     } = req.body ?? {};
 
-    if (!passengerId) return res.status(400).json({ error: "passengerId is required" });
     if (!pickupLocation?.name || !Number.isFinite(pickupLocation?.lat)) {
       return res.status(400).json({ error: "A valid pickupLocation is required" });
     }
@@ -274,10 +302,31 @@ api.get(
   })
 );
 
-/** A passenger's own live rides. */
+/** The signed-in passenger's own live rides. */
+api.get(
+  "/me/rides",
+  requireAuth,
+  requireRole("passenger", "admin"),
+  wrap(async (req, res) => {
+    const rows = await selectAll<RideRow>(
+      `SELECT * FROM rides
+        WHERE passenger_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})
+        ORDER BY created_at DESC`,
+      req.user!.id,
+      ...LIVE_STATUSES
+    );
+    res.json({ rides: await Promise.all(rows.map(rideWithDriver)) });
+  })
+);
+
+/** @deprecated Use GET /me/rides — kept for backwards compatibility. */
 api.get(
   "/passengers/:id/rides",
+  requireAuth,
   wrap(async (req, res) => {
+    if (req.user!.id !== req.params.id && req.user!.role !== "admin") {
+      return res.status(403).json({ error: "You can only view your own rides" });
+    }
     const rows = await selectAll<RideRow>(
       `SELECT * FROM rides
         WHERE passenger_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})
