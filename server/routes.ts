@@ -263,7 +263,7 @@ api.get(
       `SELECT * FROM rides
         WHERE status = 'searching_driver'
           AND driver_id IS NULL
-          AND (? IS NULL OR id NOT IN (SELECT ride_id FROM ride_declines WHERE driver_id = ?))
+          AND (?::text IS NULL OR id NOT IN (SELECT ride_id FROM ride_declines WHERE driver_id = ?))
         ORDER BY created_at ASC
         LIMIT 50`,
       driverId,
