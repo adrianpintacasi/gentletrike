@@ -1,24 +1,28 @@
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import {
+  checkRateLimit,
   createSession,
   deleteSession,
   findUserByEmail,
+  findUserByEmployeeId,
   findUserById,
   hashPassword,
   isValidEmail,
   isValidPassword,
   requireAuth,
   requireRole,
+  requireSubRole,
   toAuthUser,
   verifyPassword,
 } from "./auth";
-import type { UserRole } from "./auth";
-import { run, selectAll, tx } from "./db";
+import type { AdminSubRole, UserRole } from "./auth";
+import { run, selectAll, selectOne, tx } from "./db";
 import {
   createRiderDriver,
   RiderProfileError,
 } from "./riderProfile";
+import { logAudit } from "./auditLog";
 
 export const authRoutes = Router();
 
@@ -102,15 +106,31 @@ authRoutes.post(
 authRoutes.post(
   "/login",
   wrap(async (req, res) => {
-    const { email, password } = req.body ?? {};
+    const { email, login: loginInput, password } = req.body ?? {};
+    const identifier = String(email || loginInput || "").trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: "Email/Employee ID and password are required" });
     }
 
-    const user = await findUserByEmail(String(email));
+    const clientIp = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "127.0.0.1") as string;
+    const rateKey = `${clientIp}:${identifier.toLowerCase()}`;
+    const rateCheck = checkRateLimit(rateKey);
+
+    if (!rateCheck.allowed) {
+      const waitMins = Math.ceil(rateCheck.remainingMs / 60000);
+      return res.status(429).json({
+        error: `Too many failed login attempts. Please wait ${waitMins} minute(s) before trying again.`,
+      });
+    }
+
+    let user = await findUserByEmail(identifier);
+    if (!user) {
+      user = await findUserByEmployeeId(identifier);
+    }
+
     if (!user || !(await verifyPassword(String(password), user.password_hash))) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const token = await createSession(user.id);
@@ -144,7 +164,7 @@ authRoutes.get(
   wrap(async (req, res) => {
     // Only return safe fields (exclude password_hash)
     const rows = await selectAll(
-      "SELECT id, email, name, role, created_at FROM users ORDER BY created_at DESC"
+      "SELECT id, email, name, role, employee_id, department, sub_role, created_at FROM users ORDER BY created_at DESC"
     );
     res.json({ users: rows });
   })
@@ -154,8 +174,9 @@ authRoutes.post(
   "/users",
   requireAuth,
   requireRole("admin"),
+  requireSubRole("super_admin"),
   wrap(async (req, res) => {
-    const { email, password, name, role, unitNumber } = req.body ?? {};
+    const { email, password, name, role, unitNumber, employeeId, department, subRole } = req.body ?? {};
 
     if (!email || !isValidEmail(String(email))) {
       return res.status(400).json({ error: "A valid email address is required" });
@@ -175,9 +196,16 @@ authRoutes.post(
       return res.status(409).json({ error: "An account with this email already exists" });
     }
 
+    if (employeeId && (await findUserByEmployeeId(String(employeeId)))) {
+      return res.status(409).json({ error: "An account with this Employee ID already exists" });
+    }
+
     const id = `user_${randomUUID()}`;
     const passwordHash = await hashPassword(String(password));
     const displayName = String(name).trim().slice(0, 100);
+    const empId = employeeId ? String(employeeId).trim() : null;
+    const dept = department ? String(department).trim() : null;
+    const sub = chosenRole === "admin" ? (subRole === "staff" ? "staff" : "super_admin") : null;
 
     if (chosenRole === "rider") {
       const unitRaw = unitNumber !== undefined ? String(unitNumber).trim() : "";
@@ -189,12 +217,15 @@ authRoutes.post(
     try {
       await tx(async () => {
         await run(
-          "INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)",
+          "INSERT INTO users (id, email, password_hash, name, role, employee_id, department, sub_role) VALUES (?,?,?,?,?,?,?,?)",
           id,
           String(email).trim().toLowerCase(),
           passwordHash,
           displayName,
-          chosenRole
+          chosenRole,
+          empId,
+          dept,
+          sub
         );
         if (chosenRole === "rider") {
           await createRiderDriver(id, displayName, String(unitNumber));
@@ -207,13 +238,22 @@ authRoutes.post(
       throw err;
     }
 
-    // Notice we do NOT create a session or return a token here
-    // because this is an admin creating another user.
-    const user = await selectAll(
-      "SELECT id, email, name, role, created_at FROM users WHERE id = ?",
+    const created = await selectOne(
+      "SELECT id, email, name, role, employee_id, department, sub_role, created_at FROM users WHERE id = ?",
       id
     );
-    res.status(201).json({ user: user[0] });
+
+    await logAudit({
+      actorId: req.user!.id,
+      actorName: req.user!.name,
+      action: "create_user",
+      targetType: "user",
+      targetId: id,
+      details: { name: displayName, email, role: chosenRole, subRole: sub, employeeId: empId },
+      ipAddress: (req.headers["x-forwarded-for"] || req.socket.remoteAddress || null) as string | null,
+    });
+
+    res.status(201).json({ user: created });
   })
 );
 
@@ -221,10 +261,20 @@ authRoutes.delete(
   "/users/:id",
   requireAuth,
   requireRole("admin"),
+  requireSubRole("super_admin"),
   wrap(async (req, res) => {
     const { id } = req.params;
     if (id === req.user?.id) {
       return res.status(400).json({ error: "You cannot delete your own account" });
+    }
+
+    const targetUser = await selectOne<{ id: string; name: string; email: string; role: string }>(
+      "SELECT id, name, email, role FROM users WHERE id = ?",
+      id
+    );
+
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found" });
     }
 
     await tx(async () => {
@@ -234,6 +284,17 @@ authRoutes.delete(
       await run("DELETE FROM users WHERE id = ?", id);
     });
 
+    await logAudit({
+      actorId: req.user!.id,
+      actorName: req.user!.name,
+      action: "delete_user",
+      targetType: "user",
+      targetId: id,
+      details: { deletedUser: targetUser },
+      ipAddress: (req.headers["x-forwarded-for"] || req.socket.remoteAddress || null) as string | null,
+    });
+
     res.json({ ok: true });
   })
 );
+

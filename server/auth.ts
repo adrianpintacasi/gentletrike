@@ -6,6 +6,7 @@ import { run, selectOne } from "./db";
 const scryptAsync = promisify(scrypt);
 
 export type UserRole = "passenger" | "rider" | "admin";
+export type AdminSubRole = "super_admin" | "staff";
 
 export interface UserRow {
   id: string;
@@ -13,6 +14,9 @@ export interface UserRow {
   password_hash: string;
   name: string;
   role: UserRole;
+  employee_id?: string | null;
+  department?: string | null;
+  sub_role?: AdminSubRole | null;
   created_at: string;
 }
 
@@ -21,6 +25,9 @@ export interface AuthUser {
   email: string;
   name: string;
   role: UserRole;
+  employee_id?: string;
+  department?: string;
+  sub_role?: AdminSubRole;
 }
 
 interface SessionRow {
@@ -37,6 +44,9 @@ export function toAuthUser(row: UserRow): AuthUser {
     email: row.email,
     name: row.name,
     role: row.role,
+    employee_id: row.employee_id ?? undefined,
+    department: row.department ?? undefined,
+    sub_role: row.role === "admin" ? (row.sub_role ?? "super_admin") : undefined,
   };
 }
 
@@ -80,6 +90,13 @@ export async function findUserByEmail(email: string): Promise<UserRow | undefine
   return selectOne<UserRow>(
     "SELECT * FROM users WHERE lower(email) = lower(?)",
     email.trim()
+  );
+}
+
+export async function findUserByEmployeeId(employeeId: string): Promise<UserRow | undefined> {
+  return selectOne<UserRow>(
+    "SELECT * FROM users WHERE lower(employee_id) = lower(?)",
+    employeeId.trim()
   );
 }
 
@@ -158,6 +175,25 @@ export function requireRole(...roles: UserRole[]) {
   };
 }
 
+export function requireSubRole(...subRoles: AdminSubRole[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: "Sign in to continue" });
+      return;
+    }
+    if (req.user.role !== "admin") {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+    const userSubRole = req.user.sub_role ?? "super_admin";
+    if (!subRoles.includes(userSubRole)) {
+      res.status(403).json({ error: "Insufficient admin permissions for this action" });
+      return;
+    }
+    next();
+  };
+}
+
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
@@ -165,3 +201,26 @@ export function isValidEmail(email: string): boolean {
 export function isValidPassword(password: string): boolean {
   return password.length >= 8;
 }
+
+// In-memory Rate Limiting for Login Attempts
+const loginAttempts = new Map<string, { count: number; resetTime: number }>();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+export function checkRateLimit(key: string): { allowed: boolean; remainingMs: number } {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+
+  if (!entry || now > entry.resetTime) {
+    loginAttempts.set(key, { count: 1, resetTime: now + WINDOW_MS });
+    return { allowed: true, remainingMs: 0 };
+  }
+
+  if (entry.count >= MAX_ATTEMPTS) {
+    return { allowed: false, remainingMs: entry.resetTime - now };
+  }
+
+  entry.count += 1;
+  return { allowed: true, remainingMs: 0 };
+}
+

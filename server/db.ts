@@ -199,6 +199,21 @@ const SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id          TEXT PRIMARY KEY,
+    actor_id    TEXT NOT NULL,
+    actor_name  TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id   TEXT,
+    details     TEXT,
+    ip_address  TEXT,
+    created_at  TEXT NOT NULL DEFAULT ${NOW_SQL}
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id);
+  CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 `;
 
 /**
@@ -243,9 +258,33 @@ async function releaseOrphanedDriverClaims() {
   );
 }
 
+/** Run column additions for schema migrations. */
+async function runMigrations() {
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_role TEXT DEFAULT 'staff';
+
+    ALTER TABLE rides ADD COLUMN IF NOT EXISTS reject_reason TEXT;
+    ALTER TABLE rides ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+    ALTER TABLE rides ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
+
+    ALTER TABLE tmo_reports ADD COLUMN IF NOT EXISTS severity TEXT DEFAULT 'medium';
+    ALTER TABLE tmo_reports ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+    ALTER TABLE tmo_reports ADD COLUMN IF NOT EXISTS filed_by TEXT;
+    ALTER TABLE tmo_reports ADD COLUMN IF NOT EXISTS admin_notes TEXT;
+    ALTER TABLE tmo_reports ADD COLUMN IF NOT EXISTS resolved_by TEXT;
+    ALTER TABLE tmo_reports ADD COLUMN IF NOT EXISTS resolved_at TEXT;
+
+    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'verified';
+    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS registered_at TEXT DEFAULT ${NOW_SQL};
+  `);
+}
+
 /** Create the tables and seed the fleet. Call once at server startup. */
 export async function initDb() {
   await pool.query(SCHEMA);
+  await runMigrations();
   await seedDrivers();
   await releaseOrphanedDriverClaims();
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import { authRoutes } from "./authRoutes";
+import { adminRoutes } from "./adminRoutes";
 import {
   attachUser,
   requireAuth,
@@ -27,6 +28,7 @@ api.use((req, res, next) => {
   attachUser(req, res, next).catch(next);
 });
 api.use("/auth", authRoutes);
+api.use("/admin", adminRoutes);
 
 // Express 4 does not catch errors thrown from async handlers, so every async
 // handler is wrapped: a rejected promise becomes a clean 500 instead of a
@@ -394,7 +396,7 @@ api.post(
 api.post(
   "/rides/:id/decline",
   wrap(async (req, res) => {
-    const { driverId } = req.body ?? {};
+    const { driverId, reason } = req.body ?? {};
     if (!driverId) return res.status(400).json({ error: "driverId is required" });
     if (!(await findRide(req.params.id))) {
       return res.status(404).json({ error: "Ride not found" });
@@ -405,6 +407,14 @@ api.post(
       req.params.id,
       driverId
     );
+
+    if (reason) {
+      await run(
+        "UPDATE rides SET reject_reason = ?, updated_at = datetime('now') WHERE id = ?",
+        String(reason).slice(0, 500),
+        req.params.id
+      );
+    }
 
     res.json({ ok: true });
   })
@@ -455,14 +465,20 @@ api.post(
 api.post(
   "/rides/:id/cancel",
   wrap(async (req, res) => {
+    const { reason, cancelledBy } = req.body ?? {};
     const row = await findRide(req.params.id);
     if (!row) return res.status(404).json({ error: "Ride not found" });
     if (row.status === "completed") {
       return res.status(409).json({ error: "Completed rides cannot be cancelled" });
     }
 
+    const cBy = cancelledBy === "driver" ? "driver" : "passenger";
+    const cReason = reason ? String(reason).slice(0, 500) : "No reason provided";
+
     await run(
-      "UPDATE rides SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?",
+      "UPDATE rides SET status = 'cancelled', cancel_reason = ?, cancelled_by = ?, updated_at = datetime('now') WHERE id = ?",
+      cReason,
+      cBy,
       req.params.id
     );
     res.json({ ride: await rideWithDriver((await findRide(req.params.id))!) });
