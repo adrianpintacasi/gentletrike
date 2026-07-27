@@ -1,40 +1,51 @@
 import "dotenv/config";
 import express from "express";
-import path from "path";
+import * as path from "path";
+import * as fs from "fs";
+import OpenAI from "openai";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import { api } from "./server/routes";
 import { initDb } from "./server/db";
 
 const app = express();
-// Hosts (Render, Railway, Fly, Cloud Run) inject the port they expect us to bind.
 const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
-// Rides, drivers, chat and TMO reports — the shared state every device reads.
+// Shared state for rides, drivers, chat, and TMO reports
 app.use("/api", api);
 
-// Initialize Gemini client server-side
-const apiKey = process.env.GEMINI_API_KEY;
-let ai: GoogleGenAI | null = null;
+// Initialize OpenAI client
+const apiKey = process.env.OPENAI_API_KEY;
+let openai: OpenAI | null = null;
+
 if (apiKey) {
-  ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
-  });
+  console.log("OpenAI API Key detected! Initializing OpenAI client...");
+  openai = new OpenAI({ apiKey });
+} else {
+  console.warn("WARNING: OPENAI_API_KEY is missing from process.env!");
 }
 
-// Gemini AI Local Gentle Assistant Endpoint
+// Load RAG Legal Knowledge Base from server/data/legal_context.txt
+let legalContext = "";
+try {
+  const contextPath = path.join(process.cwd(), "server", "data", "legal_context.txt");
+  if (fs.existsSync(contextPath)) {
+    legalContext = fs.readFileSync(contextPath, "utf-8");
+    console.log("Successfully loaded legal_context.txt for Gently RAG.");
+  } else {
+    console.warn("Warning: legal_context.txt not found at " + contextPath);
+  }
+} catch (err) {
+  console.error("Error loading legal_context.txt:", err);
+}
+
+// OpenAI Local Gentle Assistant Endpoint
 app.post("/api/dumaguete/ai-assistant", async (req, res) => {
   try {
     const { prompt, pickup, dropoff, vehicleType } = req.body;
 
-    if (!apiKey || !ai) {
+    if (!apiKey || !openai) {
       return res.status(200).json({
         reply: `GentleTrike Gentle Assistant (Local Offline Mode):\nFor trips between ${pickup || 'your location'} and ${dropoff || 'your destination'} in Dumaguete City, the standard Pedicab base fare is ₱15 for the first kilometer (₱2 per additional km). Special pakyaw rates apply for out-of-town routes like Valencia or Sibulan Airport!`,
       });
@@ -42,35 +53,42 @@ app.post("/api/dumaguete/ai-assistant", async (req, res) => {
 
     const systemInstruction = `You are "Gently", the friendly local Dumaguete City ride & transport assistant for GentleTrike (Dumaguete's premier public hailing app). Refer to yourself as Gently.
 Dumaguete City is known as the "City of Gentle People" in Negros Oriental, Philippines.
+
+=== LEGAL, FARE, AND ORDINANCE KNOWLEDGE BASE ===
+${legalContext}
+==================================================
+
 Key local transport modes:
-1. Pedicab (Motorcab / Motorized Tricycle) - The iconic 3-wheeled transport of Dumaguete. Standard fare: ₱15 for the first 1km or less, then ₱2 for every succeeding km OR FRACTION THEREOF (so 1.01km-2.00km = ₱17, 2.01km-3.00km = ₱19). Distances are actual road distances. Student/senior discount applies (20%).
-2. E-Trike / Premium Motorcab - Eco-friendly electric tricycle, smooth and spacious.
-3. Habal-Habal (Motorcycle Taxi) - Quick solo rides through traffic.
+1. Pedicab (Motorcab / Motorized Tricycle) - Standard fare: ₱15 for the first 1km or less, then ₱2 for every succeeding km OR FRACTION THEREOF. Student/senior/PWD discount applies (20%).
+2. E-Trike / Premium Motorcab - Eco-friendly electric tricycle.
+3. Habal-Habal (Motorcycle Taxi) - Quick solo rides.
 4. Multicab (EasyRide) - Shared routes to Valencia, Sibulan, Bacong, and San Jose.
-5. DumaPabili / Express - Food and errand delivery (Sans Rival Silvanas, Painitan sa Tiangge budbud & tsokolate, Jo's Inato, Hukad, etc.).
+5. DumaPabili / Express - Food and errand delivery.
 
 When answering the user:
 - Be warm, welcoming, polite, and helpful ("Maayong adlaw!", "Daghang salamat!").
-- Give practical, accurate Dumaguete fare estimates or route suggestions.
-- Mention real Dumaguete landmarks (Rizal Boulevard, Silliman University, Port Pier 1, Sibulan Airport, Robinsons Place, Public Market Tiangge, Lee Super Plaza, Valencia).
+- FARE CALCULATION RULE: Use strict round-up (ceiling) math for pedicabs! Any fraction of a kilometer past 1.0 km rounds UP to the full ₱2 (e.g., 1.1 km to 2.0 km = ₱17, 2.1 km to 3.0 km = ₱19). Never multiply fractions by ₱2!
+- Use the knowledge base above to answer legal liability, ordinance, discount, or TMO reporting questions accurately.
+- Mention that formal complaints to TMO require personal appearance by the complainant.
 - Keep answers concise (2-4 paragraphs max) with clear formatting.`;
 
     const userMessage = prompt
       ? prompt
       : `What is the estimated fare and recommended way to get from "${pickup || 'Rizal Boulevard'}" to "${dropoff || 'Silliman University'}" using ${vehicleType || 'Pedicab'} in Dumaguete City?`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: userMessage,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-      },
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.7,
     });
 
-    return res.json({ reply: response.text || "Safe travels around Dumaguete City!" });
+    const reply = completion.choices[0]?.message?.content || "Safe travels around Dumaguete City!";
+    return res.json({ reply });
   } catch (err: any) {
-    console.error("Gemini API Error:", err);
+    console.error("OpenAI API Error:", err);
     return res.status(500).json({
       error: "Failed to query DumaRide AI Assistant",
       details: err.message,
@@ -79,13 +97,8 @@ When answering the user:
 });
 
 async function startServer() {
-  // Create the tables and seed the fleet in Postgres before serving requests.
   await initDb();
 
-  // Registered after every real /api route, but before the SPA fallbacks below.
-  // Without this an unmatched API path falls through to the HTML shell — in dev
-  // to Vite's middleware, in production to the catch-all — and the client ends
-  // up trying to JSON.parse a page.
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found" });
   });

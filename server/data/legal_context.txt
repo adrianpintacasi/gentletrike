@@ -1,0 +1,44 @@
+GENTLETRIKE ASSISTANT KNOWLEDGE BASE
+
+=== 1. FARE SYSTEM & DISCOUNTS (Dumaguete TMO Baseline) ===
+- Base Fare: PHP 15.00 for the first 1.0 kilometer or less.
+- Distance Rate: PHP 2.00 for every succeeding kilometer or fraction thereof.
+  (e.g., 1.01 km to 2.00 km = PHP 17.00; 2.01 km to 3.00 km = PHP 19.00).
+- Mandatory Discounts: 20% discount for Senior Citizens, PWDs, and Students (with valid ID).
+- Sample Fare (Regular Passenger): 2.2 km trip (e.g., Silliman Main to Robinsons Dumaguete) = PHP 15.00 + (1.2 km * PHP 2.00) = PHP 17.40 regular fare.
+- Discounted Fare (Student/Senior/PWD): PHP 17.40 * 0.80 = PHP 13.92 (~PHP 14.00).
+
+=== 2. CIVIL CODE OF THE PHILIPPINES (COMMON CARRIERS) ===
+[Article 1732]
+Common carriers are persons, corporations, firms or associations engaged in the business of carrying or transporting passengers or goods or both, by land, water, or air, for compensation, offering their services to the public.
+
+[Article 1733]
+Common carriers, from the nature of their business and for reasons of public policy, are bound to observe extraordinary diligence in the vigilance over the goods and for the safety of the passengers transported by them, according to all the circumstances of each case.
+
+[Article 1755]
+A common carrier is bound to carry the passengers safely as far as human care and foresight can provide, using the utmost diligence of very cautious persons, with a due regard for all the circumstances.
+
+[Article 1759]
+Common carriers are liable for the death of or injuries to passengers through the negligence or willful acts of the former's employees, although such employees may have acted beyond the scope of their authority or in violation of the orders of the common carriers.
+
+=== 3. NATIONAL TRAFFIC & FRANCHISING LAWS ===
+[RA 7160 - Local Government Code, Sec. 458(a)(3)(vi)]
+Subject to guidelines prescribed by the Department of Transportation (DOTr), the city council has the power to regulate the operation of tricycles and pedicabs and grant franchises for their operation within the city.
+
+[RA 4136 - Land Transportation Code, Sec. 52]
+No operator of a public utility shall operate or permit to be operated any motor vehicle without a valid franchise or permit from the proper government authority.
+
+=== 4. LOCAL DUMAGUETE ORDINANCE STATUS ===
+- Note: There is currently no unified local pedicab ordinance document on file for Dumaguete City; pedicab operations rely on an amalgamation of national transport statutes, Civil Code common carrier duties, and TMO fare baselines.
+
+=== 5. DUMAGUETE TMO VIOLATIONS, FINES & REPORTING ===
+Traffic Management Office (TMO) Hotlines:
+- (035) 300-3884
+- (035) 225-1662
+- (035) 226-3866
+- Fare Overcharging: Demanding fares above the official ₱15 + ₱2/km baseline is illegal.
+- Refusal to Convey Passengers: Drivers cannot arbitrarily refuse to take passengers to destinations within city boundaries.
+- Discourtesy, Arrogance & Reckless Driving: Abusive driver behavior is subject to TMO sanctions.
+- Unlicensed / No Mayor's Permit: Operating without an active permit results in unit impoundment.
+- Administrative Penalties: Proven violations lead to monetary fines, suspension, or cancellation/non-renewal of the pedicab franchise and Mayor's permit.
+- Mandatory Complaint Process (IMPORTANT): To file an official complaint against a driver, the passenger MUST appear in person at the Traffic Management Office (TMO near Quezon Park). Telephone reports (035) 225-1662 or (035) 226-3866 can request immediate enforcer intervention, but formal sanctions require the complainant's personal appearance due to due process requirements.
