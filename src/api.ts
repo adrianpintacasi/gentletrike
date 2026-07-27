@@ -108,7 +108,15 @@ export const getMe = () =>
 export const listUsers = () =>
   request<{ users: User[] }>('/auth/users').then((r) => r.users);
 
-export const createUser = (data: Partial<User> & { password?: string; unitNumber?: string }) =>
+export const createUser = (
+  data: Partial<User> & {
+    password?: string;
+    unitNumber?: string;
+    employeeId?: string;
+    department?: string;
+    subRole?: string;
+  }
+) =>
   request<{ user: User }>('/auth/users', {
     method: 'POST',
     body: JSON.stringify(data),
