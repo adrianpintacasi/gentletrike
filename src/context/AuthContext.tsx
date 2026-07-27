@@ -18,7 +18,7 @@ interface AuthContextValue {
     password: string,
     name: string,
     role: UserRole,
-    unitNumber?: string
+    rider?: api.RiderSignupInfo
   ) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -45,8 +45,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(
-    async (email: string, password: string, name: string, role: UserRole, unitNumber?: string) => {
-      const next = await api.register(email, password, name, role, unitNumber);
+    async (
+      email: string,
+      password: string,
+      name: string,
+      role: UserRole,
+      rider?: api.RiderSignupInfo
+    ) => {
+      const next = await api.register(email, password, name, role, rider);
       setUser(next);
     },
     []

@@ -10,7 +10,7 @@ import { initDb } from "./server/db";
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "5mb" })); // headroom for a base64 rider photo
 
 // Shared state for rides, drivers, chat, and TMO reports
 app.use("/api", api);

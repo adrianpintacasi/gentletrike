@@ -6,6 +6,39 @@ import { ApiError } from '../api';
 
 type AuthMode = 'login' | 'register';
 
+const VEHICLE_OPTIONS = [
+  { value: 'pedicab_standard', label: 'Pedicab' },
+  { value: 'habal_habal', label: 'Motorcycle (Habal-Habal)' },
+  { value: 'multicab', label: 'EasyRide (Multicab)' },
+];
+
+// Shrink the chosen photo to a small JPEG data URL so it stays well under the
+// upload limit and doesn't bloat the database.
+async function fileToResizedDataUrl(file: File, maxSize = 400): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Could not read the image'));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('That file is not a valid image'));
+    image.src = dataUrl;
+  });
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+
 export function AuthPage() {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
@@ -14,12 +47,30 @@ export function AuthPage() {
   const [name, setName] = useState('');
   const [role, setRole] = useState<UserRole>('passenger');
   const [unitNumber, setUnitNumber] = useState('');
+  const [vehicleType, setVehicleType] = useState('pedicab_standard');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoError(null);
+    if (!file.type.startsWith('image/')) {
+      setPhotoError('Please choose an image file.');
+      return;
+    }
+    try {
+      setPhoto(await fileToResizedDataUrl(file));
+    } catch {
+      setPhotoError('Could not process that image. Try another.');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,7 +81,15 @@ export function AuthPage() {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        await register(email, password, name, role, role === 'rider' ? unitNumber : undefined);
+        await register(
+          email,
+          password,
+          name,
+          role,
+          role === 'rider'
+            ? { unitNumber, vehicleType, photo: photo ?? undefined }
+            : undefined
+        );
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.');
@@ -145,20 +204,71 @@ export function AuthPage() {
                 </div>
 
                 {role === 'rider' && (
-                  <div>
-                    <label htmlFor="unitNumber" className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Pedicab Number
-                    </label>
-                    <input
-                      id="unitNumber"
-                      type="text"
-                      required
-                      value={unitNumber}
-                      onChange={(e) => setUnitNumber(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
-                      placeholder="e.g. 0412"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label htmlFor="unitNumber" className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Pedicab Number
+                      </label>
+                      <input
+                        id="unitNumber"
+                        type="text"
+                        required
+                        value={unitNumber}
+                        onChange={(e) => setUnitNumber(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        placeholder="e.g. 0412"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="vehicleType" className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Vehicle type
+                      </label>
+                      <select
+                        id="vehicleType"
+                        value={vehicleType}
+                        onChange={(e) => setVehicleType(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                      >
+                        {VEHICLE_OPTIONS.map((v) => (
+                          <option key={v.value} value={v.value}>
+                            {v.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Profile photo <span className="font-medium text-gray-400">(optional)</span>
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {photo ? (
+                          <img
+                            src={photo}
+                            alt="Rider preview"
+                            className="w-14 h-14 rounded-xl object-cover border border-gray-200"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-xl border border-dashed border-gray-300 flex items-center justify-center text-gray-300">
+                            <Bike className="w-5 h-5" />
+                          </div>
+                        )}
+                        <label className="cursor-pointer px-3 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:border-gray-300">
+                          {photo ? 'Change photo' : 'Upload photo'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handlePhotoChange}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                      {photoError && (
+                        <p className="text-xs font-bold text-red-600 mt-1.5">{photoError}</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </>
             )}

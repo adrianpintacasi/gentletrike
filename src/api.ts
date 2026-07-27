@@ -74,19 +74,27 @@ function persistAuth(user: User, token: string): User {
   return user;
 }
 
+export interface RiderSignupInfo {
+  unitNumber?: string;
+  vehicleType?: string;
+  photo?: string;
+}
+
 export const register = (
   email: string,
   password: string,
   name: string,
   role: UserRole,
-  unitNumber?: string
+  rider?: RiderSignupInfo
 ) =>
   post<{ user: User; token: string }>('/auth/register', {
     email,
     password,
     name,
     role,
-    unitNumber,
+    unitNumber: rider?.unitNumber,
+    vehicleType: rider?.vehicleType,
+    photo: rider?.photo,
   }).then(({ user, token }) => persistAuth(user, token));
 
 export const login = (email: string, password: string) =>

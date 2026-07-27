@@ -10,6 +10,7 @@ import {
   hashPassword,
   isValidEmail,
   isValidPassword,
+  normalizeName,
   requireAuth,
   requireRole,
   requireSubRole,
@@ -39,7 +40,7 @@ const ALLOWED_REGISTER_ROLES: UserRole[] = ["passenger", "rider"];
 authRoutes.post(
   "/register",
   wrap(async (req, res) => {
-    const { email, password, name, role, unitNumber } = req.body ?? {};
+    const { email, password, name, role, unitNumber, vehicleType, photo } = req.body ?? {};
 
     if (!email || !isValidEmail(String(email))) {
       return res.status(400).json({ error: "A valid email address is required" });
@@ -65,7 +66,7 @@ authRoutes.post(
 
     const id = `user_${randomUUID()}`;
     const passwordHash = await hashPassword(String(password));
-    const displayName = String(name).trim().slice(0, 100);
+    const displayName = normalizeName(name);
 
     if (chosenRole === "rider") {
       const unitRaw = unitNumber !== undefined ? String(unitNumber).trim() : "";
@@ -87,7 +88,7 @@ authRoutes.post(
           chosenRole
         );
         if (chosenRole === "rider") {
-          await createRiderDriver(id, displayName, String(unitNumber));
+          await createRiderDriver(id, displayName, String(unitNumber), { vehicleType, photo });
         }
       });
     } catch (err) {
@@ -176,11 +177,8 @@ authRoutes.post(
   requireRole("admin"),
   requireSubRole("super_admin"),
   wrap(async (req, res) => {
-    const { email, password, name, role, unitNumber, employeeId, department, subRole } = req.body ?? {};
+    const { email, password, name, role, unitNumber, employeeId, department, subRole, vehicleType, photo } = req.body ?? {};
 
-    if (!email || !isValidEmail(String(email))) {
-      return res.status(400).json({ error: "A valid email address is required" });
-    }
     if (!password || !isValidPassword(String(password))) {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
@@ -192,20 +190,39 @@ authRoutes.post(
       return res.status(400).json({ error: "Invalid role" });
     }
 
-    if (await findUserByEmail(String(email))) {
+    const isAdmin = chosenRole === "admin";
+    const empId = employeeId ? String(employeeId).trim() : null;
+    const emailValue = email ? String(email).trim().toLowerCase() : null;
+
+    // Admins sign in with their Employee ID, so an email is optional for them.
+    // Passengers and riders still sign in by email, so it stays required.
+    if (isAdmin) {
+      if (!empId) {
+        return res
+          .status(400)
+          .json({ error: "Employee ID is required for admin accounts" });
+      }
+    } else if (!emailValue || !isValidEmail(emailValue)) {
+      return res.status(400).json({ error: "A valid email address is required" });
+    }
+    // If an email is supplied at all, it must be well-formed.
+    if (emailValue && !isValidEmail(emailValue)) {
+      return res.status(400).json({ error: "A valid email address is required" });
+    }
+
+    if (emailValue && (await findUserByEmail(emailValue))) {
       return res.status(409).json({ error: "An account with this email already exists" });
     }
 
-    if (employeeId && (await findUserByEmployeeId(String(employeeId)))) {
+    if (empId && (await findUserByEmployeeId(empId))) {
       return res.status(409).json({ error: "An account with this Employee ID already exists" });
     }
 
     const id = `user_${randomUUID()}`;
     const passwordHash = await hashPassword(String(password));
-    const displayName = String(name).trim().slice(0, 100);
-    const empId = employeeId ? String(employeeId).trim() : null;
+    const displayName = normalizeName(name);
     const dept = department ? String(department).trim() : null;
-    const sub = chosenRole === "admin" ? (subRole === "staff" ? "staff" : "super_admin") : null;
+    const sub = isAdmin ? (subRole === "staff" ? "staff" : "super_admin") : null;
 
     if (chosenRole === "rider") {
       const unitRaw = unitNumber !== undefined ? String(unitNumber).trim() : "";
@@ -219,7 +236,7 @@ authRoutes.post(
         await run(
           "INSERT INTO users (id, email, password_hash, name, role, employee_id, department, sub_role) VALUES (?,?,?,?,?,?,?,?)",
           id,
-          String(email).trim().toLowerCase(),
+          emailValue,
           passwordHash,
           displayName,
           chosenRole,
@@ -228,7 +245,7 @@ authRoutes.post(
           sub
         );
         if (chosenRole === "rider") {
-          await createRiderDriver(id, displayName, String(unitNumber));
+          await createRiderDriver(id, displayName, String(unitNumber), { vehicleType, photo });
         }
       });
     } catch (err) {

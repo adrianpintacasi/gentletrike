@@ -84,7 +84,7 @@ export const AdminDashboard: React.FC = () => {
     try {
       const newUser = await api.createUser({
         name: formData.name,
-        email: formData.email,
+        email: formData.email || undefined,
         password: formData.password,
         role: formData.role as 'passenger' | 'rider' | 'admin',
         unitNumber: formData.role === 'rider' ? formData.unitNumber : undefined,
@@ -276,10 +276,12 @@ export const AdminDashboard: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email Address</label>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Email Address{formData.role === 'admin' ? ' (optional)' : ''}
+                    </label>
                     <input
                       type="email"
-                      required
+                      required={formData.role !== 'admin'}
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
@@ -288,9 +290,12 @@ export const AdminDashboard: React.FC = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Employee ID (Optional)</label>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      Employee ID{formData.role === 'admin' ? ' (required — used to sign in)' : ' (optional)'}
+                    </label>
                     <input
                       type="text"
+                      required={formData.role === 'admin'}
                       value={formData.employeeId}
                       onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"

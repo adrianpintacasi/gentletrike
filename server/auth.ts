@@ -202,6 +202,11 @@ export function isValidPassword(password: string): boolean {
   return password.length >= 8;
 }
 
+/** Trim, collapse runs of whitespace, and cap length — tidy display names. */
+export function normalizeName(raw: string): string {
+  return String(raw).trim().replace(/\s+/g, " ").slice(0, 100);
+}
+
 // In-memory Rate Limiting for Login Attempts
 const loginAttempts = new Map<string, { count: number; resetTime: number }>();
 const MAX_ATTEMPTS = 5;

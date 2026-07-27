@@ -1,7 +1,6 @@
 import { Pool } from "pg";
 import type { PoolClient } from "pg";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { INITIAL_DRIVERS } from "../src/data/dumagueteData";
 
 // GentleTrike stores its data in a cloud Postgres database (Neon), so data
 // survives restarts and every teammate + the live site share the same data.
@@ -220,35 +219,6 @@ const SCHEMA = `
 `;
 
 /**
- * Seed the pedicab fleet once. `ON CONFLICT DO NOTHING` leaves existing rows
- * alone so a redeploy does not wipe a driver's live status or today's earnings.
- */
-async function seedDrivers() {
-  await tx(async () => {
-    for (const d of INITIAL_DRIVERS) {
-      await run(
-        `INSERT INTO drivers
-          (id, name, vehicle_type, unit_number, plate_number, rating,
-           trips_completed, phone, avatar, current_lat, current_lng, is_online)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,0)
-         ON CONFLICT (id) DO NOTHING`,
-        d.id,
-        d.name,
-        d.vehicleType,
-        d.unitNumber,
-        d.plateNumber,
-        d.rating,
-        d.tripsCompleted,
-        d.phone,
-        d.avatar,
-        d.currentLat,
-        d.currentLng
-      );
-    }
-  });
-}
-
-/**
  * Before accounts, `claimed_by` held a browser clientId. Those rows block real
  * riders from claiming a unit until we clear claims that no longer match a user.
  */
@@ -267,6 +237,7 @@ async function runMigrations() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_role TEXT DEFAULT 'staff';
+    ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
     ALTER TABLE rides ADD COLUMN IF NOT EXISTS reject_reason TEXT;
     ALTER TABLE rides ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
@@ -284,11 +255,11 @@ async function runMigrations() {
   `);
 }
 
-/** Create the tables and seed the fleet. Call once at server startup. */
+/** Create the tables and run migrations. Call once at server startup.
+ *  (No fake fleet is seeded — the map shows only real, registered riders.) */
 export async function initDb() {
   await pool.query(SCHEMA);
   await runMigrations();
-  await seedDrivers();
   await releaseOrphanedDriverClaims();
 }
 

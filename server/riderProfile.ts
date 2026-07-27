@@ -31,10 +31,35 @@ export function isSeedDriverId(id: string): boolean {
   return SEED_DRIVER_IDS.has(id);
 }
 
+export const VALID_VEHICLE_TYPES = new Set([
+  "pedicab_standard",
+  "habal_habal",
+  "multicab",
+]);
+
+export function normalizeVehicleType(raw?: string): string {
+  return raw && VALID_VEHICLE_TYPES.has(raw) ? raw : "pedicab_standard";
+}
+
+// A rider photo is stored inline as a base64 data URI (Option A). Cap the size
+// so a single upload can't bloat the database or the request body.
+const MAX_PHOTO_CHARS = 2_000_000; // ~1.5 MB image once base64-encoded
+
+function sanitizePhoto(raw?: string): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const t = raw.trim();
+  if (!t.startsWith("data:image/")) return null;
+  if (t.length > MAX_PHOTO_CHARS) {
+    throw new RiderProfileError("Photo is too large — please use a smaller image.");
+  }
+  return t;
+}
+
 export async function createRiderDriver(
   userId: string,
   name: string,
-  unitNumber: string
+  unitNumber: string,
+  options: { vehicleType?: string; photo?: string } = {}
 ): Promise<DriverRow> {
   const unit = normalizeUnitNumber(unitNumber);
   if (!unit) {
@@ -55,6 +80,9 @@ export async function createRiderDriver(
     );
   }
 
+  const vehicleType = normalizeVehicleType(options.vehicleType);
+  const avatar = sanitizePhoto(options.photo) ?? DEFAULT_AVATAR;
+
   const id = `drv_${randomUUID()}`;
   await run(
     `INSERT INTO drivers
@@ -63,11 +91,11 @@ export async function createRiderDriver(
      VALUES (?,?,?,?,?,5.0,0,?,?,?,?,0,?)`,
     id,
     name.trim().slice(0, 100),
-    "pedicab_standard",
+    vehicleType,
     unit.slice(0, 50),
     "TBD",
     "—",
-    DEFAULT_AVATAR,
+    avatar,
     DEFAULT_LAT,
     DEFAULT_LNG,
     userId
