@@ -133,6 +133,9 @@ const SCHEMA = `
     updated_at           TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
+  ALTER TABLE rides ADD COLUMN IF NOT EXISTS started_at   TEXT;
+  ALTER TABLE rides ADD COLUMN IF NOT EXISTS completed_at TEXT;
+
   CREATE INDEX IF NOT EXISTS idx_rides_status    ON rides(status);
   CREATE INDEX IF NOT EXISTS idx_rides_driver    ON rides(driver_id);
   CREATE INDEX IF NOT EXISTS idx_rides_passenger ON rides(passenger_id);
@@ -287,6 +290,8 @@ export interface RideRow {
   status: string;
   created_at: string;
   updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 /** Shape the wire format the React app already expects (see src/types.ts). */

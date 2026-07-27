@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import * as api from '../api';
 import type { User } from '../types/auth';
-import { Users, Shield, Bike, User as UserIcon, Calendar, Trash2, Plus, X } from 'lucide-react';
+import { Users, Shield, Bike, User as UserIcon, Calendar, Trash2, Plus, X, TrendingUp } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [dailyStats, setDailyStats] = useState<api.DailyStat[]>([]);
+  const [busiestRoutes, setBusiestRoutes] = useState<api.RouteStat[]>([]);
   
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -34,6 +37,15 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+    api
+      .getDailyStats()
+      .then((data) => {
+        setDailyStats(data.dailyStats);
+        setBusiestRoutes(data.busiestRoutes);
+      })
+      .catch(() => {
+        // Non-critical — the user table below still works either way.
+      });
   }, []);
 
   const handleDelete = async (id: string, name: string) => {
@@ -114,6 +126,58 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 animate-fadeIn space-y-6">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-3">
+          <div className="p-2.5 bg-gray-900 text-white rounded-xl shadow-xs">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-gray-900 tracking-tight">Daily Trip Stats</h2>
+            <p className="text-xs text-gray-500 font-medium">Completed trips, grouped by day</p>
+          </div>
+        </div>
+        {busiestRoutes.length > 0 && (
+          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+              Top {busiestRoutes.length} Busiest Routes
+            </p>
+            <ol className="space-y-0.5">
+              {busiestRoutes.map((r, i) => (
+                <li key={r.route} className="text-xs font-medium text-gray-700">
+                  {i + 1}. {r.route} — {r.trips} {r.trips === 1 ? 'trip' : 'trips'}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-gray-600">
+            <thead className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider font-bold">
+              <tr>
+                <th className="px-6 py-4">Day</th>
+                <th className="px-6 py-4">Trips Completed</th>
+                <th className="px-6 py-4">Average Fare</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {dailyStats.map((stat) => (
+                <tr key={stat.day} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 font-bold text-gray-900">{stat.day}</td>
+                  <td className="px-6 py-4">{stat.trips}</td>
+                  <td className="px-6 py-4">₱{stat.averageFare}</td>
+                </tr>
+              ))}
+              {dailyStats.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-gray-500 font-medium">
+                    No completed trips yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-gray-900 text-white rounded-xl shadow-xs">

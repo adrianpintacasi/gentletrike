@@ -119,6 +119,27 @@ export const deleteUser = (id: string) =>
     method: 'DELETE',
   }).then((r) => r.ok);
 
+/* ------------------------------------------------------------ admin stats */
+
+export interface DailyStat {
+  day: string;
+  trips: number;
+  averageFare: number;
+}
+
+export interface RouteStat {
+  route: string;
+  trips: number;
+}
+
+export interface DailyStatsResponse {
+  dailyStats: DailyStat[];
+  busiestRoutes: RouteStat[];
+  totalCompletedTrips: number;
+}
+
+export const getDailyStats = () => request<DailyStatsResponse>('/admin/stats/daily');
+
 /* ----------------------------------------------------------------- drivers */
 
 export const listDrivers = (onlineOnly = false) =>

@@ -427,6 +427,21 @@ api.post(
     }
 
     await tx(async () => {
+      // Quietly record when a trip actually starts and finishes — real
+      // timestamps for daily stats later. No ML, just data collection.
+      if (status === "in_transit" && !row.started_at) {
+        await run(
+          "UPDATE rides SET started_at = datetime('now') WHERE id = ?",
+          req.params.id
+        );
+      }
+      if (status === "completed") {
+        await run(
+          "UPDATE rides SET completed_at = datetime('now') WHERE id = ?",
+          req.params.id
+        );
+      }
+
       await run(
         "UPDATE rides SET status = ?, updated_at = datetime('now') WHERE id = ?",
         status,
@@ -593,5 +608,59 @@ api.post(
     );
 
     res.status(201).json({ referenceCode });
+  })
+);
+
+/* ------------------------------------------------------------ admin stats */
+
+api.get(
+  "/admin/stats/daily",
+  requireAuth,
+  requireRole("admin"),
+  wrap(async (req, res) => {
+    const rows = await selectAll<RideRow>(
+      "SELECT * FROM rides WHERE status = 'completed'"
+    );
+
+    // Group completed trips by the day they finished, add up fares per day.
+    const byDay = new Map<string, { trips: number; fareTotal: number }>();
+    const routeCounts = new Map<string, number>();
+
+    for (const row of rows) {
+      const day = (row.completed_at ?? row.created_at).slice(0, 10); // "YYYY-MM-DD"
+      const entry = byDay.get(day) ?? { trips: 0, fareTotal: 0 };
+      entry.trips += 1;
+      entry.fareTotal += row.total_fare;
+      byDay.set(day, entry);
+
+      let routeName = "Unknown route";
+      try {
+        const pickup = JSON.parse(row.pickup)?.name ?? "?";
+        const dropoff = JSON.parse(row.dropoff)?.name ?? "?";
+        routeName = `${pickup} → ${dropoff}`;
+      } catch {
+        // pickup/dropoff wasn't valid JSON for this row — skip naming it
+      }
+      routeCounts.set(routeName, (routeCounts.get(routeName) ?? 0) + 1);
+    }
+
+    const dailyStats = Array.from(byDay.entries())
+      .map(([day, { trips, fareTotal }]) => ({
+        day,
+        trips,
+        averageFare: Math.round(fareTotal / trips),
+      }))
+      .sort((a, b) => b.day.localeCompare(a.day));
+
+    const busiestRoutes = Array.from(routeCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([route, trips]) => ({ route, trips }));
+
+    res.json({
+      dailyStats,
+      busiestRoutes,
+      totalCompletedTrips: rows.length,
+    });
   })
 );
