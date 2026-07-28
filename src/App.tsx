@@ -181,10 +181,18 @@ function MainApp({
   const activeRideId = activeRide?.id ?? null;
   const previousStatus = useRef<string | null>(null);
 
+  /**
+   * Rides the passenger has abandoned locally while the cancel request is still
+   * in flight. A poll started before the tap resolves afterwards, and without
+   * this its response would put the cancelled trip straight back on screen.
+   */
+  const abandonedRides = useRef<Set<string>>(new Set());
+
   const pollActiveRide = useCallback(async () => {
     if (!activeRideId) return;
     try {
       const ride = await api.getRide(activeRideId);
+      if (abandonedRides.current.has(ride.id)) return;
       setActiveRide(ride);
     } catch (err) {
       if (err instanceof api.ApiError && err.status === 404) setActiveRide(null);
@@ -417,12 +425,26 @@ function MainApp({
   const handleCancelRide = async () => {
     if (!activeRide) return;
     const id = activeRide.id;
+
+    // Hide it immediately so the screen responds to the tap, but remember that
+    // we did — an in-flight poll must not resurrect it while the cancel travels.
+    abandonedRides.current.add(id);
     setActiveRide(null);
+
     try {
       await api.cancelRide(id);
       showToast('Trip cancelled.');
     } catch (err) {
-      reportError(err, 'Could not cancel the trip.');
+      // The cancel did not land, so the trip is still live on the server and a
+      // driver can still accept it. Putting it back is the honest thing to do:
+      // leaving it hidden strands the passenger with a ride they cannot see.
+      abandonedRides.current.delete(id);
+      reportError(err, 'Could not cancel the trip. It is still active.');
+      try {
+        setActiveRide(await api.getRide(id));
+      } catch {
+        /* ride genuinely gone — leave the booking screen up */
+      }
     }
   };
 
@@ -641,6 +663,21 @@ function MainApp({
         onClose={() => setIsAiGuideOpen(false)}
         pickupName={pickup?.name}
         dropoffName={dropoff?.name}
+        canBook={isPassenger && !activeRide}
+        bookBlockedReason={
+          !isPassenger
+            ? 'Sign in as a passenger to book this ride.'
+            : activeRide
+              ? 'You already have a trip in progress. Finish or cancel it first.'
+              : undefined
+        }
+        onRideBooked={(ride) => {
+          // Same handling as a ride booked from the panel, so a Gently booking
+          // is tracked, polled, and completed by exactly the same code path.
+          previousStatus.current = ride.status;
+          setActiveRide(ride);
+          showToast('Request sent! Waiting for a Dumaguete rider to accept...');
+        }}
       />
 
       <FareMatrixModal

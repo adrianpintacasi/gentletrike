@@ -269,9 +269,46 @@ export const submitTmoReport = (input: {
 
 /* ------------------------------------------------------------------ AI bot */
 
+/** One earlier turn of the Gently conversation, oldest first. */
+export interface AssistantTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+export interface AssistantResponse {
+  reply: string;
+  /** Structured tool output — currently only the booking draft. */
+  data?: Record<string, any>[];
+  meta?: {
+    provider: string;
+    toolsUsed: string[];
+    usage?: { promptTokens: number; completionTokens: number };
+  };
+}
+
 export const askAssistant = (body: {
   prompt: string;
   pickup?: string;
   dropoff?: string;
   vehicleType?: string;
-}) => post<{ reply: string }>('/dumaguete/ai-assistant', body).then((r) => r.reply);
+  /**
+   * Prior turns, oldest first, excluding the prompt being sent. Without these
+   * Gently cannot resolve follow-ups like "how much for that one?" — the server
+   * trims the list before it reaches the model.
+   */
+  history?: AssistantTurn[];
+}) => post<AssistantResponse>('/dumaguete/ai-assistant', body);
+
+/**
+ * Pull the pending ride out of an assistant response, if there is one.
+ *
+ * Gently can only ever *propose* a ride. The draft becomes a real booking when
+ * the passenger presses Confirm and this app calls createRide with it — the
+ * model has no path to /rides of its own.
+ */
+export function findBookingDraft(data?: Record<string, any>[]): CreateRideInput | null {
+  const entry = data?.find((d) => d?.kind === 'booking_draft');
+  const draft = entry?.draft;
+  if (!draft?.pickupLocation?.name || !draft?.dropoffLocation?.name) return null;
+  return draft as CreateRideInput;
+}

@@ -1,5 +1,8 @@
 import { Driver, LocationPoint } from '../types';
 
+// Rates live in shared/ so the server's fare tool bills from the same table.
+export { VEHICLE_DETAILS } from '../../shared/transport';
+
 export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
   {
     id: 'rizal_blvd',
@@ -182,29 +185,3 @@ export const INITIAL_DRIVERS: Driver[] = [
   },
 ];
 
-export const VEHICLE_DETAILS = {
-  pedicab_standard: {
-    title: 'Pedicab Standard',
-    subtitle: 'Classic Dumaguete Motorcab',
-    capacity: '4-6 passengers',
-    baseFare: 15,
-    perKm: 2,
-    eta: '3 mins',
-  },
-  habal_habal: {
-    title: 'Habal-Habal Express',
-    subtitle: 'Fast Solo Motorcycle Taxi',
-    capacity: '1 passenger',
-    baseFare: 25,
-    perKm: 3,
-    eta: '2 mins',
-  },
-  multicab: {
-    title: 'EasyRide',
-    subtitle: 'Group / Suburb Route',
-    capacity: '12 passengers',
-    baseFare: 15,
-    perKm: 2,
-    eta: '6 mins',
-  },
-};
