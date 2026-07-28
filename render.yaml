@@ -35,7 +35,14 @@ services:
       # here so it persists across restarts and redeploys.
       - key: DATABASE_URL
         sync: false
-      # Optional — without it the "Gently" AI guide falls back to canned answers.
+      # Powers "Gently", the passenger AI guide. Without it the assistant falls
+      # back to a deterministic mock that prefixes every reply with "[mock]" —
+      # fine for UI work, not for a demo. The knowledge base itself lives in
+      # Postgres, so a deploy needs no ingest; only this key.
+      - key: OPENAI_API_KEY
+        sync: false
+      # Powers the TMO admin dashboard's free-text box only — NOT Gently.
+      # Without it that box still answers the built-in statistics queries.
       - key: GEMINI_API_KEY
         sync: false
 # ---------------------------------------------------------------------------
