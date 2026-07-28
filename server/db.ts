@@ -1,11 +1,15 @@
-import { Pool } from "pg";
-import type { PoolClient } from "pg";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import type { PoolClient } from "@neondatabase/serverless";
+import ws from "ws";
 import { AsyncLocalStorage } from "node:async_hooks";
 
-// GentleTrike stores its data in a cloud Postgres database (Neon), so data
-// survives restarts and every teammate + the live site share the same data.
-// `pg` is a pure-JavaScript driver — no native module, no C++ toolchain — so it
-// installs cleanly on Windows without Visual Studio Build Tools.
+// GentleTrike stores its data in a cloud Postgres database (Neon). We use Neon's
+// serverless driver, which connects over WebSocket/HTTPS (port 443) — the SAME
+// path the Neon web console uses. Many networks (campus/office WiFi, some mobile
+// hotspots) let the TCP handshake to the raw Postgres port (5432) through but
+// then stall the actual traffic, which made direct `pg` connections hang. Going
+// over 443 sidesteps that entirely, so the app connects on any network.
+neonConfig.webSocketConstructor = ws;
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -14,11 +18,11 @@ if (!connectionString) {
   );
 }
 
-export const pool = new Pool({
-  connectionString,
-  // Neon requires SSL. rejectUnauthorized:false avoids the "self-signed
-  // certificate" error that trips up managed Postgres providers.
-  ssl: { rejectUnauthorized: false },
+export const pool = new Pool({ connectionString });
+
+// Surface pool-level connection errors instead of crashing the process.
+pool.on("error", (err) => {
+  console.error("Postgres pool error:", err.message);
 });
 
 // A query inside tx() must run on that transaction's own connection — not a
@@ -239,6 +243,42 @@ async function runMigrations() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_role TEXT DEFAULT 'staff';
     ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
+    -- Personal details collected at signup. first/last name apply to everyone;
+    -- contact_number applies to everyone; sex/birthdate/address are rider-only
+    -- (needed for TMO verification). All nullable so pre-existing accounts are fine.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name     TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name      TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_number TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS sex            TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS birthdate      TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS address        TEXT;
+
+    -- Moderation status for any account: active, suspended (temporary), or
+    -- banned (permanent). Suspended/banned users cannot sign in.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT DEFAULT 'active';
+
+    -- When an account/rider was last manually reactivated. Auto-moderation only
+    -- counts activity AFTER this, so a reactivated user gets a clean slate (grace).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS reactivated_at TEXT;
+    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS reactivated_at TEXT;
+
+    -- Reactivation appeal filed by a suspended/banned user (reason + when).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_request TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS activation_requested_at TEXT;
+
+    -- How many times auto-moderation has suspended this account. Drives the
+    -- auto-ban escalation (3rd auto-suspension → permanent ban). Not reset on
+    -- reactivation, so repeat offenders escalate.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_count INTEGER DEFAULT 0;
+
+    -- Invariant: a suspended/declined rider is also blocked from login (their
+    -- account is suspended). Enforce it for any rider that predates this rule.
+    UPDATE users SET account_status = 'suspended'
+     WHERE coalesce(account_status, 'active') = 'active'
+       AND id IN (SELECT claimed_by FROM drivers
+                   WHERE claimed_by IS NOT NULL
+                     AND verification_status IN ('suspended', 'declined'));
+
     ALTER TABLE rides ADD COLUMN IF NOT EXISTS reject_reason TEXT;
     ALTER TABLE rides ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
     ALTER TABLE rides ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
@@ -280,6 +320,8 @@ export interface DriverRow {
   earnings_today: number;
   trips_today: number;
   updated_at: string;
+  verification_status: string | null;
+  registered_at: string | null;
 }
 
 export interface RideRow {

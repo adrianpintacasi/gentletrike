@@ -16,9 +16,8 @@ interface AuthContextValue {
   register: (
     email: string,
     password: string,
-    name: string,
     role: UserRole,
-    rider?: api.RiderSignupInfo
+    details: api.SignupDetails
   ) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -48,11 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (
       email: string,
       password: string,
-      name: string,
       role: UserRole,
-      rider?: api.RiderSignupInfo
+      details: api.SignupDetails
     ) => {
-      const next = await api.register(email, password, name, role, rider);
+      const next = await api.register(email, password, role, details);
       setUser(next);
     },
     []

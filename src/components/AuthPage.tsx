@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Bike, LogIn, UserPlus, Users } from 'lucide-react';
 import type { UserRole } from '../types/auth';
 import { useAuth } from '../context/AuthContext';
-import { ApiError } from '../api';
+import { ApiError, submitActivationRequest } from '../api';
 
 type AuthMode = 'login' | 'register';
 
@@ -44,8 +44,13 @@ export function AuthPage() {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [role, setRole] = useState<UserRole>('passenger');
+  const [sex, setSex] = useState('');
+  const [birthdate, setBirthdate] = useState('');
+  const [address, setAddress] = useState('');
   const [unitNumber, setUnitNumber] = useState('');
   const [vehicleType, setVehicleType] = useState('pedicab_standard');
   const [photo, setPhoto] = useState<string | null>(null);
@@ -53,9 +58,33 @@ export function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Suspended/banned appeal flow (shown when login is blocked with a 403).
+  const [blockedMsg, setBlockedMsg] = useState<string | null>(null);
+  const [alreadyPending, setAlreadyPending] = useState(false);
+  const [appealReason, setAppealReason] = useState('');
+  const [appealState, setAppealState] = useState<'idle' | 'submitting' | 'done'>('idle');
+  const [appealError, setAppealError] = useState<string | null>(null);
+
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
+    setBlockedMsg(null);
+  };
+
+  const handleAppeal = async () => {
+    if (!appealReason.trim()) {
+      setAppealError('Please enter a reason for your appeal.');
+      return;
+    }
+    setAppealState('submitting');
+    setAppealError(null);
+    try {
+      await submitActivationRequest(email, password, appealReason.trim());
+      setAppealState('done');
+    } catch (err) {
+      setAppealError(err instanceof ApiError ? err.message : 'Could not submit your request. Try again.');
+      setAppealState('idle');
+    }
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,23 +105,31 @@ export function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setBlockedMsg(null);
+    setAlreadyPending(false);
+    setAppealState('idle');
     setIsSubmitting(true);
     try {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        await register(
-          email,
-          password,
-          name,
-          role,
-          role === 'rider'
-            ? { unitNumber, vehicleType, photo: photo ?? undefined }
-            : undefined
-        );
+        await register(email, password, role, {
+          firstName,
+          lastName,
+          contactNumber,
+          ...(role === 'rider'
+            ? { unitNumber, vehicleType, photo: photo ?? undefined, sex, birthdate, address }
+            : {}),
+        });
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.');
+      // A blocked (suspended/banned) login → offer the reactivation appeal.
+      if (mode === 'login' && err instanceof ApiError && err.status === 403) {
+        setBlockedMsg(err.message);
+        setAlreadyPending(!!err.data?.hasPendingRequest);
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Something went wrong. Try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -157,19 +194,52 @@ export function AuthPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
               <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="firstName" className="block text-xs font-bold text-gray-700 mb-1.5">
+                      First name
+                    </label>
+                    <input
+                      id="firstName"
+                      type="text"
+                      autoComplete="given-name"
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="Juan"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="lastName" className="block text-xs font-bold text-gray-700 mb-1.5">
+                      Last name
+                    </label>
+                    <input
+                      id="lastName"
+                      type="text"
+                      autoComplete="family-name"
+                      required
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="dela Cruz"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label htmlFor="name" className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Full name
+                  <label htmlFor="contactNumber" className="block text-xs font-bold text-gray-700 mb-1.5">
+                    Contact number
                   </label>
                   <input
-                    id="name"
-                    type="text"
-                    autoComplete="name"
+                    id="contactNumber"
+                    type="tel"
+                    autoComplete="tel"
                     required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    value={contactNumber}
+                    onChange={(e) => setContactNumber(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
-                    placeholder="Juan dela Cruz"
+                    placeholder="09XX XXX XXXX"
                   />
                 </div>
 
@@ -205,6 +275,57 @@ export function AuthPage() {
 
                 {role === 'rider' && (
                   <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label htmlFor="sex" className="block text-xs font-bold text-gray-700 mb-1.5">
+                          Sex
+                        </label>
+                        <select
+                          id="sex"
+                          required
+                          value={sex}
+                          onChange={(e) => setSex(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        >
+                          <option value="" disabled>
+                            Select
+                          </option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="birthdate" className="block text-xs font-bold text-gray-700 mb-1.5">
+                          Birthdate
+                        </label>
+                        <input
+                          id="birthdate"
+                          type="date"
+                          required
+                          value={birthdate}
+                          onChange={(e) => setBirthdate(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="address" className="block text-xs font-bold text-gray-700 mb-1.5">
+                        Address
+                      </label>
+                      <input
+                        id="address"
+                        type="text"
+                        autoComplete="street-address"
+                        required
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                        placeholder="Purok / Barangay, Dumaguete City"
+                      />
+                    </div>
+
                     <div>
                       <label htmlFor="unitNumber" className="block text-xs font-bold text-gray-700 mb-1.5">
                         Pedicab Number
@@ -310,6 +431,39 @@ export function AuthPage() {
               <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
                 {error}
               </p>
+            )}
+
+            {blockedMsg && (
+              <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 space-y-2">
+                <p className="text-xs font-bold text-orange-800">{blockedMsg}</p>
+                {alreadyPending || appealState === 'done' ? (
+                  <p className="text-xs font-bold text-emerald-700">
+                    ⏳ Waiting for request approval — your reactivation request is under review by the TMO.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-orange-800">
+                      Request reactivation — tell the TMO why:
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={appealReason}
+                      onChange={(e) => setAppealReason(e.target.value)}
+                      placeholder="Explain why your account should be reactivated..."
+                      className="w-full px-3 py-2 rounded-lg border border-orange-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                    {appealError && <p className="text-xs font-bold text-red-600">{appealError}</p>}
+                    <button
+                      type="button"
+                      onClick={handleAppeal}
+                      disabled={appealState === 'submitting'}
+                      className="w-full py-2 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-bold text-xs transition"
+                    >
+                      {appealState === 'submitting' ? 'Submitting...' : 'Submit reactivation request'}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             <button

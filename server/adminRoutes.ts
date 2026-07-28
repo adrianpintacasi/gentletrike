@@ -34,12 +34,28 @@ adminRoutes.get(
     const [activeReports] = await selectAll<{ count: number }>(
       "SELECT count(*)::int as count FROM tmo_reports WHERE coalesce(status, 'pending') != 'resolved'"
     );
+    const [onlineRiders] = await selectAll<{ count: number }>(
+      "SELECT count(*)::int as count FROM drivers WHERE is_online = 1"
+    );
+    const [pendingVerifications] = await selectAll<{ count: number }>(
+      "SELECT count(*)::int as count FROM drivers WHERE coalesce(verification_status, 'verified') = 'pending'"
+    );
+    const [suspendedAccounts] = await selectAll<{ count: number }>(
+      "SELECT count(*)::int as count FROM users WHERE coalesce(account_status, 'active') != 'active'"
+    );
+    const [ridesToday] = await selectAll<{ count: number }>(
+      "SELECT count(*)::int as count FROM rides WHERE created_at::timestamp >= (now() AT TIME ZONE 'UTC')::date"
+    );
 
     res.json({
       totalRiders: totalRiders?.count ?? 0,
       totalDrivers: totalDrivers?.count ?? 0,
       totalRides: totalRides?.count ?? 0,
       activeReports: activeReports?.count ?? 0,
+      onlineRiders: onlineRiders?.count ?? 0,
+      pendingVerifications: pendingVerifications?.count ?? 0,
+      suspendedAccounts: suspendedAccounts?.count ?? 0,
+      ridesToday: ridesToday?.count ?? 0,
     });
   })
 );
@@ -192,25 +208,49 @@ adminRoutes.get(
 
 /* ---------------------------------------------------- 5.C Driver Reports / Complaints */
 
+// The enriched report shape (driver name/unit, complainant, route/distance) used
+// by BOTH the list and the update endpoint, so an updated report never comes back
+// missing its joined details. Append a WHERE/ORDER BY clause when using it.
+const REPORT_SELECT = `
+  SELECT
+    r.id, r.reference_code, r.ride_id, r.driver_id,
+    d.name as driver_name, d.unit_number as driver_unit,
+    r.violation_type, r.demanded_fare, r.details, r.contact_number,
+    coalesce(r.status, 'pending') as status,
+    r.filed_by,
+    coalesce(cu.name, pu.name) as complainant_name,
+    coalesce(cu.contact_number, pu.contact_number) as complainant_contact,
+    rd.pickup as ride_pickup, rd.dropoff as ride_dropoff, rd.distance_km as ride_distance,
+    r.admin_notes, r.resolved_by, r.resolved_at, r.created_at
+  FROM tmo_reports r
+  LEFT JOIN drivers d ON d.id = r.driver_id
+  LEFT JOIN users cu ON cu.id = r.filed_by
+  LEFT JOIN rides rd ON rd.id = r.ride_id
+  LEFT JOIN users pu ON pu.id = rd.passenger_id`;
+
 adminRoutes.get(
   "/reports",
   wrap(async (req, res) => {
-    const { category, status, severity } = req.query;
+    // Ignore empty or literal "undefined"/"null" filter values so a stray query
+    // param can't filter the whole table down to nothing.
+    const clean = (v: unknown): string | null => {
+      const s = v == null ? "" : String(v).trim();
+      return s && s !== "undefined" && s !== "null" ? s : null;
+    };
+    const category = clean(req.query.category);
+    const status = clean(req.query.status);
 
     const conditions: string[] = [];
     const values: unknown[] = [];
 
     if (category) {
-      conditions.push("violation_type = ?");
+      conditions.push("r.violation_type = ?");
       values.push(category);
     }
     if (status) {
-      conditions.push("coalesce(status, 'pending') = ?");
+      // Qualify with r. — the joined rides table also has a `status` column.
+      conditions.push("coalesce(r.status, 'pending') = ?");
       values.push(status);
-    }
-    if (severity) {
-      conditions.push("coalesce(severity, 'medium') = ?");
-      values.push(severity);
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -221,29 +261,23 @@ adminRoutes.get(
       ride_id: string | null;
       driver_id: string | null;
       driver_name: string | null;
+      driver_unit: string | null;
       violation_type: string;
       demanded_fare: number | null;
       details: string | null;
       contact_number: string | null;
-      severity: string;
       status: string;
       filed_by: string | null;
+      complainant_name: string | null;
+      complainant_contact: string | null;
+      ride_pickup: string | null;
+      ride_dropoff: string | null;
+      ride_distance: number | null;
       admin_notes: string | null;
       resolved_by: string | null;
       resolved_at: string | null;
       created_at: string;
-    }>(
-      `SELECT 
-         r.id, r.reference_code, r.ride_id, r.driver_id, d.name as driver_name,
-         r.violation_type, r.demanded_fare, r.details, r.contact_number,
-         coalesce(r.severity, 'medium') as severity,
-         coalesce(r.status, 'pending') as status,
-         r.filed_by, r.admin_notes, r.resolved_by, r.resolved_at, r.created_at
-       FROM tmo_reports r
-       LEFT JOIN drivers d ON d.id = r.driver_id
-       ${where}
-       ORDER BY r.created_at DESC`
-    );
+    }>(`${REPORT_SELECT} ${where} ORDER BY r.created_at DESC`, ...values);
 
     res.json({ reports: rows });
   })
@@ -272,11 +306,6 @@ adminRoutes.patch(
       reportId
     );
     if (!report) return res.status(404).json({ error: "Report not found" });
-
-    // Restrict resolving to super_admin if status is being changed to resolved
-    if (status === "resolved" && req.user?.sub_role === "staff") {
-      return res.status(403).json({ error: "Only super_admin staff can mark reports as resolved" });
-    }
 
     const sets: string[] = [];
     const values: unknown[] = [];
@@ -314,7 +343,9 @@ adminRoutes.patch(
       });
     }
 
-    const updated = await selectOne("SELECT * FROM tmo_reports WHERE id = ?", reportId);
+    // Return the fully-joined report so the client keeps the driver, complainant,
+    // and route details after an update (a bare SELECT * would drop them).
+    const updated = await selectOne(`${REPORT_SELECT} WHERE r.id = ?`, reportId);
     res.json({ report: updated });
   })
 );
@@ -353,11 +384,23 @@ adminRoutes.get(
   wrap(async (req, res) => {
     const search = req.query.search ? `%${String(req.query.search).trim()}%` : null;
 
+    // Personal details (name, contact) live on `users`; vehicle details live on
+    // `drivers`. Join them so the directory can show and filter by real names.
+    const cols = `d.*, u.first_name, u.last_name, u.contact_number, u.email,
+                  u.sex, u.birthdate, u.address,
+                  coalesce(u.account_status, 'active') as account_status,
+                  (SELECT count(*) FROM ride_declines WHERE driver_id = d.id)::int as decline_count`;
     const sql = search
-      ? `SELECT * FROM drivers WHERE name LIKE ? OR unit_number LIKE ? OR phone LIKE ? ORDER BY name ASC`
-      : `SELECT * FROM drivers ORDER BY name ASC`;
+      ? `SELECT ${cols} FROM drivers d
+           LEFT JOIN users u ON u.id = d.claimed_by
+          WHERE d.name ILIKE ? OR d.unit_number ILIKE ?
+             OR u.first_name ILIKE ? OR u.last_name ILIKE ?
+          ORDER BY d.name ASC`
+      : `SELECT ${cols} FROM drivers d
+           LEFT JOIN users u ON u.id = d.claimed_by
+          ORDER BY d.name ASC`;
 
-    const params = search ? [search, search, search] : [];
+    const params = search ? [search, search, search, search] : [];
     const rows = await selectAll(sql, ...params);
     res.json({ drivers: rows });
   })
@@ -366,20 +409,26 @@ adminRoutes.get(
 adminRoutes.get(
   "/drivers/:id/profile",
   wrap(async (req, res) => {
-    const driver = await selectOne("SELECT * FROM drivers WHERE id = ?", req.params.id);
-    if (!driver) return res.status(404).json({ error: "Driver not found" });
-
-    const rides = await selectAll(
-      "SELECT * FROM rides WHERE driver_id = ? ORDER BY created_at DESC LIMIT 20",
+    // Pull the driver together with the person's details from `users`.
+    const driver = await selectOne(
+      `SELECT d.*, u.first_name, u.last_name, u.contact_number, u.email,
+              u.sex, u.birthdate, u.address,
+              coalesce(u.account_status, 'active') as account_status,
+              (SELECT count(*) FROM ride_declines WHERE driver_id = d.id)::int as decline_count
+         FROM drivers d
+         LEFT JOIN users u ON u.id = d.claimed_by
+        WHERE d.id = ?`,
       req.params.id
     );
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
 
+    // Ride history intentionally omitted — that lives in the trips log.
     const reports = await selectAll(
       "SELECT * FROM tmo_reports WHERE driver_id = ? ORDER BY created_at DESC",
       req.params.id
     );
 
-    res.json({ driver, rides, reports });
+    res.json({ driver, reports });
   })
 );
 
@@ -387,11 +436,50 @@ adminRoutes.patch(
   "/drivers/:id/verification",
   wrap(async (req, res) => {
     const { status } = req.body ?? {};
-    if (!["verified", "pending", "suspended"].includes(status)) {
-      return res.status(400).json({ error: "Status must be verified, pending, or suspended" });
+    if (!["verified", "pending", "suspended", "declined"].includes(status)) {
+      return res
+        .status(400)
+        .json({ error: "Status must be verified, pending, suspended, or declined" });
     }
 
-    await run("UPDATE drivers SET verification_status = ? WHERE id = ?", status, req.params.id);
+    const driver = await selectOne<{ claimed_by: string | null }>(
+      "SELECT claimed_by FROM drivers WHERE id = ?",
+      req.params.id
+    );
+
+    // Suspending/declining a rider now also blocks their LOGIN (like a passenger):
+    // a suspended or declined rider can't sign in until reinstated. Re-verifying
+    // restores both operating and login access. `is_online` is dropped whenever
+    // they leave 'verified'. Account bans are never downgraded here.
+    if (status === "verified") {
+      await run(
+        "UPDATE drivers SET verification_status = 'verified', reactivated_at = datetime('now') WHERE id = ?",
+        req.params.id
+      );
+      if (driver?.claimed_by) {
+        await run(
+          `UPDATE users SET account_status = 'active', reactivated_at = datetime('now'),
+                            activation_request = NULL, activation_requested_at = NULL
+             WHERE id = ? AND coalesce(account_status,'active') <> 'banned'`,
+          driver.claimed_by
+        );
+      }
+    } else {
+      await run(
+        "UPDATE drivers SET verification_status = ?, is_online = 0 WHERE id = ?",
+        status,
+        req.params.id
+      );
+      // 'pending' riders can still sign in (to see their status); 'suspended' and
+      // 'declined' are blocked.
+      if (driver?.claimed_by && (status === "suspended" || status === "declined")) {
+        await run(
+          "UPDATE users SET account_status = 'suspended' WHERE id = ? AND coalesce(account_status,'active') <> 'banned'",
+          driver.claimed_by
+        );
+        await run("DELETE FROM sessions WHERE user_id = ?", driver.claimed_by);
+      }
+    }
 
     await logAudit({
       actorId: req.user!.id,
@@ -412,13 +500,87 @@ adminRoutes.get(
   wrap(async (req, res) => {
     const search = req.query.search ? `%${String(req.query.search).trim()}%` : null;
 
+    const cols = `u.id, u.email, u.name, u.first_name, u.last_name, u.contact_number, u.role,
+                  coalesce(u.account_status, 'active') as account_status, u.created_at,
+                  (SELECT count(*) FROM rides
+                     WHERE passenger_id = u.id AND cancelled_by = 'passenger')::int
+                    AS passenger_cancellations`;
     const sql = search
-      ? `SELECT id, email, name, role, created_at FROM users WHERE role = 'passenger' AND (name LIKE ? OR email LIKE ?) ORDER BY created_at DESC`
-      : `SELECT id, email, name, role, created_at FROM users WHERE role = 'passenger' ORDER BY created_at DESC`;
+      ? `SELECT ${cols} FROM users u WHERE u.role = 'passenger' AND (u.name ILIKE ? OR u.email ILIKE ?) ORDER BY u.created_at DESC`
+      : `SELECT ${cols} FROM users u WHERE u.role = 'passenger' ORDER BY u.created_at DESC`;
 
     const params = search ? [search, search] : [];
     const rows = await selectAll(sql, ...params);
     res.json({ riders: rows });
+  })
+);
+
+/* ------------------------------------------------ 5.D.2 Activation (reactivation) Requests */
+
+adminRoutes.get(
+  "/activation-requests",
+  wrap(async (_req, res) => {
+    const rows = await selectAll(
+      `SELECT id, name, first_name, last_name, email, contact_number, role,
+              coalesce(account_status, 'active') as account_status,
+              activation_request, activation_requested_at
+         FROM users
+        WHERE activation_request IS NOT NULL
+        ORDER BY activation_requested_at DESC`
+    );
+    res.json({ requests: rows });
+  })
+);
+
+adminRoutes.post(
+  "/activation-requests/:id/resolve",
+  requireSubRole("super_admin"),
+  wrap(async (req, res) => {
+    const { action } = req.body ?? {};
+    if (!["approve", "dismiss"].includes(action)) {
+      return res.status(400).json({ error: "Action must be approve or dismiss" });
+    }
+
+    const target = await selectOne<{ id: string; name: string; role: string }>(
+      "SELECT id, name, role FROM users WHERE id = ?",
+      req.params.id
+    );
+    if (!target) return res.status(404).json({ error: "Request not found" });
+
+    if (action === "approve") {
+      // Reactivate the account and clear the request. suspension_count is kept so
+      // repeat offenders still escalate.
+      await run(
+        `UPDATE users
+            SET account_status = 'active', reactivated_at = datetime('now'),
+                activation_request = NULL, activation_requested_at = NULL
+          WHERE id = ?`,
+        req.params.id
+      );
+      // If they're a rider who was suspended/declined, restore operating access too.
+      await run(
+        `UPDATE drivers SET verification_status = 'verified', reactivated_at = datetime('now')
+          WHERE claimed_by = ? AND verification_status IN ('suspended', 'declined')`,
+        req.params.id
+      );
+    } else {
+      await run(
+        "UPDATE users SET activation_request = NULL, activation_requested_at = NULL WHERE id = ?",
+        req.params.id
+      );
+    }
+
+    await logAudit({
+      actorId: req.user!.id,
+      actorName: req.user!.name,
+      action: action === "approve" ? "approve_activation_request" : "dismiss_activation_request",
+      targetType: "user",
+      targetId: req.params.id,
+      details: { name: target.name, role: target.role },
+      ipAddress: (req.headers["x-forwarded-for"] || req.socket.remoteAddress || null) as string | null,
+    });
+
+    res.json({ ok: true });
   })
 );
 

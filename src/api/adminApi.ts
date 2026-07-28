@@ -49,6 +49,10 @@ export interface OverviewStats {
   totalDrivers: number;
   totalRides: number;
   activeReports: number;
+  onlineRiders: number;
+  pendingVerifications: number;
+  suspendedAccounts: number;
+  ridesToday: number;
 }
 
 export interface StatusBreakdown {
@@ -101,13 +105,18 @@ export interface TmoReportItem {
   ride_id: string | null;
   driver_id: string | null;
   driver_name: string | null;
+  driver_unit: string | null;
   violation_type: string;
   demanded_fare: number | null;
   details: string | null;
   contact_number: string | null;
-  severity: 'low' | 'medium' | 'high';
   status: 'pending' | 'investigating' | 'resolved';
   filed_by: string | null;
+  complainant_name: string | null;
+  complainant_contact: string | null;
+  ride_pickup: string | null;
+  ride_dropoff: string | null;
+  ride_distance: number | null;
   admin_notes: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
@@ -165,15 +174,21 @@ export const getCancellations = () =>
 export const getFlaggedDrivers = () =>
   request<{ flaggedDrivers: FlaggedDriver[] }>('/flagged-users').then((r) => r.flaggedDrivers);
 
-export const getReports = (filters?: { category?: string; status?: string; severity?: string }) => {
-  const query = new URLSearchParams(filters as Record<string, string>).toString();
+export const getReports = (filters?: { category?: string; status?: string }) => {
+  // Only include filters that are actually set. Passing an object with
+  // `undefined` values to URLSearchParams stringifies them as the literal
+  // "undefined", which the server would then treat as a real filter value.
+  const params = new URLSearchParams();
+  if (filters?.category) params.set('category', filters.category);
+  if (filters?.status) params.set('status', filters.status);
+  const query = params.toString();
   return request<{ reports: TmoReportItem[] }>(`/reports${query ? `?${query}` : ''}`).then((r) => r.reports);
 };
 
 export const getReportStats = () =>
   request<{ categoryBreakdown: { category: string; count: number }[] }>('/reports/stats').then((r) => r.categoryBreakdown);
 
-export const updateReport = (id: string, update: { status?: string; adminNotes?: string; severity?: string }) =>
+export const updateReport = (id: string, update: { status?: string; adminNotes?: string }) =>
   request<{ report: TmoReportItem }>(`/reports/${id}`, { method: 'PATCH', body: JSON.stringify(update) }).then((r) => r.report);
 
 export const getRepeatOffenders = () =>
@@ -183,13 +198,35 @@ export const getAdminDrivers = (search?: string) =>
   request<{ drivers: any[] }>(`/drivers${search ? `?search=${encodeURIComponent(search)}` : ''}`).then((r) => r.drivers);
 
 export const getDriverProfile = (id: string) =>
-  request<{ driver: any; rides: any[]; reports: any[] }>(`/drivers/${id}/profile`);
+  request<{ driver: any; reports: any[] }>(`/drivers/${id}/profile`);
 
 export const updateDriverVerification = (id: string, status: string) =>
   request<{ ok: boolean }>(`/drivers/${id}/verification`, { method: 'PATCH', body: JSON.stringify({ status }) });
 
 export const getAdminRiders = (search?: string) =>
   request<{ riders: User[] }>(`/riders${search ? `?search=${encodeURIComponent(search)}` : ''}`).then((r) => r.riders);
+
+export interface ActivationRequest {
+  id: string;
+  name: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  contact_number: string | null;
+  role: string;
+  account_status: 'suspended' | 'banned';
+  activation_request: string;
+  activation_requested_at: string;
+}
+
+export const getActivationRequests = () =>
+  request<{ requests: ActivationRequest[] }>('/activation-requests').then((r) => r.requests);
+
+export const resolveActivationRequest = (id: string, action: 'approve' | 'dismiss') =>
+  request<{ ok: boolean }>(`/activation-requests/${id}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
 
 export const getAuditLogs = (employeeId?: string, action?: string) => {
   const params = new URLSearchParams();

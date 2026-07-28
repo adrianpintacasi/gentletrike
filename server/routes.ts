@@ -12,6 +12,7 @@ import {
   isSeedDriverId,
   RiderProfileError,
 } from "./riderProfile";
+import { maybeAutoSuspendPassenger, maybeAutoSuspendRider } from "./autoModeration";
 import {
   run,
   selectAll,
@@ -170,11 +171,29 @@ api.get(
 api.patch(
   "/drivers/:id",
   wrap(async (req, res) => {
-    if (!(await findDriver(req.params.id))) {
+    const driver = await findDriver(req.params.id);
+    if (!driver) {
       return res.status(404).json({ error: "Driver not found" });
     }
 
     const { lat, lng, isOnline } = req.body ?? {};
+
+    // A rider may only go ONLINE once the TMO has verified them. Pending,
+    // suspended, and declined riders are blocked here with a clear reason.
+    // (Going offline is always allowed, whatever their status.)
+    if (isOnline === true) {
+      const status = driver.verification_status ?? "verified";
+      if (status !== "verified") {
+        const reason =
+          status === "pending"
+            ? "Your rider account is pending TMO approval. You can go online once a TMO officer verifies you."
+            : status === "suspended"
+            ? "Your rider account has been suspended by the TMO. Please contact the TMO office."
+            : "Your rider registration was declined by the TMO. Please contact the TMO office.";
+        return res.status(403).json({ error: reason, code: "RIDER_NOT_VERIFIED", status });
+      }
+    }
+
     const sets: string[] = [];
     const values: (string | number)[] = [];
 
@@ -416,6 +435,13 @@ api.post(
       );
     }
 
+    // Auto-suspend a rider who declines too often (never blocks the response).
+    try {
+      await maybeAutoSuspendRider(String(driverId));
+    } catch (err) {
+      console.error("rider auto-suspend check failed:", err);
+    }
+
     res.json({ ok: true });
   })
 );
@@ -496,6 +522,16 @@ api.post(
       cBy,
       req.params.id
     );
+
+    // Auto-suspend a passenger who cancels too often (never blocks the response).
+    if (cBy === "passenger") {
+      try {
+        await maybeAutoSuspendPassenger(row.passenger_id);
+      } catch (err) {
+        console.error("passenger auto-suspend check failed:", err);
+      }
+    }
+
     res.json({ ride: await rideWithDriver((await findRide(req.params.id))!) });
   })
 );
@@ -608,19 +644,38 @@ api.post(
       return res.status(400).json({ error: "violationType is required" });
     }
 
+    // The ride_id/driver_id columns are foreign keys. If a report points at a
+    // ride or driver that isn't in the database (e.g. a stale reference), the
+    // insert would fail and the complaint would be lost. A TMO complaint is too
+    // important to drop, so we keep each link only when it really exists and
+    // otherwise file the report unlinked rather than throwing it away.
+    let safeRideId: string | null = null;
+    if (rideId) {
+      const found = await selectOne<{ id: string }>("SELECT id FROM rides WHERE id = ?", rideId);
+      safeRideId = found ? String(rideId) : null;
+      if (!found) console.warn(`TMO report filed for unknown ride ${rideId} — saved without ride link.`);
+    }
+    let safeDriverId: string | null = null;
+    if (driverId) {
+      const found = await selectOne<{ id: string }>("SELECT id FROM drivers WHERE id = ?", driverId);
+      safeDriverId = found ? String(driverId) : null;
+      if (!found) console.warn(`TMO report filed for unknown driver ${driverId} — saved without driver link.`);
+    }
+
     const referenceCode = `TMO-DUM-${Math.floor(100000 + Math.random() * 900000)}`;
     await run(
       `INSERT INTO tmo_reports
-        (id, reference_code, ride_id, driver_id, violation_type, demanded_fare, details, contact_number)
-       VALUES (?,?,?,?,?,?,?,?)`,
+        (id, reference_code, ride_id, driver_id, violation_type, demanded_fare, details, contact_number, filed_by)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
       `tmo_${randomUUID()}`,
       referenceCode,
-      rideId ?? null,
-      driverId ?? null,
+      safeRideId,
+      safeDriverId,
       violationType,
       Number.isFinite(Number(demandedFare)) ? Math.round(Number(demandedFare)) : null,
       details ? String(details).slice(0, 2000) : null,
-      contactNumber ?? null
+      contactNumber ?? null,
+      req.user?.id ?? null
     );
 
     res.status(201).json({ referenceCode });

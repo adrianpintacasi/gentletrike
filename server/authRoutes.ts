@@ -36,11 +36,47 @@ const wrap =
     });
 
 const ALLOWED_REGISTER_ROLES: UserRole[] = ["passenger", "rider"];
+const VALID_SEX = new Set(["male", "female", "other"]);
+
+/** A lenient PH contact-number check: at least 7 digits once symbols are stripped. */
+function normalizeContact(raw: unknown): string | null {
+  const t = String(raw ?? "").trim();
+  const digits = t.replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  return t.slice(0, 20);
+}
+
+/** Accept a YYYY-MM-DD birthdate for someone at least 15 years old (and real). */
+function validateBirthdate(raw: unknown): string | null {
+  const t = String(raw ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  const d = new Date(t + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  if (d.getTime() > now.getTime()) return null;
+  const age = (now.getTime() - d.getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (age < 15 || age > 100) return null;
+  return t;
+}
 
 authRoutes.post(
   "/register",
   wrap(async (req, res) => {
-    const { email, password, name, role, unitNumber, vehicleType, photo } = req.body ?? {};
+    const {
+      email,
+      password,
+      name,
+      firstName,
+      lastName,
+      role,
+      contactNumber,
+      sex,
+      birthdate,
+      address,
+      unitNumber,
+      vehicleType,
+      photo,
+    } = req.body ?? {};
 
     if (!email || !isValidEmail(String(email))) {
       return res.status(400).json({ error: "A valid email address is required" });
@@ -50,9 +86,20 @@ authRoutes.post(
         .status(400)
         .json({ error: "Password must be at least 8 characters" });
     }
-    if (!name || !String(name).trim()) {
-      return res.status(400).json({ error: "Your name is required" });
+
+    // First and last name are required for everyone. Fall back to splitting a
+    // combined `name` so older clients still work.
+    let first = String(firstName ?? "").trim();
+    let last = String(lastName ?? "").trim();
+    if ((!first || !last) && name && String(name).trim()) {
+      const parts = String(name).trim().split(/\s+/);
+      first = first || parts[0] || "";
+      last = last || parts.slice(1).join(" ") || "";
     }
+    if (!first || !last) {
+      return res.status(400).json({ error: "First name and last name are required" });
+    }
+
     const chosenRole = String(role ?? "passenger") as UserRole;
     if (!ALLOWED_REGISTER_ROLES.includes(chosenRole)) {
       return res
@@ -60,14 +107,16 @@ authRoutes.post(
         .json({ error: "Role must be passenger or rider" });
     }
 
-    if (await findUserByEmail(String(email))) {
-      return res.status(409).json({ error: "An account with this email already exists" });
+    // Everyone provides a contact number (passengers give this and nothing more).
+    const contact = normalizeContact(contactNumber);
+    if (!contact) {
+      return res.status(400).json({ error: "A valid contact number is required" });
     }
 
-    const id = `user_${randomUUID()}`;
-    const passwordHash = await hashPassword(String(password));
-    const displayName = normalizeName(name);
-
+    // Riders provide the full set needed for TMO verification.
+    let riderSex: string | null = null;
+    let riderBirthdate: string | null = null;
+    let riderAddress: string | null = null;
     if (chosenRole === "rider") {
       const unitRaw = unitNumber !== undefined ? String(unitNumber).trim() : "";
       if (!unitRaw) {
@@ -75,17 +124,66 @@ authRoutes.post(
           .status(400)
           .json({ error: "Pedicab number is required for rider accounts" });
       }
+      riderSex = String(sex ?? "").trim().toLowerCase();
+      if (!VALID_SEX.has(riderSex)) {
+        return res.status(400).json({ error: "Please select a valid sex" });
+      }
+      riderBirthdate = validateBirthdate(birthdate);
+      if (!riderBirthdate) {
+        return res
+          .status(400)
+          .json({ error: "Please enter a valid birthdate (you must be at least 15)" });
+      }
+      riderAddress = String(address ?? "").trim();
+      if (!riderAddress) {
+        return res.status(400).json({ error: "Address is required for rider accounts" });
+      }
+      riderAddress = riderAddress.slice(0, 200);
     }
+
+    if (await findUserByEmail(String(email))) {
+      return res.status(409).json({ error: "An account with this email already exists" });
+    }
+
+    // A banned person can't just sign up again with the same email or contact.
+    const banned = await selectOne<{ id: string }>(
+      `SELECT id FROM users
+        WHERE coalesce(account_status, 'active') = 'banned'
+          AND (lower(email) = lower(?) OR contact_number = ?)`,
+      String(email).trim(),
+      contact
+    );
+    if (banned) {
+      return res.status(403).json({
+        error:
+          "This email or contact number is linked to a banned account and cannot be used to register.",
+      });
+    }
+
+    const id = `user_${randomUUID()}`;
+    const passwordHash = await hashPassword(String(password));
+    const displayName = normalizeName(`${first} ${last}`);
+    const firstClean = normalizeName(first);
+    const lastClean = normalizeName(last);
 
     try {
       await tx(async () => {
         await run(
-          "INSERT INTO users (id, email, password_hash, name, role) VALUES (?,?,?,?,?)",
+          `INSERT INTO users
+            (id, email, password_hash, name, role, first_name, last_name,
+             contact_number, sex, birthdate, address)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
           id,
           String(email).trim().toLowerCase(),
           passwordHash,
           displayName,
-          chosenRole
+          chosenRole,
+          firstClean,
+          lastClean,
+          contact,
+          riderSex,
+          riderBirthdate,
+          riderAddress
         );
         if (chosenRole === "rider") {
           await createRiderDriver(id, displayName, String(unitNumber), { vehicleType, photo });
@@ -134,8 +232,63 @@ authRoutes.post(
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    const accountStatus = user.account_status ?? "active";
+    if (accountStatus !== "active") {
+      const msg =
+        accountStatus === "banned"
+          ? "This account has been banned by the TMO. Please contact the TMO office."
+          : "This account is currently suspended. Please contact the TMO office.";
+      // Tell the client whether an appeal is already pending, so it shows
+      // "waiting for approval" instead of the appeal form again.
+      return res.status(403).json({ error: msg, hasPendingRequest: !!user.activation_request });
+    }
+
     const token = await createSession(user.id);
     res.json({ user: toAuthUser(user), token });
+  })
+);
+
+/**
+ * A suspended/banned user files a reactivation appeal. Public (they can't sign
+ * in), but identity is proven by their real credentials, so no one can appeal on
+ * someone else's behalf. Stores a reason for the TMO to review.
+ */
+authRoutes.post(
+  "/activation-request",
+  wrap(async (req, res) => {
+    const { email, login: loginInput, password, reason } = req.body ?? {};
+    const identifier = String(email || loginInput || "").trim();
+
+    if (!identifier || !password) {
+      return res.status(400).json({ error: "Email/Employee ID and password are required" });
+    }
+    if (!reason || !String(reason).trim()) {
+      return res.status(400).json({ error: "Please include a reason for your appeal" });
+    }
+
+    let user = await findUserByEmail(identifier);
+    if (!user) user = await findUserByEmployeeId(identifier);
+    if (!user || !(await verifyPassword(String(password), user.password_hash))) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    if ((user.account_status ?? "active") === "active") {
+      return res.status(400).json({ error: "This account is active — no reactivation is needed." });
+    }
+
+    // One pending request at a time — until the TMO approves or dismisses it.
+    if (user.activation_request) {
+      return res
+        .status(409)
+        .json({ error: "You already have a pending reactivation request awaiting review." });
+    }
+
+    await run(
+      "UPDATE users SET activation_request = ?, activation_requested_at = datetime('now') WHERE id = ?",
+      String(reason).trim().slice(0, 1000),
+      user.id
+    );
+    res.json({ ok: true });
   })
 );
 
@@ -163,9 +316,18 @@ authRoutes.get(
   requireAuth,
   requireRole("admin"),
   wrap(async (req, res) => {
-    // Only return safe fields (exclude password_hash)
+    // Only return safe fields (exclude password_hash). Include the moderation
+    // status and, for passengers, how many rides they cancelled (a fairness
+    // signal for the TMO).
     const rows = await selectAll(
-      "SELECT id, email, name, role, employee_id, department, sub_role, created_at FROM users ORDER BY created_at DESC"
+      `SELECT u.id, u.email, u.name, u.first_name, u.last_name, u.role,
+              u.employee_id, u.department, u.sub_role,
+              coalesce(u.account_status, 'active') as account_status, u.created_at,
+              (SELECT count(*) FROM rides
+                 WHERE passenger_id = u.id AND cancelled_by = 'passenger')::int
+                AS passenger_cancellations
+         FROM users u
+        ORDER BY u.created_at DESC`
     );
     res.json({ users: rows });
   })
@@ -177,14 +339,24 @@ authRoutes.post(
   requireRole("admin"),
   requireSubRole("super_admin"),
   wrap(async (req, res) => {
-    const { email, password, name, role, unitNumber, employeeId, department, subRole, vehicleType, photo } = req.body ?? {};
+    const { email, password, name, firstName, lastName, role, unitNumber, employeeId, department, subRole, vehicleType, photo } = req.body ?? {};
 
     if (!password || !isValidPassword(String(password))) {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
-    if (!name || !String(name).trim()) {
+
+    // Prefer explicit first/last name; fall back to splitting a combined `name`.
+    let first = String(firstName ?? "").trim();
+    let last = String(lastName ?? "").trim();
+    if ((!first || !last) && name && String(name).trim()) {
+      const parts = String(name).trim().split(/\s+/);
+      first = first || parts[0] || "";
+      last = last || parts.slice(1).join(" ") || "";
+    }
+    if (!first) {
       return res.status(400).json({ error: "Name is required" });
     }
+
     const chosenRole = String(role ?? "passenger") as UserRole;
     if (!["passenger", "rider", "admin"].includes(chosenRole)) {
       return res.status(400).json({ error: "Invalid role" });
@@ -220,7 +392,9 @@ authRoutes.post(
 
     const id = `user_${randomUUID()}`;
     const passwordHash = await hashPassword(String(password));
-    const displayName = normalizeName(name);
+    const firstClean = normalizeName(first);
+    const lastClean = last ? normalizeName(last) : null;
+    const displayName = normalizeName(`${first} ${last}`.trim());
     const dept = department ? String(department).trim() : null;
     const sub = isAdmin ? (subRole === "staff" ? "staff" : "super_admin") : null;
 
@@ -234,7 +408,9 @@ authRoutes.post(
     try {
       await tx(async () => {
         await run(
-          "INSERT INTO users (id, email, password_hash, name, role, employee_id, department, sub_role) VALUES (?,?,?,?,?,?,?,?)",
+          `INSERT INTO users
+             (id, email, password_hash, name, role, employee_id, department, sub_role, first_name, last_name)
+           VALUES (?,?,?,?,?,?,?,?,?,?)`,
           id,
           emailValue,
           passwordHash,
@@ -242,7 +418,9 @@ authRoutes.post(
           chosenRole,
           empId,
           dept,
-          sub
+          sub,
+          firstClean,
+          lastClean
         );
         if (chosenRole === "rider") {
           await createRiderDriver(id, displayName, String(unitNumber), { vehicleType, photo });
@@ -256,7 +434,7 @@ authRoutes.post(
     }
 
     const created = await selectOne(
-      "SELECT id, email, name, role, employee_id, department, sub_role, created_at FROM users WHERE id = ?",
+      "SELECT id, email, name, first_name, last_name, role, employee_id, department, sub_role, created_at FROM users WHERE id = ?",
       id
     );
 
@@ -312,6 +490,62 @@ authRoutes.delete(
     });
 
     res.json({ ok: true });
+  })
+);
+
+/**
+ * Moderation: set an account's status to active, suspended, or banned.
+ * Suspended/banned users are signed out immediately and cannot sign back in.
+ * Super-admin only.
+ */
+authRoutes.patch(
+  "/users/:id/status",
+  requireAuth,
+  requireRole("admin"),
+  requireSubRole("super_admin"),
+  wrap(async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body ?? {};
+
+    if (!["active", "suspended", "banned"].includes(status)) {
+      return res.status(400).json({ error: "Status must be active, suspended, or banned" });
+    }
+    if (id === req.user?.id) {
+      return res.status(400).json({ error: "You cannot change your own account status" });
+    }
+
+    const target = await selectOne<{ id: string; name: string; role: string }>(
+      "SELECT id, name, role FROM users WHERE id = ?",
+      id
+    );
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    await tx(async () => {
+      if (status === "active") {
+        // Reactivating: stamp reactivated_at so auto-moderation starts fresh.
+        await run(
+          "UPDATE users SET account_status = 'active', reactivated_at = datetime('now') WHERE id = ?",
+          id
+        );
+      } else {
+        await run("UPDATE users SET account_status = ? WHERE id = ?", status, id);
+        // Force sign-out and pull any rider off the live map right away.
+        await run("DELETE FROM sessions WHERE user_id = ?", id);
+        await run("UPDATE drivers SET is_online = 0 WHERE claimed_by = ?", id);
+      }
+    });
+
+    await logAudit({
+      actorId: req.user!.id,
+      actorName: req.user!.name,
+      action: "update_user_status",
+      targetType: "user",
+      targetId: id,
+      details: { name: target.name, role: target.role, status },
+      ipAddress: (req.headers["x-forwarded-for"] || req.socket.remoteAddress || null) as string | null,
+    });
+
+    res.json({ ok: true, status });
   })
 );
 

@@ -17,6 +17,8 @@ export interface UserRow {
   employee_id?: string | null;
   department?: string | null;
   sub_role?: AdminSubRole | null;
+  account_status?: string | null;
+  activation_request?: string | null;
   created_at: string;
 }
 
@@ -28,6 +30,7 @@ export interface AuthUser {
   employee_id?: string;
   department?: string;
   sub_role?: AdminSubRole;
+  account_status?: string;
 }
 
 interface SessionRow {
@@ -47,6 +50,7 @@ export function toAuthUser(row: UserRow): AuthUser {
     employee_id: row.employee_id ?? undefined,
     department: row.department ?? undefined,
     sub_role: row.role === "admin" ? (row.sub_role ?? "super_admin") : undefined,
+    account_status: row.account_status ?? "active",
   };
 }
 
@@ -118,7 +122,14 @@ async function resolveSession(token: string): Promise<AuthUser | null> {
   }
 
   const user = await findUserById(session.user_id);
-  return user ? toAuthUser(user) : null;
+  if (!user) return null;
+  // A suspended or banned account is treated as signed-out, so an active session
+  // stops working the moment the account is moderated.
+  if ((user.account_status ?? "active") !== "active") {
+    await deleteSession(token);
+    return null;
+  }
+  return toAuthUser(user);
 }
 
 function readBearerToken(req: Request): string | null {

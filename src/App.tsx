@@ -12,6 +12,7 @@ import {
 import * as api from './api';
 import { useAuth } from './context/AuthContext';
 import { AuthPage } from './components/AuthPage';
+import { StaffLoginPage } from './components/StaffLoginPage';
 import {
   bearingDegrees,
   getStreetRoute,
@@ -51,7 +52,15 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    // Admins/staff have their own isolated door at /staff.
+    const path = window.location.pathname.replace(/\/+$/, '');
+    return path === '/staff' ? <StaffLoginPage /> : <AuthPage />;
+  }
+
+  // Rule-based access: an admin only ever sees the TMO dashboard (standalone,
+  // no passenger/rider chrome or app navbar).
+  if (user.role === 'admin') {
+    return <AdminDashboard />;
   }
 
   return <MainApp user={user} onLogout={() => void logout()} />;

@@ -61,22 +61,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Gently</span>
           </button>
 
-          {canUseRiderMode && (
-            <button
-              onClick={() => onToggleDriverMode(!isDriverMode)}
-              className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-xs active:scale-95 ${
-                isDriverMode
-                  ? 'bg-gray-900 text-yellow-400 hover:bg-gray-800'
-                  : 'bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-200'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              <span className="hidden sm:inline">
-                {isDriverMode ? 'Rider Mode Active' : 'Switch to Rider'}
-              </span>
-            </button>
-          )}
-
           {user.role === 'admin' && (
             <button
               onClick={() => onToggleAdminMode(!isAdminMode)}

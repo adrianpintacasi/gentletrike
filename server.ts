@@ -96,9 +96,31 @@ When answering the user:
   }
 });
 
-async function startServer() {
-  await initDb();
+/**
+ * Connect + run migrations, retrying with backoff. Neon's free tier can be slow
+ * (or briefly unreachable) to wake from idle, so a single failed attempt should
+ * not take the whole app down.
+ */
+async function initDbWithRetry(attempts = 6): Promise<void> {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await initDb();
+      console.log("Database ready.");
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Database not ready (attempt ${i}/${attempts}): ${msg}`);
+      if (i < attempts) await new Promise((r) => setTimeout(r, Math.min(2000 * i, 10000)));
+    }
+  }
+  console.error(
+    "Could not reach the database after several attempts. The web server is up, " +
+      "but sign-in and data won't work until the database is reachable. Check your " +
+      "internet connection and the Neon database status, then restart."
+  );
+}
 
+async function startServer() {
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found" });
   });
@@ -117,9 +139,14 @@ async function startServer() {
     });
   }
 
+  // Open the port first so http://localhost:PORT loads right away, then bring the
+  // database up in the background (with retries) instead of blocking startup.
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`GentleTrike Dumaguete Server running on http://0.0.0.0:${PORT}`);
+    console.log(`GentleTrike Dumaguete Server running on http://localhost:${PORT}`);
+    console.log("Connecting to the database...");
   });
+
+  await initDbWithRetry();
 }
 
 startServer();

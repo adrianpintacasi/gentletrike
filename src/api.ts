@@ -28,7 +28,7 @@ export function clearAuthToken(): void {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly data?: any) {
     super(message);
     this.name = 'ApiError';
   }
@@ -56,7 +56,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    throw new ApiError(body?.error || `Request failed (${res.status})`, res.status);
+    throw new ApiError(body?.error || `Request failed (${res.status})`, res.status, body);
   }
   return body as T;
 }
@@ -74,27 +74,38 @@ function persistAuth(user: User, token: string): User {
   return user;
 }
 
-export interface RiderSignupInfo {
+export interface SignupDetails {
+  firstName: string;
+  lastName: string;
+  contactNumber: string;
+  // Rider-only fields:
   unitNumber?: string;
   vehicleType?: string;
   photo?: string;
+  sex?: string;
+  birthdate?: string;
+  address?: string;
 }
 
 export const register = (
   email: string,
   password: string,
-  name: string,
   role: UserRole,
-  rider?: RiderSignupInfo
+  details: SignupDetails
 ) =>
   post<{ user: User; token: string }>('/auth/register', {
     email,
     password,
-    name,
     role,
-    unitNumber: rider?.unitNumber,
-    vehicleType: rider?.vehicleType,
-    photo: rider?.photo,
+    firstName: details.firstName,
+    lastName: details.lastName,
+    contactNumber: details.contactNumber,
+    unitNumber: details.unitNumber,
+    vehicleType: details.vehicleType,
+    photo: details.photo,
+    sex: details.sex,
+    birthdate: details.birthdate,
+    address: details.address,
   }).then(({ user, token }) => persistAuth(user, token));
 
 export const login = (email: string, password: string) =>
@@ -110,6 +121,10 @@ export const logout = async () => {
   }
 };
 
+/** A suspended/banned user appeals for reactivation (identity proven by creds). */
+export const submitActivationRequest = (identifier: string, password: string, reason: string) =>
+  post<{ ok: boolean }>('/auth/activation-request', { login: identifier, password, reason }).then((r) => r.ok);
+
 export const getMe = () =>
   request<{ user: User }>('/auth/me').then((r) => r.user);
 
@@ -119,6 +134,8 @@ export const listUsers = () =>
 export const createUser = (
   data: Partial<User> & {
     password?: string;
+    firstName?: string;
+    lastName?: string;
     unitNumber?: string;
     employeeId?: string;
     department?: string;
@@ -134,6 +151,12 @@ export const deleteUser = (id: string) =>
   request<{ ok: boolean }>(`/auth/users/${id}`, {
     method: 'DELETE',
   }).then((r) => r.ok);
+
+export const updateUserStatus = (id: string, status: 'active' | 'suspended' | 'banned') =>
+  request<{ ok: boolean; status: string }>(`/auth/users/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  }).then((r) => r.status);
 
 /* ------------------------------------------------------------ admin stats */
 

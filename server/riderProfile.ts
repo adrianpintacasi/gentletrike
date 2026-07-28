@@ -83,12 +83,15 @@ export async function createRiderDriver(
   const vehicleType = normalizeVehicleType(options.vehicleType);
   const avatar = sanitizePhoto(options.photo) ?? DEFAULT_AVATAR;
 
+  // A brand-new rider starts as 'pending': they cannot go online or take
+  // bookings until a TMO officer verifies them in the dashboard. (Riders that
+  // registered before this change keep their existing 'verified' status.)
   const id = `drv_${randomUUID()}`;
   await run(
     `INSERT INTO drivers
       (id, name, vehicle_type, unit_number, plate_number, rating, trips_completed,
-       phone, avatar, current_lat, current_lng, is_online, claimed_by)
-     VALUES (?,?,?,?,?,5.0,0,?,?,?,?,0,?)`,
+       phone, avatar, current_lat, current_lng, is_online, claimed_by, verification_status)
+     VALUES (?,?,?,?,?,5.0,0,?,?,?,?,0,?,'pending')`,
     id,
     name.trim().slice(0, 100),
     vehicleType,
