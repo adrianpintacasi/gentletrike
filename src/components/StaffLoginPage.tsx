@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ApiError, submitActivationRequest } from '../api';
 
@@ -60,28 +60,19 @@ export function StaffLoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 flex flex-col font-sans text-gray-900 antialiased">
-      <header className="bg-blue-700 text-white border-b border-blue-800 shadow-sm">
-        <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-center gap-3">
-          <div className="p-2 bg-white/15 rounded-xl">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div className="text-center">
-            <h1 className="text-lg font-black tracking-tight leading-none">Dumaguete TMO</h1>
-            <p className="text-[11px] font-semibold text-blue-100">Staff &amp; Admin Portal</p>
-          </div>
-        </div>
-      </header>
-
       <main className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white rounded-2xl border border-blue-100 shadow-lg p-6 md:p-8 animate-fadeIn">
           <div className="text-center mb-6">
-            <div className="inline-flex p-3 bg-blue-600 text-white rounded-2xl shadow-sm mb-3">
-              <ShieldCheck className="w-7 h-7" />
-            </div>
-            <h2 className="text-2xl font-black text-gray-900">Staff Sign In</h2>
-            <p className="text-sm text-gray-500 mt-1.5 font-medium">
-              Authorized TMO personnel only. Accounts are issued by a super-admin.
-            </p>
+            <img
+              src="/GentleTrike.png"
+              alt="GentleTrike"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+              className="inline-block w-14 h-14 object-contain rounded-2xl border border-amber-200 bg-white shadow-sm mb-3"
+            />
+            <h2 className="text-2xl font-black text-gray-900">Admin Portal</h2>
+            <p className="text-sm text-gray-500 mt-1.5 font-medium">Authorized TMO personnel only.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

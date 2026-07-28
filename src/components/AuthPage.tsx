@@ -137,26 +137,20 @@ export function AuthPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900 antialiased">
-      <header className="bg-white border-b border-gray-200 shadow-xs">
-        <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-center gap-3">
-          <img
-            src="/GentleTrike.png"
-            alt="GentleTrike Logo"
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-            className="w-10 h-10 object-contain rounded-xl shadow-xs border border-amber-200 bg-white"
-          />
-          <h1 className="text-xl font-black text-gray-900 tracking-tight">GentleTrike</h1>
-        </div>
-      </header>
-
       <main className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-md p-6 md:p-8 animate-fadeIn">
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-black text-gray-900">
-              {mode === 'login' ? 'Welcome back' : 'Create your account'}
-            </h2>
+            <div className="flex items-center justify-center gap-2.5 mb-2">
+              <img
+                src="/GentleTrike.png"
+                alt="GentleTrike"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+                className="w-10 h-10 object-contain rounded-xl shadow-xs border border-amber-200 bg-white"
+              />
+              <h2 className="text-2xl font-black text-gray-900 tracking-tight">GentleTrike</h2>
+            </div>
             <p className="text-sm text-gray-500 mt-1.5 font-medium">
               {mode === 'login'
                 ? 'Sign in to book rides or go on duty as a rider.'
