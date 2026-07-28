@@ -1,4 +1,6 @@
-export type TransportMode = 'pedicab_standard' | 'habal_habal' | 'multicab';
+// Defined in shared/ alongside the rate table the server bills from.
+import type { TransportMode } from '../shared/transport';
+export type { TransportMode };
 
 export type RideStatus =
   | 'idle'

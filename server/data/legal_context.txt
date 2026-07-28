@@ -5,8 +5,11 @@ GENTLETRIKE ASSISTANT KNOWLEDGE BASE
 - Distance Rate: PHP 2.00 for every succeeding kilometer or fraction thereof.
   (e.g., 1.01 km to 2.00 km = PHP 17.00; 2.01 km to 3.00 km = PHP 19.00).
 - Mandatory Discounts: 20% discount for Senior Citizens, PWDs, and Students (with valid ID).
-- Sample Fare (Regular Passenger): 2.2 km trip (e.g., Silliman Main to Robinsons Dumaguete) = PHP 15.00 + (1.2 km * PHP 2.00) = PHP 17.40 regular fare.
-- Discounted Fare (Student/Senior/PWD): PHP 17.40 * 0.80 = PHP 13.92 (~PHP 14.00).
+- Sample Fare (Regular Passenger): 2.2 km trip (e.g., Silliman Main to Robinsons Dumaguete).
+  The 1.2 km past the first kilometre is billed as 2 whole kilometres, because any
+  fraction counts as a full kilometre: PHP 15.00 + (2 x PHP 2.00) = PHP 19.00.
+  Do NOT bill proportionally — 1.2 x PHP 2.00 = PHP 2.40 is the wrong method.
+- Discounted Fare (Student/Senior/PWD): PHP 19.00 * 0.80 = PHP 15.20 (~PHP 15.00).
 
 === 2. CIVIL CODE OF THE PHILIPPINES (COMMON CARRIERS) ===
 [Article 1732]
