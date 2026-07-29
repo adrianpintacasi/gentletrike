@@ -12,7 +12,7 @@ about **getting set up and working together**.
 
 | Tool | Why | Get it |
 | ---- | --- | ------ |
-| **Node.js 24 or newer** | The database (`node:sqlite`) is built into Node 24. Older Node **will not run this project.** | https://nodejs.org (pick "24 LTS" or newer) |
+| **Node.js 24 or newer** | We target modern Node APIs. Older Node versions are not officially supported. | https://nodejs.org (pick "24 LTS" or newer) |
 | **Git** | To download the code and share changes. | https://git-scm.com |
 | **VS Code** | Recommended editor. | https://code.visualstudio.com |
 | A **GitHub account** | So the owner can give you access. | https://github.com |
@@ -135,19 +135,7 @@ This is for working *sessions* — Git is still where the real, saved code lives
 
 ---
 
-## 7. Current work streams (suggested split)
 
-These are the pieces we're building next. Pick one per person/pair:
-
-| Work stream | What it involves |
-| ----------- | ---------------- |
-| **Persistence** | Move off the resetting free-tier database so data survives (paid disk or Postgres). *Do this first — others depend on it.* |
-| **Accounts / login** | Sign-up + sign-in with hashed passwords and a `role` (passenger / rider / admin). Replaces the current no-login setup. |
-| **TMO / admin dashboard** | Admin-only page (login by employee ID) to handle reports, ratings, and approve riders. |
-| **AI assistant upgrade** | Let "Gently" answer from live app data (fares, trips, drivers) via function calling. |
-| **Trip-data logging** | Record real `started_at` / `completed_at` times per ride so we can analyze ETAs later. |
-
-Coordinate in the group chat before two people take overlapping streams.
 
 ---
 

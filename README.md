@@ -12,9 +12,7 @@ Two phones, one server: what one person books, another person sees.
 
 **Node.js 24 or newer** — <https://nodejs.org>.
 
-Version 24 is not optional: the database runs on `node:sqlite`, which is built
-into Node itself from v24 and unavailable before it. That choice means there is
-no native module to compile, so `npm install` needs no C++ build tools.
+**Node.js 24 or newer** — <https://nodejs.org>.
 
 ```bash
 node --version   # must print v24.x or newer
@@ -30,8 +28,7 @@ npm run dev
 
 Open <http://localhost:3000>.
 
-The database file is created automatically at `data/gentletrike.db` on first
-run. Delete that folder any time you want a clean slate.
+The database runs on Neon Postgres, so a valid connection string is required in `.env.local`.
 
 ## Try the multi-user flow
 
@@ -79,9 +76,8 @@ guide — the assistant falls back to canned local fare answers.
 Two caveats on the free plan, both harmless for a demo:
 
 - The service sleeps after ~15 minutes idle; the next visit takes ~30s to wake.
-- The filesystem is wiped on restart, so rides and drivers reset. Fine within
-  one demo session; it just won't persist overnight. The bottom of
-  `render.yaml` documents the paid disk that fixes it.
+- The filesystem is wiped on restart, but since data is stored in Neon Postgres, rides and drivers will persist. The bottom of
+  `render.yaml` documents the paid disk option if local file storage is ever needed.
 
 ### Railway
 
@@ -93,82 +89,10 @@ needed. Set `NODE_VERSION=24`, then add a volume mounted at `/var/data` and set
 
 ## How it works
 
-```
-  Passenger phone                Rider phone
-        │                             │
-        │  POST /api/rides            │  GET  /api/rides/open
-        │  GET  /api/rides/:id        │  POST /api/rides/:id/accept
-        │  (polls every 2.5s)         │  POST /api/rides/:id/status
-        │                             │  PATCH /api/drivers/:id  ← live GPS
-        └──────────► Express + SQLite ◄──────────┘
-```
+The system's architecture, data model, dispatch rules, fare calculation, and AI features are extensively documented in **[SYSTEMS.md](SYSTEMS.md)**.
+Please refer to it for a complete overview of the project's technical design and implementation details.
 
-Clients poll rather than hold a WebSocket. It is a few lines instead of a
-reconnection state machine, it survives phone sleep and flaky campus Wi-Fi, and
-at demo scale the load is trivial. Polling pauses while a tab is hidden.
-
-There are no user accounts. Each browser generates a device id into
-`localStorage`, which is how a phone reclaims its own trip after a reload and
-how a rider keeps hold of the same pedicab unit.
-
-### Project layout
-
-| Path                        | What lives there                                  |
-| --------------------------- | ------------------------------------------------- |
-| [server.ts](server.ts)      | Express entry, Vite middleware, Gemini endpoint    |
-| [server/db.ts](server/db.ts)         | `node:sqlite` setup, schema, seed, row → JSON |
-| [server/routes.ts](server/routes.ts) | The `/api` surface                        |
-| [src/api.ts](src/api.ts)             | Typed client for that API + device id     |
-| [src/hooks/usePolling.ts](src/hooks/usePolling.ts) | Visibility-aware polling    |
-| [src/App.tsx](src/App.tsx)           | State, passenger and rider flows           |
-| [src/components/](src/components/)   | Map, booking panel, rider panel, modals   |
-| [src/data/dumagueteData.ts](src/data/dumagueteData.ts) | Landmarks, fleet, fare table |
-
-### API
-
-| Method | Route                        | Purpose                                 |
-| ------ | ---------------------------- | --------------------------------------- |
-| GET    | `/api/health`                | Health check (used by Render)           |
-| GET    | `/api/drivers`               | Fleet; `?online=1` for on-duty only     |
-| POST   | `/api/drivers/claim`         | Take a pedicab unit for this device     |
-| PATCH  | `/api/drivers/:id`           | Push GPS position / duty status         |
-| GET    | `/api/drivers/:id/rides`     | That rider's pooled trips               |
-| POST   | `/api/rides`                 | Book a trip                             |
-| GET    | `/api/rides/open`            | Unclaimed requests for a rider          |
-| GET    | `/api/rides/:id`             | Poll one trip                           |
-| POST   | `/api/rides/:id/accept`      | Claim a trip (first request wins)       |
-| POST   | `/api/rides/:id/decline`     | Hide it from this rider only            |
-| POST   | `/api/rides/:id/status`      | Advance the trip stage                  |
-| POST   | `/api/rides/:id/cancel`      | Cancel                                  |
-| GET  / POST | `/api/rides/:id/messages` | In-trip chat                         |
-| POST   | `/api/tmo-reports`           | File a TMO complaint, returns a ref code |
-
-Two riders tapping **Accept** at the same instant is settled in the database:
-the update only matches while `driver_id IS NULL`, so the second one gets a 409
-and a clear message rather than silently stealing the trip.
-
-## Fare rules
-
-₱15 base for the first kilometre, +₱2 per additional kilometre, per passenger.
-Pakyaw (charter) trips replace that with a negotiated flat fare. The rates live
-in `VEHICLE_DETAILS` in [src/data/dumagueteData.ts](src/data/dumagueteData.ts).
-
-**Distance is the real driving distance**, fetched from OSRM in
-[src/utils/dumagueteRouting.ts](src/utils/dumagueteRouting.ts) — not the
-straight line between the two pins. That distinction matters: measured across
-six common Dumaguete routes, the road runs on average **1.32×** longer than the
-crow flies, so charging on straight-line distance undercharged every trip.
-
-| Route | Straight | Road | Pedicab fare |
-| ----- | -------- | ---- | ------------ |
-| Silliman → Robinsons | 2.2 km | 2.9 km | ₱17 → ₱19 |
-| Boulevard → Sibulan Airport | 3.0 km | 4.3 km | ₱19 → ₱22 |
-| Pier 1 → Robinsons | 2.4 km | 3.3 km | ₱18 → ₱20 |
-
-The booking panel quotes nothing until the route resolves, so the fare shown is
-always the fare charged. If the OSRM public server is unreachable the app falls
-back to the straight line scaled by that 1.32 factor and labels the figure
-`(approx)` rather than silently quoting a wrong number.
+For authentication and user registration details, see [AUTH.md](AUTH.md).
 
 ## Scripts
 
