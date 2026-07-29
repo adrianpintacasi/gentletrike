@@ -76,7 +76,7 @@ function MainApp({
   const canUseRiderMode = user.role === 'rider' || user.role === 'admin';
   const isPassenger = user.role === 'passenger' || user.role === 'admin';
   // Navigation & Modal States
-  const [isDriverMode, setIsDriverMode] = useState(false);
+  const [isDriverMode, setIsDriverMode] = useState(user.role === 'rider');
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isAiGuideOpen, setIsAiGuideOpen] = useState(false);
   const [isFareGuideOpen, setIsFareGuideOpen] = useState(false);
@@ -263,10 +263,10 @@ function MainApp({
 
   // Auto-enter driver mode for riders upon login
   useEffect(() => {
-    if (user.role === 'rider' && !myDriver && !isDriverMode) {
+    if (user.role === 'rider' && !myDriver) {
       void enterDriverMode();
     }
-  }, [user.role, myDriver, isDriverMode, enterDriverMode]);
+  }, [user.role, myDriver, enterDriverMode]);
 
 
   // Publish this phone's real GPS while on duty, so passengers watching the map
