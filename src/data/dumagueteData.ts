@@ -124,6 +124,14 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lng: 123.2657,
     popularFor: 'Bypass road junction',
   },
+  {
+    id: 'ceres_bus_terminal',
+    name: 'Ceres Bus Terminal',
+    address: 'Dumaguete City',
+    lat: 9.2995,
+    lng: 123.3054,
+    popularFor: 'Provincial bus terminal for Ceres Liner routes',
+  },
 ];
 
 export const INITIAL_DRIVERS: Driver[] = [

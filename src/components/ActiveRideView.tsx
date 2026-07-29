@@ -407,12 +407,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+        <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
           <button
             onClick={onCancelRide}
             className={`${
               isAccepted ? 'w-1/2' : 'w-full'
-            } py-2.5 border border-gray-200 hover:bg-gray-100 text-gray-800 font-bold text-xs rounded-xl transition`}
+            } py-2.5 border-2 border-rose-200 hover:bg-rose-50 text-rose-700 font-bold text-xs rounded-xl transition`}
           >
             Cancel Trip
           </button>

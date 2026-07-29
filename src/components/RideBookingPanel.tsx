@@ -452,19 +452,19 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
       {/* Render options ONLY when both pickup and dropoff are identified */}
       {pickup && dropoff ? (
         <>
-          {/* Passengers Selector */}
+          {/* Passengers Selector - Simplified to reduce cognitive load */}
           <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-700 block mb-2 flex items-center gap-1.5">
               <Users className="w-4 h-4 text-gray-700" />
               <span>Number of Passengers:</span>
             </label>
             <div className="flex items-center gap-1.5">
-              {[1, 2, 3, 4, 5, 6].map((num) => (
+              {[1, 2, 3, 4].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => onChangePassengers(num)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-extrabold transition ${
+                  className={`flex-1 py-2 rounded-lg text-sm font-extrabold transition ${
                     passengers === num
                       ? 'bg-gray-900 text-amber-400 shadow-xs ring-2 ring-gray-900/10'
                       : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
@@ -473,6 +473,17 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   {num}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => onChangePassengers(passengers >= 5 ? 1 : 5)}
+                className={`flex-1 py-2 rounded-lg text-sm font-extrabold transition ${
+                  passengers >= 5
+                    ? 'bg-gray-900 text-amber-400 shadow-xs ring-2 ring-gray-900/10'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {passengers >= 5 ? passengers : '5+'}
+              </button>
             </div>
           </div>
 
@@ -512,12 +523,17 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   <div
                     key={mode}
                     onClick={() => onSelectVehicle(mode)}
-                    className={`p-3.5 rounded-xl cursor-pointer transition-all ${
+                    className={`p-3.5 rounded-xl cursor-pointer transition-all relative ${
                       isSelected
                         ? 'bg-amber-50 text-gray-900 border-2 border-amber-400 shadow-sm'
                         : 'bg-white border border-gray-200 hover:border-gray-300'
                     }`}
                   >
+                    {mode === 'pedicab_standard' && (
+                      <span className="absolute -top-2 -right-2 bg-amber-400 text-gray-900 text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+                        POPULAR
+                      </span>
+                    )}
                     <div className="flex justify-between items-center gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-xl shrink-0 border border-gray-200">
@@ -622,12 +638,12 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
             />
           </div>
 
-          {/* Big Action CTA Button */}
-          <div className="pt-1">
+          {/* Big Action CTA Button - Primary action, made larger and more prominent */}
+          <div className="pt-2">
             <button
               onClick={onBookRide}
               disabled={isBooking || !hasRoute}
-              className="w-full py-3.5 rounded-xl font-bold text-sm bg-amber-400 hover:bg-amber-300 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-900 cursor-pointer shadow-md transition active:scale-95 flex items-center justify-center gap-2"
+              className="w-full py-4 rounded-xl font-extrabold text-lg bg-amber-400 hover:bg-amber-300 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-900 cursor-pointer shadow-lg transition active:scale-95 flex items-center justify-center gap-2.5"
             >
               {isBooking ? (
                 <span>Sending your request...</span>

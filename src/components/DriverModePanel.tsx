@@ -36,6 +36,9 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   onAdvanceRideStatus,
   onToggleOnline,
 }) => {
+  // Loading state for online toggle
+  const [isTogglingOnline, setIsTogglingOnline] = React.useState(false);
+
   // Earnings and trip counts are the server's numbers, credited on completion.
   const earningsToday = currentDriver.earningsToday ?? 0;
   const tripsCompletedToday = currentDriver.tripsToday ?? 0;
@@ -52,6 +55,16 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   );
 
   const currentCapacityCount = acceptedPooledRides.reduce((sum, r) => sum + r.passengers, 0);
+
+  const handleToggleOnline = async () => {
+    if (isTogglingOnline) return;
+    setIsTogglingOnline(true);
+    try {
+      await onToggleOnline(!currentDriver.isOnline);
+    } finally {
+      setIsTogglingOnline(false);
+    }
+  };
 
   // Was hardcoded to 6, which is only right for a pedicab — a habal-habal seats
   // one and an EasyRide twelve. Same number the server enforces on accept.
@@ -115,15 +128,25 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
         </div>
 
         <button
-          onClick={() => onToggleOnline(!currentDriver.isOnline)}
-          className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-xs font-extrabold shadow-xs transition active:scale-95 ${
+          onClick={handleToggleOnline}
+          disabled={isTogglingOnline}
+          className={`flex min-h-12 shrink-0 items-center gap-2.5 rounded-xl px-5 text-sm font-extrabold shadow-sm transition active:scale-95 ${
             currentDriver.isOnline
               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
               : 'bg-rose-600 text-white hover:bg-rose-700'
-          }`}
+          } ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
         >
-          <Power className="h-4 w-4" />
-          <span>{currentDriver.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+          {isTogglingOnline ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>{currentDriver.isOnline ? 'GOING OFFLINE...' : 'GOING ONLINE...'}</span>
+            </>
+          ) : (
+            <>
+              <Power className="h-4 w-4" />
+              <span>{currentDriver.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+            </>
+          )}
         </button>
       </div>
 
@@ -226,13 +249,13 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                           if (opening) void markRead(ride.id);
                         }}
                         title="Message passenger"
-                        className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition active:scale-95 ${
+                        className={`relative flex h-10 w-10 items-center justify-center rounded-lg transition active:scale-95 ${
                           chatRideId === ride.id
                             ? 'bg-amber-400 text-gray-900'
                             : 'bg-gray-700 text-amber-300 hover:bg-gray-600'
                         }`}
                       >
-                        <MessageSquare className="h-4 w-4" />
+                        <MessageSquare className="h-5 w-5" />
                         {(unread[ride.id] ?? 0) > 0 && chatRideId !== ride.id && (
                           <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
                             {unread[ride.id]}
@@ -277,9 +300,17 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
       {!currentDriver.isOnline ? (
         /* OFFLINE STATUS CARD - Nothing / No requests appear when offline */
         <div className="p-8 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-3 shadow-xs">
-          <div className="w-12 h-12 bg-rose-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-            <Power className="w-6 h-6" />
-          </div>
+          <button
+            onClick={handleToggleOnline}
+            disabled={isTogglingOnline}
+            className={`w-12 h-12 bg-rose-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {isTogglingOnline ? (
+              <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Power className="w-6 h-6" />
+            )}
+          </button>
           <div>
             <h4 className="font-extrabold text-base text-rose-950">Rider Status: OFFLINE</h4>
             <p className="text-xs text-rose-800 mt-1 max-w-sm mx-auto font-medium">
@@ -287,11 +318,23 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
             </p>
           </div>
           <button
-            onClick={() => onToggleOnline(true)}
-            className="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-sm transition active:scale-95 inline-flex items-center gap-1.5"
+            onClick={handleToggleOnline}
+            disabled={isTogglingOnline}
+            className={`mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-sm transition active:scale-95 inline-flex items-center gap-1.5 ${
+              isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
           >
-            <Power className="w-3.5 h-3.5" />
-            <span>Go Online Now</span>
+            {isTogglingOnline ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Going Online...</span>
+              </>
+            ) : (
+              <>
+                <Power className="w-3.5 h-3.5" />
+                <span>Go Online Now</span>
+              </>
+            )}
           </button>
         </div>
       ) : (
@@ -324,7 +367,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                    breathing room. Route, price and both actions in three rows. */
                 <div
                   key={req.id}
-                  className="rounded-xl border border-gray-200 bg-white p-3 transition hover:border-amber-400"
+                  className="rounded-xl border border-gray-200 bg-white p-3 transition hover:border-amber-400 hover:bg-amber-50 hover:shadow-md"
                 >
                   <div className="flex gap-2.5">
                     <div className="flex flex-col items-center pt-1">
@@ -375,15 +418,15 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                     {req.notes ? ` · "${req.notes}"` : ''}
                   </p>
 
-                  {/* 40px targets: comfortably tappable while keeping the card
-                      compact. Accept takes the remaining width so the
-                      destructive choice is never the easier tap. */}
+                  {/* 48px targets: larger touch targets for rapid driver decisions.
+                      Accept takes the remaining width so the destructive choice
+                      is never the easier tap. */}
                   <div className="mt-2 flex gap-2">
                     <button
                       onClick={() => onDeclineRequest(req.id)}
-                      className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-bold text-rose-700 transition active:scale-95 hover:bg-rose-50"
+                      className="flex h-12 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-700 transition active:scale-95 hover:bg-rose-200 hover:border-rose-400 hover:shadow-sm"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                       <span>Decline</span>
                     </button>
                     <button
@@ -392,9 +435,9 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                         // not on acceptance — otherwise every ride counts twice.
                         onAcceptRequest(req.id);
                       }}
-                      className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-400 text-sm font-extrabold text-gray-900 shadow-xs transition active:scale-95 hover:bg-amber-300"
+                      className="flex h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 text-base font-extrabold text-gray-900 shadow-sm transition active:scale-95 hover:bg-amber-500 hover:shadow-md"
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-5 w-5" />
                       <span>Accept</span>
                     </button>
                   </div>
