@@ -684,13 +684,13 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         </div>
       )}
 
-      {/* Recenter View Button */}
+      {/* Recenter View Button - Larger for mobile touch targets */}
       <div className="absolute top-4 right-4 z-10">
         <button
           onClick={handleCenterDumaguete}
-          className="bg-white hover:bg-gray-50 text-gray-900 font-bold text-xs px-3.5 py-2.5 rounded-xl shadow-md border border-gray-200 flex items-center gap-1.5 transition active:scale-95"
+          className="bg-white hover:bg-gray-50 text-gray-900 font-bold text-sm px-4 py-3 rounded-xl shadow-md border border-gray-200 flex items-center gap-2 transition active:scale-95"
         >
-          <span>🎯</span>
+          <span className="text-base">🎯</span>
           <span className="hidden sm:inline">Center</span>
         </button>
       </div>
