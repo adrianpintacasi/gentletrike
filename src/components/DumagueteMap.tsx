@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Driver, LocationPoint, RideBooking } from '../types';
 import { getStreetRoute, LatLng } from '../utils/dumagueteRouting';
+import { sequenceStops } from '../../shared/dispatch';
 
 interface DumagueteMapProps {
   pickup: LocationPoint | null;
@@ -175,14 +176,29 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         { lat: dropoff.lat, lng: dropoff.lng },
       ];
     } else if (pooledRides.length > 0 && isDriverMode) {
+      // One route through every stop, ordered as the rider will actually drive
+      // it. Stringing each trip's pickup and drop-off together in acceptance
+      // order drew a zigzag: out to the first drop-off, back for the second
+      // pickup. Interleaving the stops is the whole point of pooling.
       waypoints = [];
-      if (driverLocation) {
-        waypoints.push({ lat: driverLocation.lat, lng: driverLocation.lng });
-      }
-      pooledRides.forEach((r) => {
-        waypoints.push({ lat: r.pickupLocation.lat, lng: r.pickupLocation.lng });
-        waypoints.push({ lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng });
-      });
+      const from = driverLocation
+        ? { lat: driverLocation.lat, lng: driverLocation.lng }
+        : { lat: pooledRides[0].pickupLocation.lat, lng: pooledRides[0].pickupLocation.lng };
+
+      if (driverLocation) waypoints.push(from);
+
+      sequenceStops(
+        from,
+        pooledRides.map((r) => ({
+          rideId: r.id,
+          // A passenger already aboard has no pickup left to make.
+          pickup:
+            r.status === 'in_transit'
+              ? null
+              : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
+          dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
+        }))
+      ).forEach((s) => waypoints.push(s.at));
     }
 
     if (waypoints.length >= 2) {
@@ -319,15 +335,16 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         }
       }
 
-      // Each pooled passenger becomes two map pins along the route: green to
-      // collect them, red to drop them. The numbered badge keeps the pair
-      // identifiable when several passengers are aboard, without the map
-      // turning into a wall of text labels.
-      pooledRides.forEach((ride, idx) => {
-        const pin = (colour: string, seat: number) =>
-          L.divIcon({
-            className: colour === 'emerald' ? 'pooled-pickup-pin' : 'pooled-dropoff-pin',
-            html: `
+      // Green collects, red sets down, and the badge is the PASSENGER — so a
+      // rider glancing at a red pin knows immediately who gets off there.
+      // Numbering by stop position instead would give one passenger's pickup
+      // and drop-off two different numbers, which is the one thing the badge
+      // needs to make obvious. Driving order lives in the route line, the
+      // panel list, and each pin's tooltip.
+      const pin = (colour: 'emerald' | 'red', passenger: number) =>
+        L.divIcon({
+          className: colour === 'emerald' ? 'pooled-pickup-pin' : 'pooled-dropoff-pin',
+          html: `
               <div class="relative filter drop-shadow-md">
                 <svg class="w-9 h-9 ${
                   colour === 'emerald' ? 'text-emerald-600' : 'text-red-600'
@@ -335,32 +352,58 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
                   <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
                 </svg>
                 <span class="absolute inset-x-0 top-[6px] text-center text-[11px] font-black text-white">
-                  ${seat}
+                  ${passenger}
                 </span>
               </div>
             `,
-            iconSize: [36, 36],
-            iconAnchor: [18, 36],
-          });
+          iconSize: [36, 36],
+          iconAnchor: [18, 36],
+        });
 
-        const pMarker = L.marker([ride.pickupLocation.lat, ride.pickupLocation.lng], {
-          icon: pin('emerald', idx + 1),
+      const ridesById = new Map(pooledRides.map((r) => [r.id, r]));
+      const origin = driverLocation
+        ? { lat: driverLocation.lat, lng: driverLocation.lng }
+        : { lat: pooledRides[0].pickupLocation.lat, lng: pooledRides[0].pickupLocation.lng };
+
+      const sequence = sequenceStops(
+        origin,
+        pooledRides.map((r) => ({
+          rideId: r.id,
+          pickup:
+            r.status === 'in_transit'
+              ? null
+              : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
+          dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
+        }))
+      );
+
+      // Passengers are numbered by whoever the rider reaches first — the same
+      // rule the panel list uses, so "Passenger 2" means the same thing in both.
+      const passengerNumber = new Map<string, number>();
+      for (const stop of sequence) {
+        if (!passengerNumber.has(stop.rideId)) {
+          passengerNumber.set(stop.rideId, passengerNumber.size + 1);
+        }
+      }
+
+      sequence.forEach((stop) => {
+        const ride = ridesById.get(stop.rideId);
+        if (!ride) return;
+
+        const isPickup = stop.kind === 'pickup';
+        const place = isPickup ? ride.pickupLocation : ride.dropoffLocation;
+        const who = passengerNumber.get(stop.rideId) ?? 1;
+
+        const marker = L.marker([stop.at.lat, stop.at.lng], {
+          icon: pin(isPickup ? 'emerald' : 'red', who),
         })
           .addTo(map)
-          .bindTooltip(`Pick up #${idx + 1}: ${ride.pickupLocation.name}`, {
-            direction: 'top',
-          });
+          .bindTooltip(
+            `Stop ${stop.order} · ${isPickup ? 'Pick up' : 'Drop off'} passenger ${who} · ${place.name}`,
+            { direction: 'top' }
+          );
 
-        const dMarker = L.marker([ride.dropoffLocation.lat, ride.dropoffLocation.lng], {
-          icon: pin('red', idx + 1),
-        })
-          .addTo(map)
-          .bindTooltip(`Drop off #${idx + 1}: ${ride.dropoffLocation.name}`, {
-            direction: 'top',
-          });
-
-        markersRef.current[`pooled_p_${ride.id}`] = pMarker;
-        markersRef.current[`pooled_d_${ride.id}`] = dMarker;
+        markersRef.current[`pooled_${stop.kind}_${ride.id}`] = marker;
       });
     } else {
       // Passenger mode deliberately shows no roaming pedicabs. Only the rider

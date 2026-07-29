@@ -109,7 +109,9 @@ function MainApp({
   >(null);
   const lastFixRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
-  const [incomingRequests, setIncomingRequests] = useState<RideBooking[]>([]);
+  // Server-ranked: only trips this rider's vehicle can serve, that fit their
+  // remaining seats, and that are worth the diversion from their current route.
+  const [incomingRequests, setIncomingRequests] = useState<api.OpenRide[]>([]);
   const [acceptedPooledRides, setAcceptedPooledRides] = useState<RideBooking[]>([]);
 
   const showToast = useCallback((msg: string) => {

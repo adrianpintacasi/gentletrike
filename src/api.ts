@@ -219,8 +219,24 @@ export const createRide = (input: CreateRideInput) =>
 export const getRide = (rideId: string) =>
   request<{ ride: RideBooking }>(`/rides/${rideId}`).then((r) => r.ride);
 
+/**
+ * An open trip, with how well it fits the rider's current route.
+ *
+ * The server scores these — the queue a rider sees is already filtered to trips
+ * their vehicle can serve, that fit their remaining seats, and that are worth
+ * the diversion.
+ */
+export interface OpenRide extends RideBooking {
+  /** Extra distance to serve this trip on top of the current route, in km. */
+  detourKm?: number;
+  /** Straight-line distance from the rider to the pickup, in km. */
+  pickupDistanceKm?: number;
+  /** Close enough to the current route to be worth badging. */
+  alongTheWay?: boolean;
+}
+
 export const listOpenRides = (driverId: string) =>
-  request<{ rides: RideBooking[] }>(
+  request<{ rides: OpenRide[] }>(
     `/rides/open?driverId=${encodeURIComponent(driverId)}`
   ).then((r) => r.rides);
 

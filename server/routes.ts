@@ -22,6 +22,8 @@ import {
   tx,
 } from "./db";
 import type { DriverRow, RideRow } from "./db";
+import { rankCandidates, type Stop } from "../shared/dispatch";
+import { VEHICLE_DETAILS, type TransportMode } from "../shared/transport";
 
 export const api = Router();
 
@@ -319,7 +321,80 @@ api.get(
       driverId
     );
 
-    res.json({ rides: rows.map((r) => toRide(r, null)) });
+    // Anonymous caller (or a driver we cannot locate): fall back to the old
+    // behaviour rather than hiding work from them.
+    const driver = driverId ? await findDriver(driverId) : null;
+    if (!driver || !Number.isFinite(driver.current_lat)) {
+      return res.json({ rides: rows.map((r) => toRide(r, null)) });
+    }
+
+    // A rider can only serve trips their vehicle was requested for — a
+    // habal-habal has no business seeing a 10-seat EasyRide booking.
+    const matching = rows.filter((r) => r.vehicle_type === driver.vehicle_type);
+
+    // The rider's committed stops are what "along the way" is measured against.
+    const active = await selectAll<RideRow>(
+      `SELECT * FROM rides
+        WHERE driver_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})
+        ORDER BY created_at ASC`,
+      driver.id,
+      ...LIVE_STATUSES
+    );
+
+    const committed: Stop[] = active.flatMap((r) => {
+      const pickup = JSON.parse(r.pickup);
+      const dropoff = JSON.parse(r.dropoff);
+      return [
+        // A trip already under way has been collected, so only the drop-off is
+        // still ahead of the rider; counting the pickup would drag the route
+        // backwards to a place they have already been.
+        ...(r.status === "in_transit"
+          ? []
+          : [{ at: { lat: pickup.lat, lng: pickup.lng }, kind: "pickup" as const, rideId: r.id }]),
+        { at: { lat: dropoff.lat, lng: dropoff.lng }, kind: "dropoff" as const, rideId: r.id },
+      ];
+    });
+
+    const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
+    const seatsAvailable = Math.max(
+      0,
+      (VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1) - seatsTaken
+    );
+
+    const riderAt = { lat: driver.current_lat, lng: driver.current_lng };
+
+    const scores = rankCandidates(
+      riderAt,
+      committed,
+      matching.map((r) => {
+        const pickup = JSON.parse(r.pickup);
+        const dropoff = JSON.parse(r.dropoff);
+        return {
+          rideId: r.id,
+          pickup: { lat: pickup.lat, lng: pickup.lng },
+          dropoff: { lat: dropoff.lat, lng: dropoff.lng },
+          passengers: r.passengers || 1,
+        };
+      }),
+      { seatsAvailable }
+    );
+
+    const byId = new Map(matching.map((r) => [r.id, r]));
+
+    // Cheapest first, but nothing is hidden except no-seats and trips that run
+    // genuinely the wrong way. Hiding on a tight detour emptied the queue the
+    // moment a rider accepted anyone, which defeats pooling — the rider judges
+    // whether a diversion is worth it, we just state the cost and the order.
+    const rides = scores
+      .filter((s) => s.eligible)
+      .map((s) => ({
+        ...toRide(byId.get(s.rideId)!, null),
+        detourKm: Math.round(s.detourKm * 100) / 100,
+        pickupDistanceKm: Math.round(s.pickupDistanceKm * 100) / 100,
+        alongTheWay: s.alongTheWay,
+      }));
+
+    res.json({ rides });
   })
 );
 
@@ -381,6 +456,34 @@ api.post(
 
     const driver = await findDriver(driverId);
     if (!driver) return res.status(404).json({ error: "Driver not found" });
+
+    const wanted = await findRide(req.params.id);
+    if (!wanted) return res.status(404).json({ error: "Ride not found" });
+
+    if (wanted.vehicle_type !== driver.vehicle_type) {
+      return res.status(409).json({
+        error: `This passenger requested a ${wanted.vehicle_type.replace(/_/g, " ")}, not a ${driver.vehicle_type.replace(/_/g, " ")}`,
+      });
+    }
+
+    // Pooling means one rider can hold several trips, so seats have to be
+    // counted across all of them. Checked here rather than in the UI: the
+    // client's view of the queue is a snapshot, and two accepts a second apart
+    // could each look fine while together they overfill the sidecar.
+    const active = await selectAll<RideRow>(
+      `SELECT passengers FROM rides
+        WHERE driver_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})`,
+      driverId,
+      ...LIVE_STATUSES
+    );
+    const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
+    const seats = VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+
+    if (seatsTaken + (wanted.passengers || 1) > seats) {
+      return res.status(409).json({
+        error: `Not enough seats — you are carrying ${seatsTaken} of ${seats} and this trip needs ${wanted.passengers || 1}`,
+      });
+    }
 
     const result = await run(
       `UPDATE rides

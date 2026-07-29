@@ -21,7 +21,9 @@
     "embed": "tsx scripts/embed.ts",
     "embed:dry": "tsx scripts/embed.ts --dry-run",
     "kb:search": "tsx scripts/kb-search.ts",
-    "test:cancel": "tsx scripts/cancel-race-test.ts"
+    "test:cancel": "tsx scripts/cancel-race-test.ts",
+    "dispatch:test": "tsx scripts/dispatch-test.ts",
+    "dispatch:debug": "tsx scripts/dispatch-debug.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
