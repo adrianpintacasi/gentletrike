@@ -58,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="flex items-center gap-1.5 bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-bold text-xs px-3 py-2 rounded-xl transition shadow-xs active:scale-95"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Gently</span>
+            <span className="hidden sm:inline">Ask Gently</span>
           </button>
 
           {user.role === 'admin' && (

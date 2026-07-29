@@ -10,6 +10,8 @@ interface DumagueteMapProps {
   dropoff: LocationPoint | null;
   activeDriver?: Driver | null;
   driverLocation?: { lat: number; lng: number } | null;
+  /** The passenger's own device, drawn as a heading arrow on their map. */
+  passengerLocation?: { lat: number; lng: number; heading: number | null } | null;
   /** Compass heading of the rider's own device, for the arrow in driver mode. */
   driverHeading?: number | null;
   rideStatus?: string;
@@ -25,6 +27,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   dropoff,
   activeDriver,
   driverLocation,
+  passengerLocation,
   driverHeading,
   rideStatus,
   pooledRides = [],
@@ -436,6 +439,43 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         const driverMarker = L.marker([lat, lng], { icon: driverIcon }).addTo(map);
         markersRef.current[`active_driver_${activeDriver.id}`] = driverMarker;
       }
+
+      /**
+       * The passenger's own device.
+       *
+       * Hidden once the trip is `in_transit`: at that point they are sitting in
+       * the trike, so two markers would drift apart on GPS noise and imply the
+       * passenger is somewhere the trike is not. The rider's marker already
+       * reads "ONBOARD" and stands for both of them.
+       */
+      if (passengerLocation && !isInTransit) {
+        const rotation = passengerLocation.heading ?? 0;
+
+        const meIcon = L.divIcon({
+          className: 'custom-me-pin',
+          html: `
+            <div class="gt-me-arrow" style="transform: rotate(${rotation}deg);">
+              <svg viewBox="0 0 40 40" width="34" height="34" fill="none">
+                <circle cx="20" cy="20" r="18" fill="#3b82f6" fill-opacity="0.15"/>
+                <path d="M20 3 L27 15 L20 12 L13 15 Z" fill="#2563eb"/>
+                <circle cx="20" cy="21" r="8" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+              </svg>
+            </div>
+          `,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+        });
+
+        const meMarker = L.marker([passengerLocation.lat, passengerLocation.lng], {
+          icon: meIcon,
+          // Below the pickup and rider pins — useful context, not the subject.
+          zIndexOffset: -100,
+        })
+          .addTo(map)
+          .bindTooltip('You are here', { direction: 'top' });
+
+        markersRef.current['my_passenger'] = meMarker;
+      }
     }
 
     // 5. Draw Street-Aligned Route Polyline
@@ -474,6 +514,10 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     routeStreetCoords,
     isDriverMode,
     pooledRides,
+    // Redraws the passenger's arrow as they move and turn.
+    passengerLocation?.lat,
+    passengerLocation?.lng,
+    passengerLocation?.heading,
   ]);
 
   // Rotate the rider's arrow from the phone's compass, in real time, so it

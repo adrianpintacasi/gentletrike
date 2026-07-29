@@ -23,7 +23,9 @@
     "kb:search": "tsx scripts/kb-search.ts",
     "test:cancel": "tsx scripts/cancel-race-test.ts",
     "dispatch:test": "tsx scripts/dispatch-test.ts",
-    "dispatch:debug": "tsx scripts/dispatch-debug.ts"
+    "dispatch:debug": "tsx scripts/dispatch-debug.ts",
+    "area:test": "tsx scripts/service-area-test.ts",
+    "chat:test": "tsx scripts/chat-test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

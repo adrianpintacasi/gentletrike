@@ -197,6 +197,31 @@ export const updateDriver = (
 export const listDriverRides = (driverId: string) =>
   request<{ rides: RideBooking[] }>(`/drivers/${driverId}/rides`).then((r) => r.rides);
 
+/* ---------------------------------------------------------------- geocoding */
+
+export interface GeocodeResult {
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
+/**
+ * Free-text place search, already filtered to places GentleTrike can reach.
+ * Returns an empty list rather than throwing when the provider is unreachable,
+ * so the curated pickup points remain usable offline.
+ */
+export const searchPlaces = (q: string) =>
+  request<{ results: GeocodeResult[] }>(`/geocode/search?q=${encodeURIComponent(q)}`)
+    .then((r) => r.results)
+    .catch(() => [] as GeocodeResult[]);
+
+/** Turn a dropped pin or a GPS fix into a street or place name. */
+export const reverseGeocode = (lat: number, lng: number) =>
+  request<{ place: GeocodeResult; inServiceArea: boolean }>(
+    `/geocode/reverse?lat=${lat}&lng=${lng}`
+  );
+
 /* ------------------------------------------------------------------- rides */
 
 export interface CreateRideInput {

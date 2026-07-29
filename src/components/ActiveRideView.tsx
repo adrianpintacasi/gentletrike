@@ -1,9 +1,20 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ChatMessage, RideBooking } from '../types';
-import { Phone, MessageSquare, ShieldAlert, Star, Send, X, AlertTriangle } from 'lucide-react';
+import {
+  Phone,
+  MessageSquare,
+  ShieldAlert,
+  Star,
+  Send,
+  X,
+  AlertTriangle,
+  BadgeCheck,
+} from 'lucide-react';
 import { TmoReportModal } from './TmoReportModal';
 import * as api from '../api';
 import { usePolling } from '../hooks/usePolling';
+import { getStreetRoute } from '../utils/dumagueteRouting';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
 
 interface ActiveRideViewProps {
   ride: RideBooking;
@@ -28,6 +39,56 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
   const [showSosModal, setShowSosModal] = useState(false);
   const [showTmoModal, setShowTmoModal] = useState(false);
   const [tipAmount, setTipAmount] = useState<number>(0);
+
+  /**
+   * How far the rider still is from the pickup, by road.
+   *
+   * Only meaningful before the passenger is aboard — after that the rider is
+   * with them and the trip's own distance is the number that matters. Uses the
+   * same route cache the map fills, so this rarely costs a request.
+   */
+  const [approach, setApproach] = useState<{ km: number; minutes: number } | null>(null);
+  const awaitingPickup = ride.status === 'driver_assigned' || ride.status === 'driver_arriving';
+
+  useEffect(() => {
+    const rider = ride.assignedDriver;
+    if (!awaitingPickup || !rider) {
+      setApproach(null);
+      return;
+    }
+
+    let cancelled = false;
+    getStreetRoute([
+      { lat: rider.currentLat, lng: rider.currentLng },
+      { lat: ride.pickupLocation.lat, lng: ride.pickupLocation.lng },
+    ])
+      .then((route) => {
+        if (cancelled) return;
+        setApproach({
+          km: Math.round(route.distanceKm * 100) / 100,
+          minutes: Math.max(1, route.durationMin),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setApproach(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    awaitingPickup,
+    ride.assignedDriver?.currentLat,
+    ride.assignedDriver?.currentLng,
+    ride.pickupLocation.lat,
+    ride.pickupLocation.lng,
+  ]);
+
+  // Polled in the background so a rider's message is announced even while the
+  // chat panel is closed — otherwise nothing is listening and no badge appears.
+  const chatRideIds = React.useMemo(() => (ride.assignedDriver ? [ride.id] : []), [ride.id, ride.assignedDriver]);
+  const { unread, markRead } = useUnreadMessages(chatRideIds, 'user');
+  const unreadFromRider = unread[ride.id] ?? 0;
 
   // The driver is typing on another device, so the thread has to be polled.
   const pollMessages = useCallback(async () => {
@@ -99,45 +160,51 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
     <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-5 md:p-6 text-gray-900 flex flex-col gap-4">
       {/* Live status + distance header */}
       <div className="bg-gray-900 text-white p-4 rounded-xl border border-gray-800 flex flex-col gap-3">
+        {/* Status gets the row to itself — sharing it with two chips and a
+            button truncated it to "RIDER ARRIVING AT PI...". Only SOS stays up
+            here, because in an emergency it must be the obvious thing to hit. */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex min-w-0 items-center gap-2.5">
             <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
             </span>
-            <h3 className="font-bold text-xs text-amber-400 uppercase tracking-wider truncate">
+            <h3 className="truncate text-xs font-bold uppercase tracking-wider text-amber-400">
               {STATUS_LABEL[ride.status] ?? 'Trip in progress'}
             </h3>
           </div>
 
-          {/* Distance + ETA chips, up top with the status */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="bg-white/10 text-white text-[11px] font-bold px-2 py-1 rounded-lg">
-              {ride.distanceKm} km
-            </span>
-            {ride.estimatedMinutes > 0 && (
-              <span className="bg-amber-400 text-gray-900 text-[11px] font-extrabold px-2 py-1 rounded-lg">
-                ~{ride.estimatedMinutes} min
-              </span>
-            )}
-            {isAccepted && (
-              <button
-                onClick={() => setShowSosModal(true)}
-                className="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-xs transition active:scale-95 flex items-center gap-1"
-                title="Emergency"
-              >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>SOS</span>
-              </button>
-            )}
-          </div>
+          {isAccepted && (
+            <button
+              onClick={() => setShowSosModal(true)}
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-xs transition active:scale-95 hover:bg-rose-700"
+              title="Emergency"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              <span>SOS</span>
+            </button>
+          )}
         </div>
 
         {/* Route line */}
-        <p className="text-xs text-gray-300 font-medium truncate">
+        <p className="truncate text-xs font-medium text-gray-300">
           {ride.pickupLocation.name} <span className="text-amber-400">➔</span>{' '}
           {ride.dropoffLocation.name}
         </p>
+
+        {/* Before pickup these answer "how far away is my rider?"; once aboard
+            they switch to the trip itself. Trip length is the wrong number for
+            someone waiting on the kerb. */}
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-lg bg-white/10 px-2 py-1 text-[11px] font-bold text-white">
+            {approach ? `${approach.km} km away` : `${ride.distanceKm} km trip`}
+          </span>
+          {(approach?.minutes ?? ride.estimatedMinutes) > 0 && (
+            <span className="rounded-lg bg-amber-400 px-2 py-1 text-[11px] font-extrabold text-gray-900">
+              {approach ? `${approach.minutes} min away` : `~${ride.estimatedMinutes} min`}
+            </span>
+          )}
+        </div>
 
         {/* Interactive stage progress: fills as the trip advances */}
         <div className="flex items-center gap-1.5">
@@ -164,41 +231,81 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
             <img
               src={driver.avatar}
               alt={driver.name}
-              className="w-12 h-12 rounded-xl object-cover border border-amber-300 shadow-xs shrink-0"
+              className="h-16 w-16 shrink-0 rounded-xl border border-amber-300 object-cover shadow-xs"
             />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h4 className="font-bold text-sm text-gray-900 truncate">{driver.name}</h4>
-                <span className="text-[10px] bg-gray-900 text-amber-400 font-bold px-2 py-0.5 rounded-md shrink-0">
+              {/* Name and unit share a line — the unit is what a passenger
+                  matches against the trike pulling up, so it should be read in
+                  the same glance as the name. */}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <h4 className="truncate text-sm font-bold text-gray-900">{driver.name}</h4>
+                <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[11px] font-extrabold tracking-wide text-amber-400">
                   {driver.unitNumber}
                 </span>
+                {/* Riders register a unit but never a plate, so plate_number is
+                    the literal string "TBD" — shown only when it is real. */}
+                {driver.plateNumber && driver.plateNumber !== 'TBD' && (
+                  <span className="rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-bold text-gray-700">
+                    {driver.plateNumber}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-gray-600 font-medium truncate">
-                Plate: {driver.plateNumber} • {driver.tripsCompleted} trips
-              </p>
-              <div className="flex items-center gap-1 text-xs font-bold text-gray-800 mt-0.5">
-                <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                <span>{driver.rating} Rating</span>
+
+              {/* A TMO officer has checked this rider's papers. Worth saying
+                  plainly to someone about to get into a stranger's vehicle. */}
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
+                <BadgeCheck className="h-4 w-4 shrink-0" />
+                <span>Verified Dumaguete Rider</span>
+              </div>
+
+              <div className="mt-1 flex items-center gap-2 text-xs font-medium text-gray-600">
+                <span className="flex items-center gap-1 font-bold text-gray-800">
+                  <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                  {driver.rating}
+                </span>
+                <span>·</span>
+                <span>{driver.tripsCompleted} trips</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <a
-              href={`tel:${driver.phone}`}
-              className="p-2.5 bg-gray-900 text-amber-400 rounded-xl hover:bg-black transition active:scale-95 shadow-xs"
-              title="Call Rider"
-            >
-              <Phone className="w-4 h-4" />
-            </a>
+            {/* Riders sign up without a phone number, so `phone` is often the
+                placeholder "—". A tel: link to that dials nothing, which looks
+                like the app is broken rather than the number being missing. */}
+            {driver.phone && driver.phone !== '—' ? (
+              <a
+                href={`tel:${driver.phone}`}
+                className="rounded-xl bg-gray-900 p-2.5 text-amber-400 shadow-xs transition active:scale-95 hover:bg-black"
+                title={`Call ${driver.name}`}
+              >
+                <Phone className="h-4 w-4" />
+              </a>
+            ) : (
+              <span
+                className="cursor-not-allowed rounded-xl bg-gray-200 p-2.5 text-gray-400"
+                title="This rider has no contact number on file — use chat instead"
+              >
+                <Phone className="h-4 w-4" />
+              </span>
+            )}
             <button
-              onClick={() => setShowChat(!showChat)}
-              className="p-2.5 bg-gray-900 text-amber-400 rounded-xl hover:bg-black transition active:scale-95 shadow-xs relative"
-              title="Chat Rider"
+              onClick={() => {
+                const opening = !showChat;
+                setShowChat(opening);
+                if (opening) void markRead(ride.id);
+              }}
+              className="relative rounded-xl bg-gray-900 p-2.5 text-amber-400 shadow-xs transition active:scale-95 hover:bg-black"
+              title="Chat with your rider"
             >
-              <MessageSquare className="w-4 h-4" />
-              {messages.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full" />
+              <MessageSquare className="h-4 w-4" />
+              {/* Counts only unread messages from the rider. The old dot showed
+                  whenever the thread had any message at all, so it lit up for
+                  conversations already read and meant nothing. */}
+              {unreadFromRider > 0 && !showChat && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                  {unreadFromRider}
+                </span>
               )}
             </button>
           </div>
@@ -207,17 +314,27 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
 
       {/* Chat Window */}
       {showChat && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2 max-h-56 overflow-y-auto animate-fadeIn">
-          <div className="flex items-center justify-between border-b pb-1 text-xs font-bold text-gray-700">
-            <span>In-App Chat with Rider:</span>
+        /* Only the message list scrolls. Previously the whole panel did, so the
+           header and its close button slid out of reach the moment a
+           conversation grew past a few lines. */
+        <div className="animate-fadeIn flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700">
+            <span>Chat with {driver?.name ?? 'your rider'}</span>
             <button
               onClick={() => setShowChat(false)}
-              className="text-gray-400 hover:text-gray-900 text-xs"
+              className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-200 hover:text-gray-900"
+              title="Close chat"
             >
-              Close
+              <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex flex-col gap-2 text-xs">
+
+          <div className="flex max-h-56 flex-col gap-2 overflow-y-auto p-3 text-xs">
+            {messages.length === 0 && (
+              <p className="py-3 text-center text-[11px] font-medium text-gray-500">
+                No messages yet — say hello to your rider.
+              </p>
+            )}
             {messages.map((m) => (
               <div
                 key={m.id}
@@ -235,19 +352,25 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
             ))}
           </div>
 
-          <form onSubmit={handleSendMessage} className="flex items-center gap-2 mt-1">
+          {/* Pinned below the scroll area, so the box to type in is always
+              where the passenger left it. */}
+          <form
+            onSubmit={handleSendMessage}
+            className="flex shrink-0 items-center gap-2 border-t border-gray-200 bg-gray-50 p-2"
+          >
             <input
               type="text"
               value={inputMsg}
               onChange={(e) => setInputMsg(e.target.value)}
               placeholder="Type message..."
-              className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs font-medium focus:outline-none focus:border-amber-400"
+              className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium focus:border-amber-400 focus:outline-none"
             />
             <button
               type="submit"
-              className="p-1.5 bg-gray-900 text-amber-400 rounded-lg hover:bg-black transition"
+              disabled={!inputMsg.trim()}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-amber-400 transition active:scale-95 hover:bg-black disabled:bg-gray-200 disabled:text-gray-400"
             >
-              <Send className="w-4 h-4" />
+              <Send className="h-4 w-4" />
             </button>
           </form>
         </div>

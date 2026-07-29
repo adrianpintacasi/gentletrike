@@ -109,6 +109,14 @@ function MainApp({
   >(null);
   const lastFixRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastHeadingRef = useRef<number | null>(null);
+
+  // The passenger's own GPS, kept separate from the rider's so switching modes
+  // cannot leave one arrow reading the other's heading.
+  const [passengerPosition, setPassengerPosition] = useState<
+    { lat: number; lng: number; heading: number | null } | null
+  >(null);
+  const passengerFixRef = useRef<{ lat: number; lng: number } | null>(null);
+  const passengerHeadingRef = useRef<number | null>(null);
   // Server-ranked: only trips this rider's vehicle can serve, that fit their
   // remaining seats, and that are worth the diversion from their current route.
   const [incomingRequests, setIncomingRequests] = useState<api.OpenRide[]>([]);
@@ -304,6 +312,53 @@ function MainApp({
     return () => navigator.geolocation.clearWatch(watchId);
   }, [isDriverMode, myDriver?.id, myDriver?.isOnline, showToast]);
 
+  /**
+   * The passenger's own position, drawn as a heading arrow on their map.
+   *
+   * Never sent to the server — unlike a rider's location, nobody needs to
+   * track a passenger. It exists so they can see where they are relative to
+   * their pickup point and the approaching trike.
+   *
+   * Silent on failure: a denied permission just means no arrow. The "Use my
+   * location" button explains itself when a passenger asks for it directly;
+   * nagging on page load would not.
+   */
+  useEffect(() => {
+    if (isDriverMode || !isPassenger) return;
+    if (!('geolocation' in navigator)) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // Phones report no heading while stationary, so fall back to the
+        // bearing between fixes. Under 5 m is GPS jitter and would spin the
+        // arrow while the passenger stands still.
+        let heading =
+          typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)
+            ? pos.coords.heading
+            : null;
+
+        const previous = passengerFixRef.current;
+        if (heading === null && previous) {
+          const movedMetres = haversineKm(previous, { lat, lng }) * 1000;
+          if (movedMetres > 5) heading = bearingDegrees(previous, { lat, lng });
+        }
+        if (heading !== null) passengerHeadingRef.current = heading;
+        passengerFixRef.current = { lat, lng };
+
+        setPassengerPosition({ lat, lng, heading: passengerHeadingRef.current });
+      },
+      () => {
+        /* denied or unavailable — the map simply shows no arrow */
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [isDriverMode, isPassenger]);
+
   const pollDriverQueues = useCallback(async () => {
     if (!myDriver?.id) return;
     try {
@@ -338,35 +393,132 @@ function MainApp({
   /** Whichever end is still empty is what the next tap on the map fills. */
   const nextPinTarget: 'pickup' | 'dropoff' = pickup ? 'dropoff' : 'pickup';
 
-  const handleMapClickLocation = (lat: number, lng: number) => {
+  const handleMapClickLocation = async (lat: number, lng: number) => {
     // A booked trip is fixed; stray taps must not move its endpoints.
     if (activeRide) return;
 
-    const coordName = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    const target = nextPinTarget;
+    const id = `map_${target === 'pickup' ? 'p' : 'd'}_${Date.now()}`;
 
-    if (nextPinTarget === 'pickup') {
+    // Drop the pin immediately with a placeholder. Waiting on the lookup would
+    // make the map feel unresponsive, and the coordinates are a truthful label
+    // until something better arrives.
+    const provisional: LocationPoint = {
+      id,
+      name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      address: 'Looking up this place...',
+      lat,
+      lng,
+      isCustomPinned: true,
+    };
+
+    if (target === 'pickup') {
+      setPickup(provisional);
+      showToast('Pickup pinned. Tap the map again to set your drop-off.');
+    } else {
+      setDropoff(provisional);
+      showToast('Drop-off pinned. Tap again to move it.');
+    }
+
+    try {
+      const { place, inServiceArea } = await api.reverseGeocode(lat, lng);
+
+      if (!inServiceArea) {
+        // Outside the city the fare table does not apply and no rider is
+        // listening, so clear it rather than let a passenger book a trip
+        // nobody can serve.
+        if (target === 'pickup') setPickup(null);
+        else setDropoff(null);
+        showToast('That spot is outside Dumaguete City — GentleTrike cannot pick up there.');
+        return;
+      }
+
+      const named: LocationPoint = {
+        id,
+        name: place.name,
+        address: place.address,
+        lat,
+        lng,
+        isCustomPinned: true,
+      };
+
+      // Only rename if the pin is still the one we dropped; the passenger may
+      // have tapped elsewhere while the lookup was in flight.
+      if (target === 'pickup') setPickup((cur) => (cur?.id === id ? named : cur));
+      else setDropoff((cur) => (cur?.id === id ? named : cur));
+    } catch {
+      // Lookup failed — keep the coordinates, which still book correctly.
+      const fallback = { ...provisional, address: 'Pinned directly on the Dumaguete map' };
+      if (target === 'pickup') setPickup((cur) => (cur?.id === id ? fallback : cur));
+      else setDropoff((cur) => (cur?.id === id ? fallback : cur));
+    }
+  };
+
+  /**
+   * Set pickup from the phone's GPS.
+   *
+   * Needs a secure context — HTTPS in production, localhost in development —
+   * and the passenger's permission, so every failure path ends in a message
+   * rather than a silently unchanged form.
+   */
+  const handleUseCurrentLocation = async (): Promise<void> => {
+    if (!('geolocation' in navigator)) {
+      showToast('This device cannot share its location. Pin your pickup on the map instead.');
+      return;
+    }
+
+    let fix: GeolocationPosition;
+    try {
+      fix = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 10000,
+        });
+      });
+    } catch (err) {
+      const code = (err as GeolocationPositionError)?.code;
+      showToast(
+        code === 1
+          ? 'Location permission denied. Pin your pickup on the map instead.'
+          : 'Could not get your location. Pin your pickup on the map instead.'
+      );
+      return;
+    }
+
+    const lat = fix.coords.latitude;
+    const lng = fix.coords.longitude;
+
+    try {
+      const { place, inServiceArea } = await api.reverseGeocode(lat, lng);
+
+      if (!inServiceArea) {
+        showToast('You appear to be outside Dumaguete City — GentleTrike only operates here.');
+        return;
+      }
+
       setPickup({
-        id: `map_p_${Date.now()}`,
-        // The name is shown verbatim in the search field, so keep it plain text.
-        name: `Pinned pickup (${coordName})`,
-        address: 'Pinned directly on the Dumaguete map',
+        id: `gps_${Date.now()}`,
+        name: place.name,
+        address: place.address,
         lat,
         lng,
         isCustomPinned: true,
       });
-      showToast('Pickup pinned. Tap the map again to set your drop-off.');
-      return;
+      // GPS is accurate to tens of metres at best, and worse indoors, so say
+      // what was chosen rather than implying it is exact.
+      showToast(`Pickup set to ${place.name}. Drag the map pin if that is not quite right.`);
+    } catch {
+      setPickup({
+        id: `gps_${Date.now()}`,
+        name: 'My current location',
+        address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+        lat,
+        lng,
+        isCustomPinned: true,
+      });
+      showToast('Pickup set to your current location.');
     }
-
-    setDropoff({
-      id: `map_d_${Date.now()}`,
-      name: `Pinned drop-off (${coordName})`,
-      address: 'Pinned directly on the Dumaguete map',
-      lat,
-      lng,
-      isCustomPinned: true,
-    });
-    showToast('Drop-off pinned. Tap again to move it.');
   };
 
   const handleBookRide = async () => {
@@ -575,7 +727,6 @@ function MainApp({
                 onDeclineRequest={handleDeclineDriverRequest}
                 onAdvanceRideStatus={handleAdvanceRideStatus}
                 onToggleOnline={handleToggleOnline}
-                onExitDriverMode={() => setIsDriverMode(false)}
               />
             ) : (
               <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-md text-center text-xs font-bold text-gray-600">
@@ -599,6 +750,7 @@ function MainApp({
               dropoff={dropoff}
               onSelectPickup={setPickup}
               onSelectDropoff={setDropoff}
+              onUseCurrentLocation={handleUseCurrentLocation}
               onSwapPickupDropoff={handleSwapPickupDropoff}
               selectedVehicle={selectedVehicle}
               onSelectVehicle={setSelectedVehicle}
@@ -650,6 +802,7 @@ function MainApp({
             activeDriver={trackedDriver}
             driverLocation={driverLocation}
             driverHeading={driverHeading}
+            passengerLocation={isDriverMode ? null : passengerPosition}
             rideStatus={activeRide?.status}
             pooledRides={acceptedPooledRides}
             isDriverMode={isDriverMode}
