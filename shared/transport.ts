@@ -7,7 +7,7 @@
  * the driver does not recognise.
  */
 
-export type TransportMode = 'pedicab_standard' | 'habal_habal' | 'multicab';
+export type TransportMode = 'pedicab_standard' | 'habal_habal' | 'multicab' | 'pakyaw_charter';
 
 export interface VehicleDetail {
   title: string;
@@ -55,6 +55,15 @@ export const VEHICLE_DETAILS: Record<TransportMode, VehicleDetail> = {
     baseFare: 15,
     perKm: 2,
     eta: '6 mins',
+  },
+  pakyaw_charter: {
+    title: 'Pakyaw Charter',
+    subtitle: 'Out-of-City Charter Rate',
+    capacity: 'Up to vehicle capacity',
+    maxPassengers: 12,
+    baseFare: 70,
+    perKm: 5,
+    eta: 'On demand',
   },
 };
 

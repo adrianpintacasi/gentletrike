@@ -144,10 +144,21 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
   const calculateFare = (mode: TransportMode): number =>
     totalFare(mode, distanceKm, passengers);
 
+  // Calculate minimum pakyaw fare based on ordinance (70 base + 5 per km after 1st km)
+  const minimumPakyawFare = totalFare('pakyaw_charter', distanceKm, 1);
+
+  // Initialize custom fare with ordinance minimum when switching to pakyaw mode
+  const effectiveCustomFare = isPakyawNegotiated && customPakyawFare > 0
+    ? customPakyawFare
+    : minimumPakyawFare;
+
   const currentCalculatedFare =
-    isPakyawNegotiated && customPakyawFare > 0
-      ? customPakyawFare
+    isPakyawNegotiated
+      ? effectiveCustomFare
       : calculateFare(selectedVehicle);
+
+  // Validate custom pakyaw fare is not below ordinance minimum
+  const isCustomFareValid = !isPakyawNegotiated || effectiveCustomFare >= minimumPakyawFare;
 
   // Curated points match instantly; anything else is looked up as the passenger
   // pauses typing, so any Dumaguete shop, school or street is bookable.
@@ -194,10 +205,12 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
             onClick={() => {
               setActiveTab('ride');
               onTogglePakyaw(false);
+              // Auto-select pedicab when switching back to city trike mode
+              onSelectVehicle('pedicab_standard');
             }}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
               activeTab === 'ride'
-                ? 'bg-amber-400 text-gray-900 shadow-xs'
+                ? 'bg-gray-900 text-amber-400 shadow-xs'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
@@ -207,10 +220,14 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
             onClick={() => {
               setActiveTab('pakyaw');
               onTogglePakyaw(true);
+              // Auto-select pakyaw charter mode when switching to pakyaw tab
+              onSelectVehicle('pakyaw_charter');
+              // Initialize custom fare with ordinance minimum
+              onChangeCustomPakyawFare(minimumPakyawFare);
             }}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
               activeTab === 'pakyaw'
-                ? 'bg-amber-400 text-gray-900 shadow-xs'
+                ? 'bg-gray-900 text-amber-400 shadow-xs'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
@@ -464,13 +481,18 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   key={num}
                   type="button"
                   onClick={() => onChangePassengers(num)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-extrabold transition ${
+                  className={`flex-1 py-2 rounded-lg text-sm font-extrabold transition relative ${
                     passengers === num
                       ? 'bg-gray-900 text-amber-400 shadow-xs ring-2 ring-gray-900/10'
                       : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
                   {num}
+                  {num === 1 && passengers !== 1 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-gray-900 text-[7px] font-extrabold px-1.5 py-0.5 rounded-full shadow-xs">
+                      POPULAR
+                    </span>
+                  )}
                 </button>
               ))}
               <button
@@ -513,7 +535,9 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
             <div className="space-y-2">
               {(
-                ['pedicab_standard', 'habal_habal', 'multicab'] as TransportMode[]
+                isPakyawNegotiated
+                  ? (['pakyaw_charter'] as TransportMode[])
+                  : (['pedicab_standard', 'habal_habal', 'multicab'] as TransportMode[])
               ).map((mode) => {
                 const detail = VEHICLE_DETAILS[mode];
                 const isSelected = selectedVehicle === mode;
@@ -525,7 +549,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     onClick={() => onSelectVehicle(mode)}
                     className={`p-3.5 rounded-xl cursor-pointer transition-all relative ${
                       isSelected
-                        ? 'bg-amber-50 text-gray-900 border-2 border-amber-400 shadow-sm'
+                        ? 'bg-gray-900 text-amber-400 shadow-xs ring-2 ring-gray-900/10'
                         : 'bg-white border border-gray-200 hover:border-gray-300'
                     }`}
                   >
@@ -536,32 +560,46 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     )}
                     <div className="flex justify-between items-center gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-xl shrink-0 border border-gray-200">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 border ${isSelected ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
                           {mode === 'pedicab_standard' && '🛺'}
                           {mode === 'habal_habal' && '🛵'}
                           {mode === 'multicab' && '🚐'}
+                          {mode === 'pakyaw_charter' && '🛺'}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-gray-900 text-sm leading-tight truncate">
+                          <p className={`font-bold text-sm leading-tight truncate ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
                             {detail.title}
                           </p>
-                          <p className="text-xs text-gray-500 mt-0.5 truncate">
+                          <p className={`text-xs mt-0.5 truncate ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
                             {detail.capacity} • {detail.eta} away
                           </p>
                         </div>
                       </div>
 
                       <div className="text-right shrink-0">
-                        <p className="font-extrabold text-gray-900 text-lg">
-                          {hasRoute ? `₱${fare}` : '—'}
-                        </p>
-                        <span className="text-[10px] text-gray-500 font-bold block">
-                          {!hasRoute
-                            ? 'measuring route'
-                            : passengers > 1
-                            ? `₱${farePerPassenger(mode, distanceKm)}/pax × ${passengers} pax`
-                            : `for ${distanceKm.toFixed(2)} km`}
-                        </span>
+                        {isPakyawNegotiated ? (
+                          <>
+                            <p className={`font-bold text-sm ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Estimated: ₱{minimumPakyawFare}
+                            </p>
+                            <span className={`text-[10px] font-bold block ${isSelected ? 'text-gray-500' : 'text-gray-400'}`}>
+                              ordinance minimum
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <p className={`font-extrabold text-lg ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
+                              {hasRoute ? `₱${fare}` : '—'}
+                            </p>
+                            <span className={`text-[10px] font-bold block ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {!hasRoute
+                                ? 'measuring route'
+                                : passengers > 1
+                                ? `₱${farePerPassenger(mode, distanceKm)}/pax × ${passengers} pax`
+                                : `for ${distanceKm.toFixed(2)} km`}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -572,20 +610,59 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
           {/* Pakyaw Custom Fare Negotiator */}
           {isPakyawNegotiated && (
-            <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
-              <p className="text-xs font-bold uppercase text-amber-900">
-                🤝 Custom Negotiated Pakyaw Fare:
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-base text-gray-900">₱</span>
-                <input
-                  type="number"
-                  value={customPakyawFare || ''}
-                  onChange={(e) => onChangeCustomPakyawFare(Number(e.target.value))}
-                  placeholder="e.g. 150 (Valencia / Airport / Pulangbato)"
-                  className="flex-1 bg-white border border-amber-300 rounded-lg px-3 py-1.5 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
+            <div className="p-4 bg-amber-50 rounded-xl border-2 border-amber-300 space-y-3">
+              <div>
+                <p className="text-xs font-bold uppercase text-amber-900">
+                  🤝 Your Fare (amount to be charged):
+                </p>
+                <p className="text-[10px] font-normal text-amber-700 mt-0.5">
+                  Adjust if you've agreed on a different amount with the driver
+                </p>
               </div>
+              <div className="flex items-center gap-3">
+                <span className="font-extrabold text-2xl text-gray-900">₱</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={customPakyawFare === 0 ? '' : customPakyawFare}
+                  onChange={(e) => {
+                    const value = e.target.value === '' ? 0 : Number(e.target.value);
+                    if (!isNaN(value)) onChangeCustomPakyawFare(value);
+                  }}
+                  placeholder={`Minimum: ₱${minimumPakyawFare}`}
+                  className={`flex-1 rounded-lg px-4 py-2.5 text-xl font-extrabold text-gray-900 focus:outline-none focus:ring-2 ${
+                    !isCustomFareValid && customPakyawFare > 0
+                      ? 'bg-red-50 border-2 border-red-400 focus:ring-red-400'
+                      : 'bg-white border-2 border-amber-400 focus:ring-amber-400'
+                  }`}
+                />
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onChangeCustomPakyawFare(Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) + 10))}
+                    className="w-10 h-10 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-lg transition active:scale-95 flex items-center justify-center border border-amber-300"
+                    aria-label="Increase fare by 10"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChangeCustomPakyawFare(Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) - 10))}
+                    className="w-10 h-10 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-lg transition active:scale-95 flex items-center justify-center border border-amber-300"
+                    aria-label="Decrease fare by 10"
+                  >
+                    −
+                  </button>
+                </div>
+              </div>
+              {!isCustomFareValid && (
+                <p className="text-[10px] font-bold text-red-700">
+                  Cannot be below ordinance minimum: ₱{minimumPakyawFare}
+                </p>
+              )}
+              <p className="text-[10px] font-medium text-amber-800">
+                Ordinance minimum: ₱{minimumPakyawFare} for {distanceKm.toFixed(2)} km (₱70 base + ₱5/km after 1st km)
+              </p>
             </div>
           )}
 
@@ -642,7 +719,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
           <div className="pt-2">
             <button
               onClick={onBookRide}
-              disabled={isBooking || !hasRoute}
+              disabled={isBooking || !hasRoute || (isPakyawNegotiated && !isCustomFareValid)}
               className="w-full py-4 rounded-xl font-extrabold text-lg bg-amber-400 hover:bg-amber-300 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-900 cursor-pointer shadow-lg transition active:scale-95 flex items-center justify-center gap-2.5"
             >
               {isBooking ? (
@@ -650,6 +727,8 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
               ) : !hasRoute ? (
                 // Never quote a fare before the road distance is known.
                 <span>Measuring the route...</span>
+              ) : isPakyawNegotiated && !isCustomFareValid ? (
+                <span>Increase fare to minimum ordinance rate</span>
               ) : (
                 <>
                   <span>Book GentleTrike (₱{currentCalculatedFare})</span>

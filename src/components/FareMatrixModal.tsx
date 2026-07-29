@@ -127,11 +127,9 @@ export const FareMatrixModal: React.FC<FareMatrixModalProps> = ({ isOpen, onClos
             </div>
 
             <div>
-              <h4 className="text-sm font-bold text-gray-900">Out-of-city trips (pakyaw)</h4>
+              <h4 className="text-sm font-bold text-gray-900">Pakyaw Charter (Out-of-City)</h4>
               <p className="mt-1 leading-relaxed text-gray-600">
-                Destinations beyond Dumaguete City, such as Valencia or trips to the airport with
-                heavy baggage, are negotiated as a charter rate and fall outside this matrix.
-                GentleTrike books only within the city.
+                Charter rate for out-of-city destinations (Valencia, airport, etc.): ₱70 base fare for the first kilometre, plus ₱5 per succeeding kilometre. This is a flat rate regardless of the number of passengers. Custom negotiated fares must not be lower than the calculated ordinance fare.
               </p>
             </div>
 
