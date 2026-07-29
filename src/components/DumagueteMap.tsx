@@ -261,9 +261,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
 
     // 0. Base Landmarks
     DUMAGUETE_LOCATIONS.forEach((loc) => {
-      // Don't render a landmark if it's the current pickup or dropoff to avoid clutter
-      if (pickup?.id === loc.id && !isInTransit) return;
-      if (dropoff?.id === loc.id) return;
+      // Always render landmarks - keep them visible even when selected as pickup/dropoff
       
       const styles = getCategoryStyles(loc.category);
       const icon = L.divIcon({

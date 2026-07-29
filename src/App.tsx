@@ -457,37 +457,19 @@ function MainApp({
   /**
    * Set pickup from the phone's GPS.
    *
-   * Needs a secure context — HTTPS in production, localhost in development —
-   * and the passenger's permission, so every failure path ends in a message
-   * rather than a silently unchanged form.
+   * Uses the already-tracked passengerPosition instead of making a fresh
+   * geolocation request. This is more efficient and reliable since the position
+   * is already being monitored continuously for the map display.
    */
   const handleUseCurrentLocation = async (): Promise<void> => {
-    if (!('geolocation' in navigator)) {
-      showToast('This device cannot share its location. Pin your pickup on the map instead.');
+    // Use the already-tracked passenger position
+    if (!passengerPosition) {
+      showToast('Your location is not available yet. Please wait a moment or pin your pickup on the map instead.');
       return;
     }
 
-    let fix: GeolocationPosition;
-    try {
-      fix = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 10000,
-        });
-      });
-    } catch (err) {
-      const code = (err as GeolocationPositionError)?.code;
-      showToast(
-        code === 1
-          ? 'Location permission denied. Pin your pickup on the map instead.'
-          : 'Could not get your location. Pin your pickup on the map instead.'
-      );
-      return;
-    }
-
-    const lat = fix.coords.latitude;
-    const lng = fix.coords.longitude;
+    const lat = passengerPosition.lat;
+    const lng = passengerPosition.lng;
 
     try {
       const { place, inServiceArea } = await api.reverseGeocode(lat, lng);
@@ -505,10 +487,9 @@ function MainApp({
         lng,
         isCustomPinned: true,
       });
-      // GPS is accurate to tens of metres at best, and worse indoors, so say
-      // what was chosen rather than implying it is exact.
       showToast(`Pickup set to ${place.name}. Drag the map pin if that is not quite right.`);
-    } catch {
+    } catch (err) {
+      console.error('Reverse geocode error:', err);
       setPickup({
         id: `gps_${Date.now()}`,
         name: 'My current location',
