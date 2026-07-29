@@ -4,6 +4,22 @@ import 'leaflet/dist/leaflet.css';
 import { Driver, LocationPoint, RideBooking } from '../types';
 import { getStreetRoute, LatLng } from '../utils/dumagueteRouting';
 import { sequenceStops } from '../../shared/dispatch';
+import { DUMAGUETE_LOCATIONS } from '../data/dumagueteData';
+
+const getCategoryStyles = (category?: string) => {
+  switch (category) {
+    case 'hospital': return { bg: 'bg-red-700', svg: `<path d="M12 5v14M5 12h14"/>` };
+    case 'shopping': return { bg: 'bg-purple-600', svg: `<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>` };
+    case 'park': return { bg: 'bg-green-600', svg: `<path d="m8 14 4-8 4 8H8Z"/><path d="M12 14v8"/>` };
+    case 'food': return { bg: 'bg-orange-500', svg: `<path d="M3 2v7c0 2.2 1.8 4 4 4h0c2.2 0 4-1.8 4-4V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>` };
+    case 'transport': return { bg: 'bg-slate-500', svg: `<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>` };
+    case 'port': return { bg: 'bg-cyan-600', svg: `<path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 2v3"/>` };
+    case 'airport': return { bg: 'bg-sky-500', svg: `<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.2-1.1.6L2.5 9l8.1 4.5-3.6 3.6-3.3-.5c-.4-.1-.8.2-1 .6L2 19l4 2 2 4l1.8-.7c.4-.2.7-.6.6-1l-.5-3.3 3.6-3.6 4.5 8.1l2.2-1.2c.4-.2.7-.6.6-1.1z"/>` };
+    case 'bridge': return { bg: 'bg-stone-500', svg: `<path d="M22 2v20"/><path d="M2 2v20"/><path d="M2 12h20"/><path d="M8 12v6"/><path d="M16 12v6"/><path d="M2 12c4-8 16-8 20 0"/>` };
+    case 'landmark':
+    default: return { bg: 'bg-blue-600', svg: `<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>` };
+  }
+};
 
 interface DumagueteMapProps {
   pickup: LocationPoint | null;
@@ -241,6 +257,46 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     }
 
     const isInTransit = rideStatus === 'in_transit';
+
+    // 0. Base Landmarks
+    DUMAGUETE_LOCATIONS.forEach((loc) => {
+      // Don't render a landmark if it's the current pickup or dropoff to avoid clutter
+      if (pickup?.id === loc.id && !isInTransit) return;
+      if (dropoff?.id === loc.id) return;
+      
+      const styles = getCategoryStyles(loc.category);
+      const icon = L.divIcon({
+        className: 'custom-landmark-pin',
+        html: `
+          <div class="group flex flex-col items-center justify-start h-full relative cursor-pointer">
+            <div class="w-6 h-6 rounded-full ${styles.bg} text-white flex items-center justify-center shadow-md border-[1.5px] border-white shrink-0 transition-transform group-hover:scale-110">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                ${styles.svg}
+              </svg>
+            </div>
+            <div class="absolute top-7 px-1.5 py-0.5 text-[10px] leading-[1.2] text-gray-900 font-bold text-center drop-shadow-md bg-white/90 backdrop-blur-sm rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10 border border-gray-200/50 shadow-sm" style="text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">
+              ${loc.name}
+            </div>
+          </div>
+        `,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+      const marker = L.marker([loc.lat, loc.lng], {
+        icon,
+        interactive: true, // required for hover to work
+        zIndexOffset: -200, // behind the actual ride markers
+      }).addTo(map);
+
+      // Allow clicking the landmark to select it as the pickup/drop-off point
+      marker.on('click', () => {
+        if (onMapClickLocationRef.current) {
+          onMapClickLocationRef.current(loc.lat, loc.lng);
+        }
+      });
+
+      markersRef.current[`landmark_${loc.id}`] = marker;
+    });
 
     // 1. Pickup — GREEN pin. Green means "get on here", red means "journey
     //    ends here", and the rider's pooled pins below follow the same rule so

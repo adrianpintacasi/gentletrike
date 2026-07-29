@@ -11,6 +11,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3058,
     lng: 123.3110,
     popularFor: 'Sunset strolls, Tempura & I Love Dumaguete sign',
+    category: 'park',
   },
   {
     id: 'silliman_portal',
@@ -19,6 +20,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3105,
     lng: 123.3075,
     popularFor: 'Silliman Hall Museum & Campus Grounds',
+    category: 'landmark',
   },
   {
     id: 'dumaguete_port',
@@ -27,6 +29,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3119,
     lng: 123.3093,
     popularFor: 'Ferries to Siquijor, Bohol & Cebu',
+    category: 'port',
   },
   {
     id: 'robinsons_place',
@@ -35,6 +38,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.2987,
     lng: 123.3027,
     popularFor: 'Shopping mall, Cinema & Transport terminal',
+    category: 'shopping',
   },
   {
     id: 'lee_super_plaza',
@@ -43,6 +47,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3080,
     lng: 123.3076,
     popularFor: 'Downtown shopping center',
+    category: 'shopping',
   },
   {
     id: 'sibulan_airport',
@@ -51,6 +56,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3326,
     lng: 123.2960,
     popularFor: 'Domestic Airport Flights (Cebu Pacific & PAL)',
+    category: 'airport',
   },
   {
     id: 'public_market',
@@ -59,6 +65,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3057,
     lng: 123.3104,
     popularFor: 'Fresh Tiangge market & Budbud Kabog with Sikwate',
+    category: 'shopping',
   },
   {
     id: 'freedom_park',
@@ -67,6 +74,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3136,
     lng: 123.3034,
     popularFor: 'Negros Oriental Capitol park & acacia grounds',
+    category: 'park',
   },
   {
     id: 'sans_rival_bistro',
@@ -75,6 +83,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3079,
     lng: 123.3096,
     popularFor: 'Famous Silvanas & Sans Rival cakes',
+    category: 'food',
   },
   {
     id: 'cathedral_belltower',
@@ -83,6 +92,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3049,
     lng: 123.3078,
     popularFor: 'Historic Campanario de Dumaguete',
+    category: 'landmark',
   },
   {
     id: 'valencia_terminal',
@@ -91,6 +101,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.30368,
     lng: 123.30555,
     popularFor: 'Jeepneys to Valencia, Casaroro & Pulangbato Falls',
+    category: 'transport',
   },
   {
     id: 'bantayan_piapi',
@@ -99,6 +110,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3280,
     lng: 123.3076,
     popularFor: 'Seafood restaurants, cafes & seaside jogging',
+    category: 'park',
   },
   {
     id: 'city_mall',
@@ -107,6 +119,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.3237,
     lng: 123.2987,
     popularFor: 'Supermarket, food courts & pharmacy',
+    category: 'shopping',
   },
   {
     id: 'holy_child_hospital',
@@ -115,14 +128,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.30597,
     lng: 123.30708,
     popularFor: 'Hospital & Negros Oriental State University',
-  },
-  {
-    id: 'candauay_bridge',
-    name: 'Candauay River Bridge Crossing',
-    address: 'Candauay, Dumaguete City',
-    lat: 9.3134,
-    lng: 123.2657,
-    popularFor: 'Bypass road junction',
+    category: 'hospital',
   },
   {
     id: 'ceres_bus_terminal',
@@ -131,6 +137,7 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     lat: 9.2995,
     lng: 123.3054,
     popularFor: 'Provincial bus terminal for Ceres Liner routes',
+    category: 'transport',
   },
 ];
 

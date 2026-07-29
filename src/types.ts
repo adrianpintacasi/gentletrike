@@ -19,6 +19,7 @@ export interface LocationPoint {
   lng: number;
   popularFor?: string;
   isCustomPinned?: boolean;
+  category?: 'shopping' | 'transport' | 'hospital' | 'park' | 'food' | 'landmark' | 'port' | 'airport' | 'bridge' | 'sports';
 }
 
 export interface Driver {
