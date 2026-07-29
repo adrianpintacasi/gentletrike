@@ -1,10 +1,13 @@
 import React from 'react';
 import { Driver, RideBooking } from '../types';
+import type { OpenRide } from '../api';
+import { sequenceStops } from '../../shared/dispatch';
 import { Power, MapPin, ArrowRight, Users, Plus, X, CheckCircle } from 'lucide-react';
 
 interface DriverModePanelProps {
   currentDriver: Driver;
-  activeRequests: RideBooking[];
+  /** Already filtered and ranked by the server to trips that fit this rider. */
+  activeRequests: OpenRide[];
   acceptedPooledRides?: RideBooking[];
   onAcceptRequest: (rideId: string) => void;
   onDeclineRequest: (rideId: string) => void;
@@ -37,6 +40,38 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   const tripsCompletedToday = currentDriver.tripsToday ?? 0;
 
   const currentCapacityCount = acceptedPooledRides.reduce((sum, r) => sum + r.passengers, 0);
+
+  /**
+   * Passengers listed in the order the rider will next deal with them, so the
+   * numbers here match the numbered pins on the map. Listing by booking time
+   * put a passenger who is minutes away at the top simply because they tapped
+   * first, which is not the order anyone drives in.
+   */
+  const routeOrderedRides = React.useMemo(() => {
+    if (acceptedPooledRides.length < 2) return acceptedPooledRides;
+
+    const origin = { lat: currentDriver.currentLat, lng: currentDriver.currentLng };
+    const nextStopOrder = new Map<string, number>();
+
+    for (const stop of sequenceStops(
+      origin,
+      acceptedPooledRides.map((r) => ({
+        rideId: r.id,
+        pickup:
+          r.status === 'in_transit'
+            ? null
+            : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
+        dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
+      }))
+    )) {
+      // First time this trip appears is the next thing the rider does for it.
+      if (!nextStopOrder.has(stop.rideId)) nextStopOrder.set(stop.rideId, stop.order);
+    }
+
+    return [...acceptedPooledRides].sort(
+      (a, b) => (nextStopOrder.get(a.id) ?? 0) - (nextStopOrder.get(b.id) ?? 0)
+    );
+  }, [acceptedPooledRides, currentDriver.currentLat, currentDriver.currentLng]);
 
   return (
     <div className="bg-white text-gray-900 rounded-2xl border border-gray-200 shadow-md p-5 md:p-6 flex flex-col gap-5">
@@ -123,7 +158,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
           </div>
 
           <div className="space-y-2">
-            {acceptedPooledRides.map((ride, idx) => {
+            {routeOrderedRides.map((ride, idx) => {
               const nextStage = NEXT_STAGE[ride.status];
 
               return (
@@ -233,6 +268,26 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                     <p className="text-xs text-gray-600 font-medium">
                       {req.passengers} Pax • {req.vehicleType.replace('_', ' ').toUpperCase()} • {req.distanceKm} km
                     </p>
+                    {/* How far off the current route this trip is. Riders judge a
+                        pickup by the diversion it costs, not by its distance from
+                        them, so show the diversion once they are carrying someone. */}
+                    {typeof req.detourKm === 'number' && (
+                      <p className="text-[11px] font-bold">
+                        {acceptedPooledRides.length === 0 ? (
+                          <span className="text-emerald-700">
+                            {Math.round((req.pickupDistanceKm ?? 0) * 1000)} m away
+                          </span>
+                        ) : req.alongTheWay ? (
+                          <span className="text-emerald-700">
+                            On your route · +{Math.round(req.detourKm * 1000)} m
+                          </span>
+                        ) : (
+                          <span className="text-amber-800">
+                            +{Math.round(req.detourKm * 1000)} m off your route
+                          </span>
+                        )}
+                      </p>
+                    )}
                     {req.notes && (
                       <p className="text-[11px] font-medium text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-md inline-block">
                         "{req.notes}"
