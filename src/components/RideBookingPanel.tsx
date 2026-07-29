@@ -262,10 +262,38 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   setPickupSearch('');
                 }}
                 onChange={(e) => setPickupSearch(e.target.value)}
+                onBlur={() => {
+                  // Delay closing to allow click events to register
+                  setTimeout(() => setIsSearchingPickup(false), 200);
+                }}
                 placeholder="Search street, school, or landmark..."
                 className="w-full bg-transparent font-bold text-sm text-gray-900 focus:outline-none placeholder:text-gray-400 truncate"
               />
             </div>
+
+            {onUseCurrentLocation && (
+              <button
+                onClick={async () => {
+                  setLocating(true);
+                  try {
+                    await onUseCurrentLocation();
+                    setIsSearchingPickup(false);
+                  } finally {
+                    setLocating(false);
+                  }
+                }}
+                disabled={locating}
+                className="px-2 py-1 text-emerald-600 hover:text-emerald-800 text-xs font-bold rounded-lg shrink-0 flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 transition"
+                title="Use your current GPS location"
+              >
+                {locating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LocateFixed className="h-3.5 w-3.5" />
+                )}
+                <span className="hidden sm:inline">{locating ? 'Locating...' : 'Use Current'}</span>
+              </button>
+            )}
 
             {pickup && !isSearchingPickup && (
               <button
@@ -390,6 +418,10 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   setDropoffSearch('');
                 }}
                 onChange={(e) => setDropoffSearch(e.target.value)}
+                onBlur={() => {
+                  // Delay closing to allow click events to register
+                  setTimeout(() => setIsSearchingDropoff(false), 200);
+                }}
                 placeholder="Search destination street in Dumaguete..."
                 className="w-full bg-transparent font-bold text-sm text-gray-900 focus:outline-none placeholder:text-gray-400 truncate"
               />
