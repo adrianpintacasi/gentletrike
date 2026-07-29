@@ -139,6 +139,15 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
     popularFor: 'Provincial bus terminal for Ceres Liner routes',
     category: 'transport',
   },
+  {
+    id: 'playpro_active_courts',
+    name: 'PlayPro Active Courts',
+    address: 'Diversion Road, Sibulan',
+    lat: 9.3363786,
+    lng: 123.2688642,
+    popularFor: 'Biggest Pickleball Hub in the Philippines',
+    category: 'sports',
+  },
 ];
 
 export const INITIAL_DRIVERS: Driver[] = [

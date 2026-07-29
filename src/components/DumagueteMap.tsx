@@ -16,6 +16,7 @@ const getCategoryStyles = (category?: string) => {
     case 'port': return { bg: 'bg-cyan-600', svg: `<path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M12 10v4"/><path d="M12 2v3"/>` };
     case 'airport': return { bg: 'bg-sky-500', svg: `<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.2-1.1.6L2.5 9l8.1 4.5-3.6 3.6-3.3-.5c-.4-.1-.8.2-1 .6L2 19l4 2 2 4l1.8-.7c.4-.2.7-.6.6-1l-.5-3.3 3.6-3.6 4.5 8.1l2.2-1.2c.4-.2.7-.6.6-1.1z"/>` };
     case 'bridge': return { bg: 'bg-stone-500', svg: `<path d="M22 2v20"/><path d="M2 2v20"/><path d="M2 12h20"/><path d="M8 12v6"/><path d="M16 12v6"/><path d="M2 12c4-8 16-8 20 0"/>` };
+    case 'sports': return { bg: 'bg-rose-600', svg: `<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>` };
     case 'landmark':
     default: return { bg: 'bg-blue-600', svg: `<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>` };
   }

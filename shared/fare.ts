@@ -38,12 +38,16 @@ export function farePerPassenger(mode: TransportMode, distanceKm: number): numbe
   return baseFare + succeedingKm * perKm;
 }
 
-/** Total for the whole booking. Each passenger pays the ordinance rate. */
+/** Total for the whole booking. Each passenger pays the ordinance rate, except pakyaw charter which is a flat rate. */
 export function totalFare(
   mode: TransportMode,
   distanceKm: number,
   passengers: number
 ): number {
+  if (mode === 'pakyaw_charter') {
+    // Pakyaw charter is a flat rate regardless of passenger count
+    return farePerPassenger(mode, distanceKm);
+  }
   return farePerPassenger(mode, distanceKm) * Math.max(1, passengers);
 }
 
