@@ -260,42 +260,44 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     const isInTransit = rideStatus === 'in_transit';
 
     // 0. Base Landmarks
-    DUMAGUETE_LOCATIONS.forEach((loc) => {
-      // Always render landmarks - keep them visible even when selected as pickup/dropoff
-      
-      const styles = getCategoryStyles(loc.category);
-      const icon = L.divIcon({
-        className: 'custom-landmark-pin',
-        html: `
-          <div class="group flex flex-col items-center justify-start h-full relative cursor-pointer">
-            <div class="w-6 h-6 rounded-full ${styles.bg} text-white flex items-center justify-center shadow-md border-[1.5px] border-white shrink-0 transition-transform group-hover:scale-110">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                ${styles.svg}
-              </svg>
+    if (!isDriverMode) {
+      DUMAGUETE_LOCATIONS.forEach((loc) => {
+        // Always render landmarks - keep them visible even when selected as pickup/dropoff
+        
+        const styles = getCategoryStyles(loc.category);
+        const icon = L.divIcon({
+          className: 'custom-landmark-pin',
+          html: `
+            <div class="group flex flex-col items-center justify-start h-full relative cursor-pointer">
+              <div class="w-6 h-6 rounded-full ${styles.bg} text-white flex items-center justify-center shadow-md border-[1.5px] border-white shrink-0 transition-transform group-hover:scale-110">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  ${styles.svg}
+                </svg>
+              </div>
+              <div class="absolute top-7 px-1.5 py-0.5 text-[10px] leading-[1.2] text-gray-900 font-bold text-center drop-shadow-md bg-white/90 backdrop-blur-sm rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10 border border-gray-200/50 shadow-sm" style="text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">
+                ${loc.name}
+              </div>
             </div>
-            <div class="absolute top-7 px-1.5 py-0.5 text-[10px] leading-[1.2] text-gray-900 font-bold text-center drop-shadow-md bg-white/90 backdrop-blur-sm rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10 border border-gray-200/50 shadow-sm" style="text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;">
-              ${loc.name}
-            </div>
-          </div>
-        `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-      });
-      const marker = L.marker([loc.lat, loc.lng], {
-        icon,
-        interactive: true, // required for hover to work
-        zIndexOffset: -200, // behind the actual ride markers
-      }).addTo(map);
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+        const marker = L.marker([loc.lat, loc.lng], {
+          icon,
+          interactive: true, // required for hover to work
+          zIndexOffset: -200, // behind the actual ride markers
+        }).addTo(map);
 
-      // Allow clicking the landmark to select it as the pickup/drop-off point
-      marker.on('click', () => {
-        if (onMapClickLocationRef.current) {
-          onMapClickLocationRef.current(loc.lat, loc.lng);
-        }
-      });
+        // Allow clicking the landmark to select it as the pickup/drop-off point
+        marker.on('click', () => {
+          if (onMapClickLocationRef.current) {
+            onMapClickLocationRef.current(loc.lat, loc.lng);
+          }
+        });
 
-      markersRef.current[`landmark_${loc.id}`] = marker;
-    });
+        markersRef.current[`landmark_${loc.id}`] = marker;
+      });
+    }
 
     // 1. Pickup — GREEN pin. Green means "get on here", red means "journey
     //    ends here", and the rider's pooled pins below follow the same rule so
@@ -399,70 +401,74 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       // and drop-off two different numbers, which is the one thing the badge
       // needs to make obvious. Driving order lives in the route line, the
       // panel list, and each pin's tooltip.
-      const pin = (colour: 'emerald' | 'red', passenger: number) =>
-        L.divIcon({
-          className: colour === 'emerald' ? 'pooled-pickup-pin' : 'pooled-dropoff-pin',
-          html: `
-              <div class="relative filter drop-shadow-md">
-                <svg class="w-9 h-9 ${
-                  colour === 'emerald' ? 'text-emerald-600' : 'text-red-600'
-                }" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                </svg>
-                <span class="absolute inset-x-0 top-[6px] text-center text-[11px] font-black text-white">
-                  ${passenger}
-                </span>
-              </div>
-            `,
-          iconSize: [36, 36],
-          iconAnchor: [18, 36],
-        });
+      if (pooledRides.length > 0) {
+        const pin = (colour: 'emerald' | 'red', passenger: number) =>
+          L.divIcon({
+            className: colour === 'emerald' ? 'pooled-pickup-pin' : 'pooled-dropoff-pin',
+            html: `
+                <div class="relative filter drop-shadow-md">
+                  <svg class="w-9 h-9 ${
+                    colour === 'emerald' ? 'text-emerald-600' : 'text-red-600'
+                  }" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                  </svg>
+                  <span class="absolute inset-x-0 top-[6px] text-center text-[11px] font-black text-white">
+                    ${passenger}
+                  </span>
+                </div>
+              `,
+            iconSize: [36, 36],
+            iconAnchor: [18, 36],
+          });
 
-      const ridesById = new Map(pooledRides.map((r) => [r.id, r]));
-      const origin = driverLocation
-        ? { lat: driverLocation.lat, lng: driverLocation.lng }
-        : { lat: pooledRides[0].pickupLocation.lat, lng: pooledRides[0].pickupLocation.lng };
+        const ridesById = new Map(pooledRides.map((r) => [r.id, r]));
+        const origin = driverLocation
+          ? { lat: driverLocation.lat, lng: driverLocation.lng }
+          : activeDriver
+          ? { lat: activeDriver.currentLat, lng: activeDriver.currentLng }
+          : { lat: pooledRides[0].pickupLocation.lat, lng: pooledRides[0].pickupLocation.lng };
 
-      const sequence = sequenceStops(
-        origin,
-        pooledRides.map((r) => ({
-          rideId: r.id,
-          pickup:
-            r.status === 'in_transit'
-              ? null
-              : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
-          dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
-        }))
-      );
+        const sequence = sequenceStops(
+          origin,
+          pooledRides.map((r) => ({
+            rideId: r.id,
+            pickup:
+              r.status === 'in_transit'
+                ? null
+                : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
+            dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
+          }))
+        );
 
-      // Passengers are numbered by whoever the rider reaches first — the same
-      // rule the panel list uses, so "Passenger 2" means the same thing in both.
-      const passengerNumber = new Map<string, number>();
-      for (const stop of sequence) {
-        if (!passengerNumber.has(stop.rideId)) {
-          passengerNumber.set(stop.rideId, passengerNumber.size + 1);
+        // Passengers are numbered by whoever the rider reaches first — the same
+        // rule the panel list uses, so "Passenger 2" means the same thing in both.
+        const passengerNumber = new Map<string, number>();
+        for (const stop of sequence) {
+          if (!passengerNumber.has(stop.rideId)) {
+            passengerNumber.set(stop.rideId, passengerNumber.size + 1);
+          }
         }
+
+        sequence.forEach((stop) => {
+          const ride = ridesById.get(stop.rideId);
+          if (!ride) return;
+
+          const isPickup = stop.kind === 'pickup';
+          const place = isPickup ? ride.pickupLocation : ride.dropoffLocation;
+          const who = passengerNumber.get(stop.rideId) ?? 1;
+
+          const marker = L.marker([stop.at.lat, stop.at.lng], {
+            icon: pin(isPickup ? 'emerald' : 'red', who),
+          })
+            .addTo(map)
+            .bindTooltip(
+              `Stop ${stop.order} · ${isPickup ? 'Pick up' : 'Drop off'} passenger ${who} · ${place.name}`,
+              { direction: 'top' }
+            );
+
+          markersRef.current[`pooled_${stop.kind}_${ride.id}`] = marker;
+        });
       }
-
-      sequence.forEach((stop) => {
-        const ride = ridesById.get(stop.rideId);
-        if (!ride) return;
-
-        const isPickup = stop.kind === 'pickup';
-        const place = isPickup ? ride.pickupLocation : ride.dropoffLocation;
-        const who = passengerNumber.get(stop.rideId) ?? 1;
-
-        const marker = L.marker([stop.at.lat, stop.at.lng], {
-          icon: pin(isPickup ? 'emerald' : 'red', who),
-        })
-          .addTo(map)
-          .bindTooltip(
-            `Stop ${stop.order} · ${isPickup ? 'Pick up' : 'Drop off'} passenger ${who} · ${place.name}`,
-            { direction: 'top' }
-          );
-
-        markersRef.current[`pooled_${stop.kind}_${ride.id}`] = marker;
-      });
     } else {
       // Passenger mode deliberately shows no roaming pedicabs. Only the rider
       // who has actually accepted this booking appears, so the map never
