@@ -1,5 +1,7 @@
 import {
   sequenceStops,
+  canServeTrip,
+  isExclusiveTrip,
   rankCandidates,
   scoreCandidate,
   detourKmFor,
@@ -257,6 +259,28 @@ console.log('\n=== 7. The chosen order really is the shortest legal one ===');
   console.log(`    ${checked} legal orderings · optimal ${m(bestKm)} · chosen ${m(chosenKm)}`);
   check('matches the brute-forced optimum', chosenKm <= bestKm + 1e-9, m(chosenKm - bestKm) + ' worse');
 }
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 8. Pakyaw charters reach riders, and are exclusive ===');
+
+// Riders register as a pedicab, habal-habal or multicab — never as
+// "pakyaw_charter". Comparing vehicle types by equality meant no rider ever
+// matched a charter booking, so those requests reached nobody at all.
+for (const riderVehicle of ['pedicab_standard', 'habal_habal', 'multicab']) {
+  check(
+    `a ${riderVehicle} can take a pakyaw charter`,
+    canServeTrip(riderVehicle, 'pakyaw_charter')
+  );
+}
+
+check('a pedicab is still offered pedicab trips', canServeTrip('pedicab_standard', 'pedicab_standard'));
+check(
+  'a habal-habal is still not offered an EasyRide',
+  !canServeTrip('habal_habal', 'multicab')
+);
+
+check('pakyaw is flagged exclusive', isExclusiveTrip('pakyaw_charter'));
+check('an ordinary trip is not', !isExclusiveTrip('pedicab_standard'));
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} CHECK(S) FAILED.`}\n`);
 process.exit(failures === 0 ? 0 : 1);

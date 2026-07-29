@@ -84,19 +84,32 @@ function fromPhoton(feature: any): GeocodeResult | null {
   return { name, address: address || "Dumaguete City", lat, lng };
 }
 
+export interface SearchOutcome {
+  results: GeocodeResult[];
+  cached: boolean;
+  /** Set when the provider could not be reached; results will be empty. */
+  error?: string;
+}
+
 /**
- * GET /api/geocode/search?q=silliman
+ * Find places in Dumaguete matching free text.
  *
- * Results are biased to Dumaguete and then filtered to the service area, so the
- * panel can only ever offer somewhere a pedicab will actually go.
+ * Exported as a plain function, not just a route, because Gently resolves
+ * passenger phrasing through the same search the booking panel uses. Two
+ * separate lookups would eventually disagree about where "Sans Rival" is, and
+ * a fare quoted for one point while the ride goes to another is the worst kind
+ * of bug — it looks correct.
+ *
+ * Results are biased to the city, then filtered to the service area, so a
+ * caller can only ever be offered somewhere a pedicab will actually go.
  */
-geocodeRoutes.get("/search", async (req, res) => {
-  const q = String(req.query.q ?? "").trim().slice(0, 120);
-  if (q.length < 2) return res.json({ results: [] });
+export async function searchPlaces(query: string): Promise<SearchOutcome> {
+  const q = query.trim().slice(0, 120);
+  if (q.length < 2) return { results: [], cached: false };
 
   const key = `s:${q.toLowerCase()}`;
   const hit = cached<GeocodeResult[]>(key);
-  if (hit) return res.json({ results: hit, cached: true });
+  if (hit) return { results: hit, cached: true };
 
   // Centre the search on the city and clamp it to the boundary's bounding box.
   const url =
@@ -127,12 +140,18 @@ geocodeRoutes.get("/search", async (req, res) => {
       .slice(0, 8);
 
     remember(key, results);
-    res.json({ results });
+    return { results, cached: false };
   } catch (err) {
     console.error("geocode search failed:", (err as Error).message);
     // An empty list degrades to the curated pickup points, which still work.
-    res.json({ results: [], error: "search-unavailable" });
+    return { results: [], cached: false, error: "search-unavailable" };
   }
+}
+
+/** GET /api/geocode/search?q=silliman */
+geocodeRoutes.get("/search", async (req, res) => {
+  const { results, cached: fromCache, error } = await searchPlaces(String(req.query.q ?? ""));
+  res.json({ results, ...(fromCache && { cached: true }), ...(error && { error }) });
 });
 
 /**

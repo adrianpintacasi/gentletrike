@@ -11,6 +11,23 @@ GENTLETRIKE ASSISTANT KNOWLEDGE BASE
   Do NOT bill proportionally — 1.2 x PHP 2.00 = PHP 2.40 is the wrong method.
 - Discounted Fare (Student/Senior/PWD): PHP 19.00 * 0.80 = PHP 15.20 (~PHP 15.00).
 
+=== 1B. PAKYAW CHARTER RATE (whole-vehicle hire) ===
+- Pakyaw means chartering the whole vehicle rather than paying a per-passenger
+  fare. The trike carries only that party and makes no other pickups.
+- Base Rate: PHP 70.00 for the first 1.0 kilometer or less.
+- Distance Rate: PHP 5.00 for every succeeding kilometer or fraction thereof
+  (the same round-up rule as the standard fare — any fraction counts as a whole
+  kilometre).
+  (e.g., 1.00 km = PHP 70.00; 1.75 km = PHP 75.00; 3.00 km = PHP 80.00).
+- The pakyaw rate is a FLAT amount for the vehicle. It is NOT multiplied by the
+  number of passengers, unlike the standard per-passenger fare.
+- This is a MINIMUM. A passenger may offer more, and in the GentleTrike app they
+  enter what they are willing to pay; the rider accepts or passes. An offer
+  below the minimum above is not permitted.
+- Pakyaw is the usual arrangement for trips out of the city (Valencia, Sibulan
+  Airport with heavy baggage, Bacong) and for group hires. GentleTrike itself
+  books only within Dumaguete City limits.
+
 === 2. CIVIL CODE OF THE PHILIPPINES (COMMON CARRIERS) ===
 [Article 1732]
 Common carriers are persons, corporations, firms or associations engaged in the business of carrying or transporting passengers or goods or both, by land, water, or air, for compensation, offering their services to the public.

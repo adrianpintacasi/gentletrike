@@ -1,7 +1,7 @@
 import { getStreetRoute } from '../../shared/geo';
 import { fareBreakdown } from '../../shared/fare';
 import { VEHICLE_DETAILS, isTransportMode, type TransportMode } from '../../shared/transport';
-import { LOCATION_NAMES, resolveLocation, detectOutOfCoverage } from './locations';
+import { resolvePlace, detectOutOfCoverage, type PlaceResolution } from './locations';
 import { formatContext, retrieve } from './retrieve';
 
 /**
@@ -43,8 +43,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: {
       type: 'object',
       properties: {
-        pickup: { type: 'string', description: 'Pickup place name as the passenger said it.' },
-        dropoff: { type: 'string', description: 'Destination place name.' },
+        pickup: {
+          type: 'string',
+          description:
+            'Pickup place as the passenger said it. Any place in Dumaguete City works — a ' +
+            'business, landmark, street or barangay, not only the listed pickup points.',
+        },
+        dropoff: { type: 'string', description: 'Destination place. Any place in Dumaguete City.' },
         vehicleType: {
           type: 'string',
           enum: ['pedicab_standard', 'habal_habal', 'multicab'],
@@ -58,13 +63,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'plan_route',
     description:
-      'Get the real road distance and travel time between two places in Dumaguete, ' +
-      'without fare information.',
+      'Get the real road distance and travel time between any two places in Dumaguete ' +
+      'City, without fare information.',
     parameters: {
       type: 'object',
       properties: {
-        pickup: { type: 'string' },
-        dropoff: { type: 'string' },
+        pickup: { type: 'string', description: 'Any place in Dumaguete City.' },
+        dropoff: { type: 'string', description: 'Any place in Dumaguete City.' },
       },
       required: ['pickup', 'dropoff'],
     },
@@ -78,8 +83,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: {
       type: 'object',
       properties: {
-        pickup: { type: 'string' },
-        dropoff: { type: 'string' },
+        pickup: { type: 'string', description: 'Any place in Dumaguete City.' },
+        dropoff: { type: 'string', description: 'Any place in Dumaguete City.' },
         vehicleType: { type: 'string', enum: ['pedicab_standard', 'habal_habal', 'multicab'] },
         passengers: { type: 'integer' },
         notes: { type: 'string', description: 'Optional note for the driver.' },
@@ -101,14 +106,39 @@ export interface ToolResult {
 
 const unknownPlace = (which: string, value: string): ToolResult => ({
   content:
-    `Could not identify the ${which} "${value}". Ask the passenger to choose one of ` +
-    `these GentleTrike pickup points: ${LOCATION_NAMES.join(', ')}.`,
+    `Could not find "${value}" anywhere in Dumaguete City for the ${which}. Ask the ` +
+    `passenger, in ONE short sentence, to describe it another way — a street, a nearby ` +
+    `landmark, or the full business name. Do NOT list the app's pickup points at them.`,
 });
 
-/** Below this the "match" is noise; asking beats quoting a fare for the wrong place. */
-const MIN_CONFIDENCE = 0.34;
+/**
+ * The passenger has not said where they are yet.
+ *
+ * Distinct from a place that could not be found: there is nothing to look up,
+ * so reporting a failed search invites the model to apologise and recite the
+ * pickup list. It only needs to ask a question.
+ */
+const missingPlace = (which: string): ToolResult => ({
+  content:
+    `The passenger has not said where the ${which} is. Ask them one short, direct ` +
+    `question — for example "Where should I pick you up?" — and nothing else. Do NOT ` +
+    `list the app's pickup points, and do not apologise.`,
+});
 
-function resolvePair(pickup: string, dropoff: string) {
+/**
+ * Which places to connect a passenger's words to, before anything is priced.
+ *
+ * Resolution reaches the whole city, not just the curated pickup points, so
+ * "take me to the bakery on Perdices" now works. Three things can still go
+ * wrong, and each has to be handled differently: the place is outside the city
+ * (offer the terminal), the words match several places (ask), or nothing matches
+ * (ask). None of them may end in a guessed fare.
+ */
+async function resolvePair(pickup: string, dropoff: string) {
+  // Nothing to look up is not the same as nothing found.
+  if (!pickup.trim()) return { error: missingPlace('pickup') };
+  if (!dropoff.trim()) return { error: missingPlace('destination') };
+
   // Coverage first. A place like "Valencia" would otherwise fuzzy-match the
   // downtown "Valencia Jeepney & Bus Terminal" and produce a confident fare for
   // entirely the wrong trip.
@@ -120,22 +150,25 @@ function resolvePair(pickup: string, dropoff: string) {
           content:
             `OUT OF COVERAGE — do not quote a fare or draft a booking for this.\n` +
             `The ${which} "${value}" refers to ${outside.description}, which is outside ` +
-            `Dumaguete City and NOT a GentleTrike bookable point.\n` +
-            `Tell the passenger GentleTrike only books trips within Dumaguete City, and ` +
-            `that the usual way is to take a GentleTrike ride to the right terminal or ` +
-            `port and continue from there (Valencia Jeepney & Bus Terminal for Valencia, ` +
-            `Casaroro and Pulangbato; Dumaguete Port for Siquijor, Bohol and Cebu). ` +
-            `Offer to book them a ride to that terminal or port instead.`,
+            `Dumaguete City. GentleTrike's fares follow the Dumaguete City ordinance, and ` +
+            `each town sets its own rates, so the app cannot price a trip there.\n` +
+            `Tell the passenger this, then offer BOTH options:\n` +
+            `1. The onward journey is: ${outside.onward}. State exactly this and nothing ` +
+            `else — do NOT substitute a different terminal, port, or mode of travel, and ` +
+            `never mention a ferry or boat unless it appears in that sentence. Offer to ` +
+            `book them a GentleTrike ride to wherever that journey starts.\n` +
+            `2. A pakyaw charter, where they hire a whole vehicle and agree a flat price ` +
+            `directly with the driver. Mention it as the option for going all the way, but ` +
+            `do NOT quote a figure or draft it — the price is negotiated, not metered.`,
         } as ToolResult,
       };
     }
   }
 
-  const from = resolveLocation(pickup);
-  if (!from || from.confidence < MIN_CONFIDENCE) return { error: unknownPlace('pickup', pickup) };
+  const [from, to] = await Promise.all([resolvePlace(pickup), resolvePlace(dropoff)]);
 
-  const to = resolveLocation(dropoff);
-  if (!to || to.confidence < MIN_CONFIDENCE) return { error: unknownPlace('destination', dropoff) };
+  if (from.kind !== 'resolved') return { error: unresolved('pickup', pickup, from) };
+  if (to.kind !== 'resolved') return { error: unresolved('destination', dropoff, to) };
 
   if (from.location.id === to.location.id) {
     return {
@@ -146,6 +179,23 @@ function resolvePair(pickup: string, dropoff: string) {
   }
 
   return { from: from.location, to: to.location };
+}
+
+/** Explain a failed resolution to the model in terms of what it should do next. */
+function unresolved(
+  which: string,
+  value: string,
+  r: Exclude<PlaceResolution, { kind: 'resolved' }>
+): ToolResult {
+  if (r.kind === 'not-found') return unknownPlace(which, value);
+
+  return {
+    content:
+      `AMBIGUOUS ${which.toUpperCase()} — do not pick one yourself and do not quote a fare yet.\n` +
+      `"${value}" matches more than one place in Dumaguete:\n` +
+      r.options.map((o, i) => `${i + 1}. ${o.name}${o.address ? ` (${o.address})` : ''}`).join('\n') +
+      `\nAsk the passenger which one they mean, then call this tool again with that name.`,
+  };
 }
 
 const mode = (v: unknown): TransportMode => (isTransportMode(v) ? v : 'pedicab_standard');
@@ -179,7 +229,7 @@ export async function executeTool(
 
     case 'plan_route':
     case 'estimate_fare': {
-      const pair = resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''));
+      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''));
       if ('error' in pair) return pair.error!;
 
       const route = await getStreetRoute([
@@ -219,7 +269,7 @@ export async function executeTool(
     }
 
     case 'draft_booking': {
-      const pair = resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''));
+      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''));
       if ('error' in pair) return pair.error!;
 
       const route = await getStreetRoute([

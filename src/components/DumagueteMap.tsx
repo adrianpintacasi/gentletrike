@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { Driver, LocationPoint, RideBooking } from '../types';
 import { getStreetRoute, LatLng } from '../utils/dumagueteRouting';
 import { sequenceStops } from '../../shared/dispatch';
+import { Crosshair } from 'lucide-react';
 import { DUMAGUETE_LOCATIONS } from '../data/dumagueteData';
 
 const getCategoryStyles = (category?: string) => {
@@ -745,13 +746,14 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         </div>
       )}
 
-      {/* Recenter View Button - Larger for mobile touch targets */}
+      {/* Sized to match the "Tap the map…" pill opposite it, so the two read as
+          a pair rather than one shouting over the other. */}
       <div className="absolute top-4 right-4 z-10">
         <button
           onClick={handleCenterDumaguete}
-          className="bg-white hover:bg-gray-50 text-gray-900 font-bold text-sm px-4 py-3 rounded-xl shadow-md border border-gray-200 flex items-center gap-2 transition active:scale-95"
+          className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white/95 px-3.5 py-2.5 text-xs font-bold text-gray-900 shadow-md backdrop-blur-sm transition active:scale-95 hover:bg-gray-50"
         >
-          <span className="text-base">🎯</span>
+          <Crosshair className="h-3.5 w-3.5 text-amber-600" />
           <span className="hidden sm:inline">Center</span>
         </button>
       </div>

@@ -23,7 +23,7 @@ import {
   tx,
 } from "./db";
 import type { DriverRow, RideRow } from "./db";
-import { rankCandidates, type Stop } from "../shared/dispatch";
+import { rankCandidates, canServeTrip, isExclusiveTrip, type Stop } from "../shared/dispatch";
 import { VEHICLE_DETAILS, type TransportMode } from "../shared/transport";
 
 export const api = Router();
@@ -366,8 +366,9 @@ api.get(
     }
 
     // A rider can only serve trips their vehicle was requested for — a
-    // habal-habal has no business seeing a 10-seat EasyRide booking.
-    const matching = rows.filter((r) => r.vehicle_type === driver.vehicle_type);
+    // habal-habal has no business seeing a 10-seat EasyRide booking. Pakyaw is
+    // the exception: it charters whatever vehicle takes it.
+    let matching = rows.filter((r) => canServeTrip(driver.vehicle_type, r.vehicle_type));
 
     // The rider's committed stops are what "along the way" is measured against.
     const active = await selectAll<RideRow>(
@@ -377,6 +378,16 @@ api.get(
       driver.id,
       ...LIVE_STATUSES
     );
+
+    // A chartered vehicle carries that party alone, so once a rider takes a
+    // pakyaw they are offered nothing else — and a rider already carrying
+    // passengers is not offered a charter they could not honour.
+    if (active.some((r) => isExclusiveTrip(r.vehicle_type))) {
+      return res.json({ rides: [] });
+    }
+    if (active.length > 0) {
+      matching = matching.filter((r) => !isExclusiveTrip(r.vehicle_type));
+    }
 
     const committed: Stop[] = active.flatMap((r) => {
       const pickup = JSON.parse(r.pickup);
@@ -497,7 +508,7 @@ api.post(
     const wanted = await findRide(req.params.id);
     if (!wanted) return res.status(404).json({ error: "Ride not found" });
 
-    if (wanted.vehicle_type !== driver.vehicle_type) {
+    if (!canServeTrip(driver.vehicle_type, wanted.vehicle_type)) {
       return res.status(409).json({
         error: `This passenger requested a ${wanted.vehicle_type.replace(/_/g, " ")}, not a ${driver.vehicle_type.replace(/_/g, " ")}`,
       });
@@ -508,11 +519,27 @@ api.post(
     // client's view of the queue is a snapshot, and two accepts a second apart
     // could each look fine while together they overfill the sidecar.
     const active = await selectAll<RideRow>(
-      `SELECT passengers FROM rides
+      `SELECT passengers, vehicle_type FROM rides
         WHERE driver_id = ? AND status IN (${LIVE_STATUSES.map(() => "?").join(",")})`,
       driverId,
       ...LIVE_STATUSES
     );
+
+    // A charter hires the whole vehicle, so it cannot share it in either
+    // direction. Enforced here as well as in the queue: the queue is a snapshot,
+    // and a rider could accept a pakyaw and an ordinary trip seconds apart.
+    if (active.length > 0 && isExclusiveTrip(wanted.vehicle_type)) {
+      return res.status(409).json({
+        error:
+          "A pakyaw charter hires your whole vehicle — finish or drop your current passengers first",
+      });
+    }
+    if (active.some((r) => isExclusiveTrip(r.vehicle_type))) {
+      return res.status(409).json({
+        error: "You are on a pakyaw charter — that party has hired the whole vehicle",
+      });
+    }
+
     const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
     const seats = VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
 

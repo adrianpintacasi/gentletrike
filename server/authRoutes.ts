@@ -272,8 +272,21 @@ authRoutes.post(
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    if ((user.account_status ?? "active") === "active") {
+    const status = user.account_status ?? "active";
+
+    if (status === "active") {
       return res.status(400).json({ error: "This account is active — no reactivation is needed." });
+    }
+
+    // A ban is the end of the road, not a step in a process. Suspension is the
+    // reversible sanction and is what an appeal is for; letting a banned user
+    // keep filing appeals only builds a queue the TMO has already answered.
+    if (status === "banned") {
+      return res.status(403).json({
+        error:
+          "This account has been permanently banned and cannot be reactivated through the app. " +
+          "Please visit the TMO office in person if you wish to contest it.",
+      });
     }
 
     // One pending request at a time — until the TMO approves or dismisses it.

@@ -113,6 +113,31 @@ export function detourKmFor(
   return Math.max(0, best - baseline);
 }
 
+/**
+ * Trip types that hire the whole vehicle.
+ *
+ * A pakyaw charter is booked as one flat fare for the vehicle, and the rider
+ * carries that party alone. Pooling anyone else into it would be selling the
+ * same seats twice.
+ */
+const EXCLUSIVE_MODES = new Set(['pakyaw_charter']);
+
+export const isExclusiveTrip = (vehicleType: string): boolean =>
+  EXCLUSIVE_MODES.has(vehicleType);
+
+/**
+ * Whether a rider's vehicle can serve a booking.
+ *
+ * `pakyaw_charter` is an arrangement rather than a vehicle class — riders
+ * register as a pedicab, habal-habal or multicab, and any of them can be
+ * chartered. Comparing it by equality meant no rider ever matched a pakyaw
+ * booking, so those requests reached nobody.
+ */
+export function canServeTrip(riderVehicle: string, rideVehicle: string): boolean {
+  if (isExclusiveTrip(rideVehicle)) return true;
+  return riderVehicle === rideVehicle;
+}
+
 export interface RideStops {
   rideId: string;
   /** Null once the passenger is aboard — that stop is behind the rider. */

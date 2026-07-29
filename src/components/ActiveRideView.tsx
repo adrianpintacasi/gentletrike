@@ -251,12 +251,22 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
                 )}
               </div>
 
-              {/* A TMO officer has checked this rider's papers. Worth saying
-                  plainly to someone about to get into a stranger's vehicle. */}
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
-                <BadgeCheck className="h-4 w-4 shrink-0" />
-                <span>Verified Dumaguete Rider</span>
-              </div>
+              {/* Shown only when the TMO has actually verified this rider.
+                  Claiming "verified" for everyone would make the badge
+                  meaningless to the person about to get into their vehicle —
+                  and in practice a rider can only be here if verified, since
+                  the server blocks anyone else from going online. */}
+              {(driver.verificationStatus ?? 'verified') === 'verified' ? (
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
+                  <BadgeCheck className="h-4 w-4 shrink-0" />
+                  <span>Verified Dumaguete Rider</span>
+                </div>
+              ) : (
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>Verification {driver.verificationStatus}</span>
+                </div>
+              )}
 
               <div className="mt-1 flex items-center gap-2 text-xs font-medium text-gray-600">
                 <span className="flex items-center gap-1 font-bold text-gray-800">

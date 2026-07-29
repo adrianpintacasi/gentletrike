@@ -376,6 +376,15 @@ export function toDriver(row: DriverRow) {
     isOnline: row.is_online === 1,
     earningsToday: row.earnings_today,
     tripsToday: row.trips_today,
+    // Sent so both screens can tell the truth about a rider: the passenger sees
+    // a verified badge only when the TMO has actually verified them, and the
+    // rider sees their own pending state instead of a badge they have not
+    // earned. Riders registered before this field existed default to verified.
+    verificationStatus: (row.verification_status ?? 'verified') as
+      | 'verified'
+      | 'pending'
+      | 'suspended'
+      | 'declined',
   };
 }
 

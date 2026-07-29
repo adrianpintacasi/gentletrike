@@ -38,6 +38,8 @@ export interface Driver {
   /** Server-tracked daily totals, credited when a trip is completed. */
   earningsToday?: number;
   tripsToday?: number;
+  /** TMO standing. Only 'verified' riders may go online. */
+  verificationStatus?: 'verified' | 'pending' | 'suspended' | 'declined';
 }
 
 export interface RideBooking {

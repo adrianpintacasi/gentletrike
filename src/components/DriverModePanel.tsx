@@ -1,9 +1,21 @@
 import React from 'react';
 import { Driver, RideBooking } from '../types';
 import type { OpenRide } from '../api';
-import { sequenceStops } from '../../shared/dispatch';
+import { sequenceStops, isExclusiveTrip } from '../../shared/dispatch';
 import { VEHICLE_DETAILS } from '../../shared/transport';
-import { Power, MapPin, ArrowRight, Users, Plus, X, CheckCircle, Phone, MessageSquare } from 'lucide-react';
+import {
+  Power,
+  MapPin,
+  ArrowRight,
+  Users,
+  Plus,
+  X,
+  CheckCircle,
+  Phone,
+  MessageSquare,
+  BadgeCheck,
+  AlertTriangle,
+} from 'lucide-react';
 import { RiderChatPanel } from './RiderChatPanel';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 
@@ -66,6 +78,8 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
     }
   };
 
+  const verification = currentDriver.verificationStatus ?? 'verified';
+
   // Was hardcoded to 6, which is only right for a pedicab — a habal-habal seats
   // one and an EasyRide twelve. Same number the server enforces on accept.
   const seatCapacity = VEHICLE_DETAILS[currentDriver.vehicleType]?.maxPassengers ?? 6;
@@ -122,9 +136,22 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
               {currentDriver.unitNumber}
             </span>
           </div>
-          <p className="truncate text-xs font-medium text-gray-500">
-            Verified Dumaguete Rider • ★ {currentDriver.rating}
-          </p>
+          {/* A rider's own standing, stated honestly. Telling someone they are
+              "Verified" while the server refuses to let them go online is the
+              kind of contradiction that turns into a support message. */}
+          {verification === 'verified' ? (
+            <p className="flex items-center gap-1 truncate text-xs font-medium text-emerald-700">
+              <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
+              Verified Dumaguete Rider · ★ {currentDriver.rating}
+            </p>
+          ) : (
+            <p className="flex items-center gap-1 truncate text-xs font-bold text-amber-700">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              {verification === 'pending'
+                ? 'Pending TMO verification'
+                : `Rider account ${verification}`}
+            </p>
+          )}
         </div>
 
         <button
@@ -361,14 +388,32 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                and put Accept beside Decline at thumb width, which is the pair
                you least want to mis-tap. */
             <div className="space-y-3">
-              {activeRequests.map((req) => (
+              {activeRequests.map((req) => {
+                const isCharter = isExclusiveTrip(req.vehicleType);
+
+                return (
                 /* Kept deliberately short — a rider scans this list on a phone,
                    so fitting three or four trips on screen matters more than
                    breathing room. Route, price and both actions in three rows. */
                 <div
                   key={req.id}
-                  className="rounded-xl border border-gray-200 bg-white p-3 transition hover:border-amber-400 hover:bg-amber-50 hover:shadow-md"
+                  className={`rounded-xl border p-3 transition hover:shadow-md ${
+                    isCharter
+                      ? 'border-2 border-indigo-300 bg-indigo-50 hover:border-indigo-400'
+                      : 'border-gray-200 bg-white hover:border-amber-400 hover:bg-amber-50'
+                  }`}
                 >
+                  {/* A charter is a different deal, not just a different price:
+                      the fare is flat, the party hires the whole vehicle, and
+                      accepting it means taking no one else. Worth saying before
+                      a rider taps Accept, not after. */}
+                  {isCharter && (
+                    <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+                      <Users className="h-3 w-3 shrink-0" />
+                      <span>Pakyaw charter · whole vehicle, no other passengers</span>
+                    </div>
+                  )}
+
                   <div className="flex gap-2.5">
                     <div className="flex flex-col items-center pt-1">
                       <span className="h-2 w-2 rounded-full border-2 border-emerald-600" />
@@ -415,6 +460,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                       </span>
                     )}
                     {req.passengers} pax · {req.distanceKm} km
+                    {isCharter && ' · flat fare, not per passenger'}
                     {req.notes ? ` · "${req.notes}"` : ''}
                   </p>
 
@@ -435,14 +481,19 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                         // not on acceptance — otherwise every ride counts twice.
                         onAcceptRequest(req.id);
                       }}
-                      className="flex h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-amber-400 text-base font-extrabold text-gray-900 shadow-sm transition active:scale-95 hover:bg-amber-500 hover:shadow-md"
+                      className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-lg text-base font-extrabold shadow-sm transition active:scale-95 hover:shadow-md ${
+                        isCharter
+                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                          : 'bg-amber-400 text-gray-900 hover:bg-amber-500'
+                      }`}
                     >
                       <Plus className="h-5 w-5" />
-                      <span>Accept</span>
+                      <span>{isCharter ? `Accept charter · ₱${req.totalFare}` : 'Accept'}</span>
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -14,7 +14,22 @@ import {
   LocateFixed,
   Search,
   Loader2,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
+
+/**
+ * Emoji per vehicle. Left to render in the system font rather than filtered:
+ * on the phones this app is actually used on these already read yellow, and a
+ * hue shift only made them look wrong there to fix a desktop-only mismatch.
+ */
+const VEHICLE_EMOJI: Partial<Record<TransportMode, string>> = {
+  pedicab_standard: '🛺',
+  habal_habal: '🛵',
+  multicab: '🚐',
+  // Pakyaw is a chartered trike, so it carries the same glyph as the pedicab.
+  pakyaw_charter: '🛺',
+};
 
 /**
  * Places found by the geocoder, listed under the app's own pickup points.
@@ -200,7 +215,9 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
     <div className="bg-white rounded-2xl border border-gray-200 shadow-md p-5 md:p-6 flex flex-col gap-5 text-gray-900">
       {/* Top Header & Ride Mode Switch */}
       <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-100">
-        <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl">
+        {/* min-w-0 lets this group shrink first; the City Matrix button keeps
+            its width so it can never be pushed off the edge of the card. */}
+        <div className="flex min-w-0 items-center gap-1 rounded-xl bg-gray-100 p-1">
           <button
             onClick={() => {
               setActiveTab('ride');
@@ -208,13 +225,13 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
               // Auto-select pedicab when switching back to city trike mode
               onSelectVehicle('pedicab_standard');
             }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+            className={`min-w-0 truncate rounded-lg px-3 py-1.5 text-xs font-bold transition ${
               activeTab === 'ride'
                 ? 'bg-gray-900 text-amber-400 shadow-xs'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            🛺 City Trike
+            City Trike
           </button>
           <button
             onClick={() => {
@@ -225,13 +242,13 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
               // Initialize custom fare with ordinance minimum
               onChangeCustomPakyawFare(minimumPakyawFare);
             }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+            className={`min-w-0 truncate rounded-lg px-3 py-1.5 text-xs font-bold transition ${
               activeTab === 'pakyaw'
                 ? 'bg-gray-900 text-amber-400 shadow-xs'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            🤝 Pakyaw Charter
+            Pakyaw
           </button>
         </div>
 
@@ -324,29 +341,9 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                 </button>
               </div>
 
-              {onUseCurrentLocation && (
-                <button
-                  onClick={async () => {
-                    setLocating(true);
-                    try {
-                      await onUseCurrentLocation();
-                      setIsSearchingPickup(false);
-                    } finally {
-                      setLocating(false);
-                    }
-                  }}
-                  disabled={locating}
-                  className="mb-1 flex w-full items-center gap-2 rounded-lg bg-emerald-50 p-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
-                >
-                  {locating ? (
-                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                  ) : (
-                    <LocateFixed className="h-4 w-4 shrink-0" />
-                  )}
-                  <span>{locating ? 'Finding you...' : 'Use my current location'}</span>
-                </button>
-              )}
-
+              {/* No "use my current location" here — the field itself already
+                  carries a Use Current button, and repeating it inside the
+                  dropdown made the same action appear twice on one screen. */}
               {filteredPickupLocations.map((loc) => (
                 <button
                   key={loc.id}
@@ -520,11 +517,6 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   }`}
                 >
                   {num}
-                  {num === 1 && passengers !== 1 && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-gray-900 text-[7px] font-extrabold px-1.5 py-0.5 rounded-full shadow-xs">
-                      POPULAR
-                    </span>
-                  )}
                 </button>
               ))}
               <button
@@ -592,11 +584,14 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     )}
                     <div className="flex justify-between items-center gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 border ${isSelected ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'}`}>
-                          {mode === 'pedicab_standard' && '🛺'}
-                          {mode === 'habal_habal' && '🛵'}
-                          {mode === 'multicab' && '🚐'}
-                          {mode === 'pakyaw_charter' && '🛺'}
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-xl ${
+                            isSelected
+                              ? 'border-amber-400/30 bg-amber-400/15'
+                              : 'border-amber-200 bg-amber-50'
+                          }`}
+                        >
+                          {VEHICLE_EMOJI[mode] ?? '🛺'}
                         </div>
                         <div className="min-w-0">
                           <p className={`font-bold text-sm leading-tight truncate ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
@@ -611,11 +606,15 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                       <div className="text-right shrink-0">
                         {isPakyawNegotiated ? (
                           <>
-                            <p className={`font-bold text-sm ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Estimated: ₱{minimumPakyawFare}
+                            {/* Presented the same way as every other vehicle: a
+                                fare for this distance. Labelling it "Estimated"
+                                over "ordinance minimum" made a correctly
+                                calculated figure look like a flat floor. */}
+                            <p className={`text-lg font-extrabold ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
+                              {hasRoute ? `₱${minimumPakyawFare}` : '—'}
                             </p>
-                            <span className={`text-[10px] font-bold block ${isSelected ? 'text-gray-500' : 'text-gray-400'}`}>
-                              ordinance minimum
+                            <span className={`block text-[10px] font-bold ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {hasRoute ? `for ${distanceKm.toFixed(2)} km` : 'measuring route'}
                             </span>
                           </>
                         ) : (
@@ -642,17 +641,22 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
           {/* Pakyaw Custom Fare Negotiator */}
           {isPakyawNegotiated && (
-            <div className="p-4 bg-amber-50 rounded-xl border-2 border-amber-300 space-y-3">
-              <div>
-                <p className="text-xs font-bold uppercase text-amber-900">
-                  🤝 Your Fare (amount to be charged):
-                </p>
-                <p className="text-[10px] font-normal text-amber-700 mt-0.5">
-                  Adjust if you've agreed on a different amount with the driver
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-extrabold text-2xl text-gray-900">₱</span>
+            <div className="space-y-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+              <p className="text-sm font-bold text-amber-950">
+                What are you willing to pay for this trip?
+              </p>
+
+              {/* Steppers live inside the field, against the amount they change.
+                  Separate +/- buttons flanking a boxed number read as a
+                  calculator keypad rather than a single value being adjusted. */}
+              <div
+                className={`flex items-center gap-1 rounded-xl border-2 bg-white pl-3.5 pr-1.5 ${
+                  !isCustomFareValid && customPakyawFare > 0
+                    ? 'border-red-400 bg-red-50'
+                    : 'border-amber-400'
+                }`}
+              >
+                <span className="text-2xl font-extrabold text-gray-900">₱</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -661,40 +665,55 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     const value = e.target.value === '' ? 0 : Number(e.target.value);
                     if (!isNaN(value)) onChangeCustomPakyawFare(value);
                   }}
-                  placeholder={`Minimum: ₱${minimumPakyawFare}`}
-                  className={`flex-1 rounded-lg px-4 py-2.5 text-xl font-extrabold text-gray-900 focus:outline-none focus:ring-2 ${
-                    !isCustomFareValid && customPakyawFare > 0
-                      ? 'bg-red-50 border-2 border-red-400 focus:ring-red-400'
-                      : 'bg-white border-2 border-amber-400 focus:ring-amber-400'
-                  }`}
+                  placeholder={String(minimumPakyawFare)}
+                  className="w-24 min-w-0 bg-transparent py-3 text-2xl font-extrabold text-gray-900 focus:outline-none"
                 />
-                <div className="flex flex-col gap-1">
+                <div className="ml-auto flex shrink-0 flex-col">
                   <button
                     type="button"
-                    onClick={() => onChangeCustomPakyawFare(Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) + 10))}
-                    className="w-10 h-10 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-lg transition active:scale-95 flex items-center justify-center border border-amber-300"
-                    aria-label="Increase fare by 10"
+                    onClick={() =>
+                      onChangeCustomPakyawFare(
+                        Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) + 10)
+                      )
+                    }
+                    className="flex h-6 w-8 items-center justify-center rounded-t-md text-amber-800 transition hover:bg-amber-100 active:scale-95"
+                    aria-label="Raise your offer by 10 pesos"
                   >
-                    +
+                    <ChevronUp className="h-4 w-4" strokeWidth={3} />
                   </button>
                   <button
                     type="button"
-                    onClick={() => onChangeCustomPakyawFare(Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) - 10))}
-                    className="w-10 h-10 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-lg transition active:scale-95 flex items-center justify-center border border-amber-300"
-                    aria-label="Decrease fare by 10"
+                    onClick={() =>
+                      onChangeCustomPakyawFare(
+                        Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) - 10)
+                      )
+                    }
+                    disabled={(customPakyawFare || minimumPakyawFare) <= minimumPakyawFare}
+                    className="flex h-6 w-8 items-center justify-center rounded-b-md text-amber-800 transition hover:bg-amber-100 active:scale-95 disabled:opacity-30 disabled:hover:bg-transparent"
+                    aria-label="Lower your offer by 10 pesos"
                   >
-                    −
+                    <ChevronDown className="h-4 w-4" strokeWidth={3} />
                   </button>
                 </div>
               </div>
-              {!isCustomFareValid && (
-                <p className="text-[10px] font-bold text-red-700">
-                  Cannot be below ordinance minimum: ₱{minimumPakyawFare}
+
+              {!isCustomFareValid ? (
+                <p className="text-xs font-bold text-red-700">
+                  Too low — this trip cannot be booked below ₱{minimumPakyawFare}.
                 </p>
+              ) : (
+                <div className="space-y-1">
+                  {/* The rule itself, so a passenger can check the figure above
+                      rather than take it on trust. */}
+                  <p className="text-xs font-medium text-amber-800">
+                    ₱{VEHICLE_DETAILS.pakyaw_charter.baseFare} minimum for the first km + ₱
+                    {VEHICLE_DETAILS.pakyaw_charter.perKm} for each succeeding km.
+                  </p>
+                  <p className="text-xs font-medium text-amber-700">
+                    You can increase your offer to attract more riders.
+                  </p>
+                </div>
               )}
-              <p className="text-[10px] font-medium text-amber-800">
-                Ordinance minimum: ₱{minimumPakyawFare} for {distanceKm.toFixed(2)} km (₱70 base + ₱5/km after 1st km)
-              </p>
             </div>
           )}
 

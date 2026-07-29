@@ -3,7 +3,9 @@ import { MockProvider } from '../server/ai/provider';
 import { runAgent } from '../server/ai/agent';
 import { executeTool } from '../server/ai/tools';
 import { retrieve, requiresOfficialTier } from '../server/ai/retrieve';
-import { resolveLocation } from '../server/ai/locations';
+import { resolveLocation, resolvePlace, detectOutOfCoverage } from '../server/ai/locations';
+import { searchPlaces } from '../server/geocode';
+import { isInServiceArea } from '../shared/serviceArea';
 import { pool } from '../server/db';
 
 /**
@@ -120,10 +122,115 @@ async function main() {
   const term = await executeTool('estimate_fare', { pickup: 'Silliman', dropoff: 'Valencia terminal' });
   check('"Valencia terminal" still resolves', /OFFICIAL FARE/.test(term.content), term.content.slice(0, 50));
 
+  console.log('\n=== 5c. Out-of-coverage replies offer the terminal AND the charter ===');
+  const outside = await executeTool('estimate_fare', { pickup: 'Silliman', dropoff: 'Dauin' });
+  check('points at a departure terminal', /Ceres Bus Terminal/.test(outside.content));
+  check('mentions the pakyaw charter option', /pakyaw charter/i.test(outside.content));
+  check('explains why (each town sets its own rates)', /own rates|own fare/i.test(outside.content));
+
+  console.log('\n=== 5d. Land neighbours are never sent by sea ===');
+  // Gently told a passenger to catch a ferry to Sibulan — the next town north,
+  // 5 km by road. Sibulan was simply missing from the coverage list, and the
+  // prompt offered a menu of terminals for the model to guess from.
+  for (const town of ['Sibulan', 'Bacong', 'Dauin', 'Valencia', 'Bais', 'Amlan']) {
+    const r = await executeTool('estimate_fare', { pickup: 'Silliman', dropoff: town });
+    check(`"${town}" is recognised as outside`, /OUT OF COVERAGE/.test(r.content), r.content.slice(0, 40));
+
+    // Assert on the onward route itself; the surrounding instruction mentions
+    // ferries precisely to forbid inventing one.
+    const onward = detectOutOfCoverage(town)?.onward ?? '';
+    check(`  ...reached by road, not by boat`, /no boat involved/.test(onward), onward.slice(0, 50));
+    check(`  ...and its route names no ferry`, !/ferry/i.test(onward));
+  }
+  for (const island of ['Siquijor', 'Bohol', 'Cebu']) {
+    const onward = detectOutOfCoverage(island)?.onward ?? '';
+    check(`"${island}" does go by ferry`, /ferry from Dumaguete Port/.test(onward), onward);
+  }
+  // The town is out of coverage; the airport that shares its name is not.
+  const apt = await executeTool('estimate_fare', { pickup: 'Silliman', dropoff: 'Sibulan Airport' });
+  check('"Sibulan Airport" is still bookable', /OFFICIAL FARE/.test(apt.content), apt.content.slice(0, 40));
+
   console.log('\n=== 6. Unknown places are refused, not guessed ===');
   const bogus = await executeTool('estimate_fare', { pickup: 'Atlantis', dropoff: 'Narnia' });
-  check('asks the passenger to choose a real point', /Could not identify/.test(bogus.content));
+  check('asks the passenger to describe it differently', /Could not find/.test(bogus.content));
   check('quotes no fare', !/PHP\s?\d/.test(bogus.content));
+
+  console.log('\n=== 6a. A missing pickup asks a question, it does not recite the list ===');
+  // "book me a ride to terminal" produced a bulleted list of thirteen pickup
+  // points, which is both noise on a phone and wrong — any place in the city
+  // is bookable.
+  const noPickup = await executeTool('draft_booking', { pickup: '', dropoff: 'Robinsons' });
+  check('says the pickup is missing, not "not found"', /has not said where/.test(noPickup.content));
+  check('tells the model to ask one short question', /one short, direct question/.test(noPickup.content));
+  check('forbids reciting the pickup points', /Do NOT\s+list the app's pickup points/.test(noPickup.content));
+  check('drafts nothing', (noPickup.data as any)?.kind !== 'booking_draft');
+  for (const r of [noPickup, await executeTool('estimate_fare', { pickup: 'Silliman', dropoff: 'zzzz qqqq' })]) {
+    check('  ...and no tool result dumps the full list', !/Rizal Boulevard Promenade,/.test(r.content));
+  }
+
+  console.log('\n=== 6b. A near-miss on a curated name must not snap to it ===');
+  // "Foundation University" shares the word "university" with Silliman
+  // University Portal and clears the confidence floor on that alone. Coverage
+  // is what stops it, so the geocoder gets its turn instead.
+  const nearMiss = resolveLocation('Foundation University');
+  check(
+    'scores against Silliman on the shared word',
+    nearMiss?.location.id === 'silliman_portal',
+    nearMiss ? `got ${nearMiss.location.id}` : 'no match'
+  );
+  check(
+    '...but explains too little of the query to be used',
+    (nearMiss?.coverage ?? 1) < 0.6,
+    `coverage ${nearMiss?.coverage?.toFixed(2)}`
+  );
+  for (const shortcut of ['Silliman', 'the boulevard', 'Valencia terminal', 'Sans Rival']) {
+    const r = resolveLocation(shortcut);
+    check(`"${shortcut}" still clears coverage`, (r?.coverage ?? 0) >= 0.6, `${r?.coverage?.toFixed(2)}`);
+  }
+
+  console.log('\n=== 6b2. A word matching two curated points is a question, not an answer ===');
+  // "terminal" fits Ceres and the Valencia terminal equally. The old matcher
+  // kept whichever came first in the data and never said there was a choice.
+  const twoTerminals = await resolvePlace('terminal');
+  check('"terminal" is ambiguous', twoTerminals.kind === 'ambiguous', twoTerminals.kind);
+  if (twoTerminals.kind === 'ambiguous') {
+    check('  ...and offers both', twoTerminals.options.length >= 2,
+      twoTerminals.options.map((o) => o.name).join(' | '));
+  }
+  for (const unambiguous of ['Silliman', 'the boulevard', 'Valencia terminal', 'robinsons', 'pier']) {
+    const r = await resolvePlace(unambiguous);
+    check(`"${unambiguous}" stays a single answer`, r.kind === 'resolved', r.kind);
+  }
+
+  console.log('\n=== 6c. Anywhere inside the city is bookable, not just the 16 points ===');
+  const probe = await searchPlaces('Perdices Street');
+  if (probe.error) {
+    console.log('    skipped — geocoder unreachable');
+  } else {
+    for (const place of ['Foundation University', 'Perdices Street']) {
+      const r = await resolvePlace(place);
+      check(`"${place}" resolves`, r.kind !== 'not-found', r.kind);
+      if (r.kind === 'resolved') {
+        check(`  ...from the map, not the curated list`, r.source === 'geocoded', r.source);
+        check(`  ...and lands inside the service area`, isInServiceArea(r.location.lat, r.location.lng));
+        console.log(`    ${place} -> ${r.location.name} (${r.location.lat.toFixed(4)}, ${r.location.lng.toFixed(4)})`);
+      }
+    }
+
+    const cityWide = await executeTool('draft_booking', {
+      pickup: 'Rizal Boulevard',
+      dropoff: 'Foundation University',
+    });
+    const cw = cityWide.data as any;
+    if (cw?.kind === 'booking_draft') {
+      check('drafts a ride to a non-curated place', true);
+      check('the drop-off is inside the city', isInServiceArea(cw.draft.dropoffLocation.lat, cw.draft.dropoffLocation.lng));
+      console.log(`    draft: ${cw.draft.pickupLocation.name} -> ${cw.draft.dropoffLocation.name}, PHP ${cw.draft.totalFare}`);
+    } else {
+      // Ambiguity is a legitimate outcome — it must ask, not guess.
+      check('asks instead of guessing', /AMBIGUOUS/.test(cityWide.content), cityWide.content.slice(0, 70));
+    }
+  }
 
   console.log('\n=== 7. draft_booking prepares but does not book ===');
   const draft = await executeTool('draft_booking', {
