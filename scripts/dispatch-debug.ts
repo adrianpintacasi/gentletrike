@@ -1,6 +1,13 @@
 import 'dotenv/config';
 import { selectAll, pool } from '../server/db';
-import { rankCandidates, ALONG_THE_WAY_KM, HIDE_BEYOND_KM, type Stop } from '../shared/dispatch';
+import {
+  rankCandidates,
+  sequenceStops,
+  ALONG_THE_WAY_KM,
+  HIDE_BEYOND_KM,
+  type Stop,
+} from '../shared/dispatch';
+import { haversineKm } from '../shared/geo';
 import { VEHICLE_DETAILS, type TransportMode } from '../shared/transport';
 
 /**
@@ -54,6 +61,41 @@ async function main() {
       console.log(
         `    ${a.status.padEnd(16)} ${JSON.parse(a.pickup).name} -> ${JSON.parse(a.dropoff).name}`
       );
+    }
+
+    // The order the map draws, and the leg lengths that produce it. A route
+    // that looks like it doubles back is usually visible here as two stops in
+    // the wrong order — or as two stops metres apart, where the loop is the
+    // road network rather than the sequence.
+    if (active.length) {
+      const seq = sequenceStops(
+        { lat: dr.current_lat, lng: dr.current_lng },
+        active.map((r: any) => {
+          const p = JSON.parse(r.pickup);
+          const d = JSON.parse(r.dropoff);
+          return {
+            rideId: r.id,
+            pickup: r.status === 'in_transit' ? null : { lat: p.lat, lng: p.lng },
+            dropoff: { lat: d.lat, lng: d.lng },
+          };
+        })
+      );
+
+      const nameOf = (rideId: string, kind: string) => {
+        const r = active.find((a: any) => a.id === rideId);
+        return JSON.parse(kind === 'pickup' ? r.pickup : r.dropoff).name;
+      };
+
+      console.log('  route order:');
+      let prev = { lat: dr.current_lat, lng: dr.current_lng };
+      for (const s of seq) {
+        const legM = Math.round(haversineKm(prev, s.at) * 1000);
+        console.log(
+          `    ${s.order}. ${s.kind.padEnd(7)} ${String(legM).padStart(5)} m  ` +
+            `${s.at.lat.toFixed(5)},${s.at.lng.toFixed(5)}  ${nameOf(s.rideId, s.kind)}`
+        );
+        prev = s.at;
+      }
     }
 
     if (!open.length) continue;

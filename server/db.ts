@@ -293,6 +293,19 @@ async function runMigrations() {
     ALTER TABLE drivers ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'verified';
     ALTER TABLE drivers ADD COLUMN IF NOT EXISTS registered_at TEXT DEFAULT ${NOW_SQL};
   `);
+
+  // Riders gave a contact number at sign-up, but the driver record was created
+  // with a literal "—" instead of carrying it over, so passengers saw a Call
+  // button that dialled nothing. New riders are fixed at creation; this repairs
+  // the ones already registered.
+  await run(`
+    UPDATE drivers d
+       SET phone = u.contact_number
+      FROM users u
+     WHERE d.claimed_by = u.id
+       AND coalesce(nullif(trim(d.phone), ''), '—') = '—'
+       AND nullif(trim(u.contact_number), '') IS NOT NULL
+  `);
 }
 
 /** Create the tables and run migrations. Call once at server startup.

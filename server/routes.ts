@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { Router } from "express";
 import { authRoutes } from "./authRoutes";
 import { adminRoutes } from "./adminRoutes";
+import { geocodeRoutes } from "./geocode";
 import {
   attachUser,
   requireAuth,
@@ -32,6 +33,7 @@ api.use((req, res, next) => {
 });
 api.use("/auth", authRoutes);
 api.use("/admin", adminRoutes);
+api.use("/geocode", geocodeRoutes);
 
 // Express 4 does not catch errors thrown from async handlers, so every async
 // handler is wrapped: a rejected promise becomes a clean 500 instead of a
@@ -70,6 +72,40 @@ const findRide = (id: string) =>
 async function rideWithDriver(row: RideRow) {
   const driver = row.driver_id ? await findDriver(row.driver_id) : null;
   return toRide(row, driver);
+}
+
+/**
+ * A ride plus the passenger's name and number, for the rider carrying them.
+ *
+ * A rider needs to reach the person they are collecting — "I'm at the corner,
+ * where are you?" is most of pedicab dispatch. Only attached once a driver is
+ * assigned, so an open trip in the queue never exposes contact details to every
+ * rider who happens to see it.
+ */
+async function rideWithPassenger(row: RideRow) {
+  const ride = await rideWithDriver(row);
+  if (!row.driver_id) return ride;
+
+  const passenger = await selectOne<{
+    first_name: string | null;
+    last_name: string | null;
+    name: string | null;
+    contact_number: string | null;
+  }>(
+    "SELECT first_name, last_name, name, contact_number FROM users WHERE id = ?",
+    row.passenger_id
+  );
+  if (!passenger) return ride;
+
+  const full = [passenger.first_name, passenger.last_name].filter(Boolean).join(" ").trim();
+
+  return {
+    ...ride,
+    passengerName: full || passenger.name || "Passenger",
+    // Riders sign up without a number, so this is often null. The UI disables
+    // the call button rather than offering a link that dials nothing.
+    passengerPhone: passenger.contact_number || null,
+  };
 }
 
 /* ------------------------------------------------------------------ health */
@@ -236,7 +272,8 @@ api.get(
         ORDER BY created_at ASC`,
       req.params.id
     );
-    res.json({ rides: await Promise.all(rows.map(rideWithDriver)) });
+    // The rider is carrying these people, so they get the contact details.
+    res.json({ rides: await Promise.all(rows.map(rideWithPassenger)) });
   })
 );
 

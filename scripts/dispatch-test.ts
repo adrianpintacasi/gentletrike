@@ -8,6 +8,7 @@ import {
   type Stop,
   type Candidate,
 } from '../shared/dispatch';
+import { haversineKm } from '../shared/geo';
 
 /**
  * Verifies which open trips a rider is offered.
@@ -198,6 +199,64 @@ check(
   'no pickup is listed for the passenger already aboard',
   !aboard.some((s) => s.rideId === 'onboard' && s.kind === 'pickup')
 );
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 7. The chosen order really is the shortest legal one ===');
+
+// Brute-forced here independently of the implementation, so this catches a
+// sequencer that quietly degrades rather than just agreeing with itself.
+{
+  const trips = [
+    { rideId: 'a', pickup: P.silliman, dropoff: P.robinsons },
+    { rideId: 'b', pickup: P.boulevard, dropoff: P.cathedral },
+    { rideId: 'c', pickup: P.cityMall, dropoff: P.market },
+  ];
+  const riderAt = { lat: 9.315, lng: 123.305 };
+
+  const flat = trips.flatMap((t) => [
+    { key: `${t.rideId}P`, ride: t.rideId, kind: 'p', at: t.pickup },
+    { key: `${t.rideId}D`, ride: t.rideId, kind: 'd', at: t.dropoff },
+  ]);
+
+  const legal = (order: typeof flat) => {
+    const got = new Set<string>();
+    for (const s of order) {
+      if (s.kind === 'p') got.add(s.ride);
+      else if (!got.has(s.ride)) return false;
+    }
+    return true;
+  };
+  const length = (order: typeof flat) => {
+    let km = 0;
+    let at = riderAt;
+    for (const s of order) {
+      km += haversineKm(at, s.at);
+      at = s.at;
+    }
+    return km;
+  };
+  function* perms<T>(a: T[]): Generator<T[]> {
+    if (a.length <= 1) return yield a;
+    for (let i = 0; i < a.length; i++)
+      for (const rest of perms([...a.slice(0, i), ...a.slice(i + 1)])) yield [a[i], ...rest];
+  }
+
+  let bestKm = Infinity;
+  let checked = 0;
+  for (const p of perms(flat)) {
+    if (!legal(p)) continue;
+    checked++;
+    bestKm = Math.min(bestKm, length(p));
+  }
+
+  const chosen = sequenceStops(riderAt, trips);
+  const chosenKm = length(
+    chosen.map((s) => flat.find((f) => f.at.lat === s.at.lat && f.at.lng === s.at.lng)!)
+  );
+
+  console.log(`    ${checked} legal orderings · optimal ${m(bestKm)} · chosen ${m(chosenKm)}`);
+  check('matches the brute-forced optimum', chosenKm <= bestKm + 1e-9, m(chosenKm - bestKm) + ' worse');
+}
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} CHECK(S) FAILED.`}\n`);
 process.exit(failures === 0 ? 0 : 1);

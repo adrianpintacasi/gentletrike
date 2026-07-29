@@ -84,8 +84,11 @@ async function main() {
       'The stale-poll value above is exactly what App.tsx now discards via abandonedRides.\n'
   );
 
+  // Set the code and let the process wind down on its own. Calling
+  // process.exit() straight after pool.end() races the driver's socket
+  // teardown and trips a libuv assertion that looks like a test failure.
+  process.exitCode = failures === 0 ? 0 : 1;
   await pool.end();
-  process.exit(failures === 0 ? 0 : 1);
 }
 
 main().catch(async (err) => {

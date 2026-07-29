@@ -55,6 +55,10 @@ export interface RideBooking {
   paymentMethod: 'cash' | 'gcash';
   notes?: string;
   assignedDriver?: Driver;
+  /** Attached only for the rider carrying this trip, so they can make contact. */
+  passengerName?: string;
+  /** Null when the passenger signed up without a number. */
+  passengerPhone?: string | null;
   status: RideStatus;
   createdAt: string;
 }

@@ -142,15 +142,7 @@ export interface SequencedStop {
  * every GPS tick.
  */
 export function sequenceStops(riderAt: LatLng, rides: RideStops[]): SequencedStop[] {
-  interface Pending {
-    rideId: string;
-    kind: 'pickup' | 'dropoff';
-    at: LatLng;
-    /** A drop-off cannot be served until its own pickup has been. */
-    blockedBy: string | null;
-  }
-
-  const pending: Pending[] = [];
+  const pending: PendingStop[] = [];
   for (const r of rides) {
     if (r.pickup) {
       pending.push({ rideId: r.rideId, kind: 'pickup', at: r.pickup, blockedBy: null });
@@ -161,16 +153,92 @@ export function sequenceStops(riderAt: LatLng, rides: RideStops[]): SequencedSto
     }
   }
 
-  const out: SequencedStop[] = [];
+  const ordered = pending.length <= EXACT_SEQUENCE_LIMIT
+    ? exactOrder(riderAt, pending)
+    : greedyOrder(riderAt, pending);
+
+  return ordered.map((p, i) => ({
+    rideId: p.rideId,
+    kind: p.kind,
+    at: p.at,
+    order: i + 1,
+  }));
+}
+
+interface PendingStop {
+  rideId: string;
+  kind: 'pickup' | 'dropoff';
+  at: LatLng;
+  blockedBy: string | null;
+}
+
+/**
+ * Above this, searching every ordering stops being instant. A pedicab seats six
+ * and rarely carries more than three trips, so the exact path is the normal one
+ * and greedy is the safety valve.
+ */
+const EXACT_SEQUENCE_LIMIT = 8;
+
+function pathKm(riderAt: LatLng, order: PendingStop[]): number {
+  let km = 0;
+  let at = riderAt;
+  for (const s of order) {
+    km += haversineKm(at, s.at);
+    at = s.at;
+  }
+  return km;
+}
+
+/**
+ * Shortest ordering that never sets a passenger down before collecting them.
+ *
+ * Greedy nearest-next can strand a stop and double back for it; with eight or
+ * fewer stops every legal ordering can simply be measured, so it does not have
+ * to guess.
+ */
+function exactOrder(riderAt: LatLng, pending: PendingStop[]): PendingStop[] {
+  let best: PendingStop[] = [];
+  let bestKm = Infinity;
+
+  const walk = (chosen: PendingStop[], left: PendingStop[], collected: Set<string>) => {
+    if (!left.length) {
+      const km = pathKm(riderAt, chosen);
+      if (km < bestKm) {
+        bestKm = km;
+        best = [...chosen];
+      }
+      return;
+    }
+
+    for (let i = 0; i < left.length; i++) {
+      const s = left[i];
+      if (s.blockedBy && !collected.has(s.blockedBy)) continue;
+
+      const nextCollected = s.kind === 'pickup' ? new Set(collected).add(s.rideId) : collected;
+      walk(
+        [...chosen, s],
+        [...left.slice(0, i), ...left.slice(i + 1)],
+        nextCollected
+      );
+    }
+  };
+
+  walk([], pending, new Set());
+  return best.length ? best : greedyOrder(riderAt, pending);
+}
+
+function greedyOrder(riderAt: LatLng, pending: PendingStop[]): PendingStop[] {
+  const left = [...pending];
+  const out: PendingStop[] = [];
   const collected = new Set<string>();
   let at = riderAt;
 
-  while (pending.length) {
+  while (left.length) {
     let bestIndex = -1;
     let bestKm = Infinity;
 
-    for (let i = 0; i < pending.length; i++) {
-      const p = pending[i];
+    for (let i = 0; i < left.length; i++) {
+      const p = left[i];
       if (p.blockedBy && !collected.has(p.blockedBy)) continue;
       const km = haversineKm(at, p.at);
       if (km < bestKm) {
@@ -183,10 +251,9 @@ export function sequenceStops(riderAt: LatLng, rides: RideStops[]): SequencedSto
     // the list, but bail rather than spin if the data is ever inconsistent.
     if (bestIndex === -1) break;
 
-    const [next] = pending.splice(bestIndex, 1);
+    const [next] = left.splice(bestIndex, 1);
     if (next.kind === 'pickup') collected.add(next.rideId);
-
-    out.push({ rideId: next.rideId, kind: next.kind, at: next.at, order: out.length + 1 });
+    out.push(next);
     at = next.at;
   }
 

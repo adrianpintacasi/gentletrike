@@ -81,9 +81,20 @@
   transform-origin: 50% 50%;
 }
 
+/* The passenger's own arrow. Same rotation behaviour as the rider's, softer
+   shadow — it is orientation context, not the thing being followed. */
+.gt-me-arrow {
+  width: 34px;
+  height: 34px;
+  transition: transform 0.15s linear;
+  filter: drop-shadow(0 1px 4px rgb(0 0 0 / 0.28));
+  transform-origin: 50% 50%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gt-radar span { animation: none; opacity: 0.4; }
   .gt-heading-arrow { transition: none; }
+  .gt-me-arrow { transition: none; }
 }
 
 .animate-scaleUp {

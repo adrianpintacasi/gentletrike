@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { LocationPoint, TransportMode } from '../types';
 import { DUMAGUETE_LOCATIONS, VEHICLE_DETAILS } from '../data/dumagueteData';
 import { farePerPassenger, totalFare } from '../utils/fare';
+import { usePlaceSearch, type PlaceSearchState } from '../hooks/usePlaceSearch';
 import {
   MapPin,
   Navigation,
@@ -10,7 +11,57 @@ import {
   CheckCircle2,
   X,
   Users,
+  LocateFixed,
+  Search,
+  Loader2,
 } from 'lucide-react';
+
+/**
+ * Places found by the geocoder, listed under the app's own pickup points.
+ *
+ * Kept visually separate so the curated points — the ones with known fares and
+ * driver familiarity — stay the obvious first choice, while any Dumaguete shop
+ * or street remains reachable.
+ */
+const PlaceResults: React.FC<{
+  state: PlaceSearchState;
+  query: string;
+  onPick: (loc: LocationPoint) => void;
+}> = ({ state, query, onPick }) => {
+  if (query.trim().length < 3) return null;
+
+  if (state.searching && state.found.length === 0) {
+    return (
+      <div className="flex items-center gap-2 p-2 text-[11px] font-semibold text-gray-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Searching Dumaguete...
+      </div>
+    );
+  }
+
+  if (state.found.length === 0) return null;
+
+  return (
+    <>
+      <div className="mt-1 flex items-center gap-1.5 border-t px-2 pt-2 text-[10px] font-bold uppercase text-gray-400">
+        <Search className="h-3 w-3" />
+        <span>More places in Dumaguete</span>
+      </div>
+      {state.found.map((loc) => (
+        <button
+          key={loc.id}
+          onClick={() => onPick(loc)}
+          className="flex w-full flex-col rounded-lg p-2 text-left text-xs font-bold transition hover:bg-amber-50"
+        >
+          <span className="font-bold text-gray-900">{loc.name}</span>
+          {loc.address && (
+            <span className="text-[10px] font-normal text-gray-500">{loc.address}</span>
+          )}
+        </button>
+      ))}
+    </>
+  );
+};
 
 interface RideBookingPanelProps {
   locations: LocationPoint[];
@@ -18,6 +69,8 @@ interface RideBookingPanelProps {
   dropoff: LocationPoint | null;
   onSelectPickup: (loc: LocationPoint) => void;
   onSelectDropoff: (loc: LocationPoint) => void;
+  /** Resolves the phone's GPS fix into a pickup point. Omit to hide the button. */
+  onUseCurrentLocation?: () => Promise<void>;
   onSwapPickupDropoff: () => void;
   selectedVehicle: TransportMode;
   onSelectVehicle: (mode: TransportMode) => void;
@@ -49,6 +102,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
   dropoff,
   onSelectPickup,
   onSelectDropoff,
+  onUseCurrentLocation,
   onSwapPickupDropoff,
   selectedVehicle,
   onSelectVehicle,
@@ -77,6 +131,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
   // Search state for pickup and dropoff
   const [pickupSearch, setPickupSearch] = useState('');
   const [dropoffSearch, setDropoffSearch] = useState('');
+  const [locating, setLocating] = useState(false);
   const [isSearchingPickup, setIsSearchingPickup] = useState(false);
   const [isSearchingDropoff, setIsSearchingDropoff] = useState(false);
 
@@ -94,17 +149,13 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
       ? customPakyawFare
       : calculateFare(selectedVehicle);
 
-  const filteredPickupLocations = locations.filter(
-    (loc) =>
-      loc.name.toLowerCase().includes(pickupSearch.toLowerCase()) ||
-      (loc.address && loc.address.toLowerCase().includes(pickupSearch.toLowerCase()))
-  );
+  // Curated points match instantly; anything else is looked up as the passenger
+  // pauses typing, so any Dumaguete shop, school or street is bookable.
+  const pickupResults = usePlaceSearch(pickupSearch, locations);
+  const dropoffResults = usePlaceSearch(dropoffSearch, locations);
 
-  const filteredDropoffLocations = locations.filter(
-    (loc) =>
-      loc.name.toLowerCase().includes(dropoffSearch.toLowerCase()) ||
-      (loc.address && loc.address.toLowerCase().includes(dropoffSearch.toLowerCase()))
-  );
+  const filteredPickupLocations = pickupResults.curated;
+  const filteredDropoffLocations = dropoffResults.curated;
 
   const handleAddCustomPickup = () => {
     if (!pickupSearch.trim()) return;
@@ -228,6 +279,29 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                 </button>
               </div>
 
+              {onUseCurrentLocation && (
+                <button
+                  onClick={async () => {
+                    setLocating(true);
+                    try {
+                      await onUseCurrentLocation();
+                      setIsSearchingPickup(false);
+                    } finally {
+                      setLocating(false);
+                    }
+                  }}
+                  disabled={locating}
+                  className="mb-1 flex w-full items-center gap-2 rounded-lg bg-emerald-50 p-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-60"
+                >
+                  {locating ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  ) : (
+                    <LocateFixed className="h-4 w-4 shrink-0" />
+                  )}
+                  <span>{locating ? 'Finding you...' : 'Use my current location'}</span>
+                </button>
+              )}
+
               {filteredPickupLocations.map((loc) => (
                 <button
                   key={loc.id}
@@ -245,6 +319,15 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   )}
                 </button>
               ))}
+
+              <PlaceResults
+                state={pickupResults}
+                query={pickupSearch}
+                onPick={(loc) => {
+                  onSelectPickup(loc);
+                  setIsSearchingPickup(false);
+                }}
+              />
 
               {pickupSearch.trim() && (
                 <button
@@ -343,6 +426,15 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                 </button>
               ))}
 
+              <PlaceResults
+                state={dropoffResults}
+                query={dropoffSearch}
+                onPick={(loc) => {
+                  onSelectDropoff(loc);
+                  setIsSearchingDropoff(false);
+                }}
+              />
+
               {dropoffSearch.trim() && (
                 <button
                   onClick={handleAddCustomDropoff}
@@ -386,35 +478,26 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
           {/* Select Vehicle Category List */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Select Vehicle Category:
+            {/* The distance chip that used to sit here duplicated the "for
+                X km" already printed on every vehicle card. Only the two cases
+                the cards cannot express stay: still measuring, and a figure
+                that is estimated rather than measured along real streets. */}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                Select Vehicle Category
               </h2>
-              <span
-                className="text-xs font-extrabold text-amber-900 bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-200 shadow-xs flex items-center gap-1"
-                title={
-                  distanceSource === 'estimate'
-                    ? 'Route server unreachable — distance estimated from map coordinates.'
-                    : 'Actual driving distance along Dumaguete streets.'
-                }
-              >
-                <span>📏 Road Distance:</span>
-                {isRouting && !hasRoute ? (
-                  <span className="text-gray-500 font-bold">measuring…</span>
-                ) : (
-                  <>
-                    <span className="text-gray-900 font-extrabold">
-                      {distanceKm.toFixed(2)} km
-                    </span>
-                    {estimatedMinutes !== null && (
-                      <span className="text-amber-800 font-bold">• ~{estimatedMinutes} min</span>
-                    )}
-                    {distanceSource === 'estimate' && (
-                      <span className="text-[10px] text-amber-700 font-bold">(approx)</span>
-                    )}
-                  </>
-                )}
-              </span>
+              {isRouting && !hasRoute ? (
+                <span className="text-[11px] font-bold text-gray-500">measuring route…</span>
+              ) : (
+                distanceSource === 'estimate' && (
+                  <span
+                    className="text-[11px] font-bold text-amber-700"
+                    title="Route server unreachable — distance estimated from map coordinates."
+                  >
+                    approximate distance
+                  </span>
+                )
+              )}
             </div>
 
             <div className="space-y-2">
@@ -490,48 +573,52 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
             </div>
           )}
 
-          {/* 1. Dedicated Payment Method Section */}
-          <div className="pt-2 border-t border-gray-100 space-y-1.5">
-            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <span>💳 Select Payment Method:</span>
+          {/* Payment. Emoji dropped — the selected state is already carried by
+              colour and weight, and a wallet glyph next to the word "Payment"
+              adds nothing a passenger reads. */}
+          <div className="space-y-2 border-t border-gray-100 pt-3">
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
+              Payment Method
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => onChangePaymentMethod('cash')}
-                className={`p-2.5 rounded-xl text-xs font-extrabold border transition flex items-center justify-center gap-2 shadow-xs ${
+                className={`flex min-h-11 items-center justify-center rounded-xl border text-xs font-extrabold transition ${
                   paymentMethod === 'cash'
-                    ? 'bg-gray-900 text-amber-400 border-gray-900 ring-2 ring-gray-900/10'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    ? 'border-gray-900 bg-gray-900 text-amber-400 shadow-xs'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <span>💵 Cash Payment</span>
+                Cash
               </button>
               <button
                 type="button"
                 onClick={() => onChangePaymentMethod('gcash')}
-                className={`p-2.5 rounded-xl text-xs font-extrabold border transition flex items-center justify-center gap-2 shadow-xs ${
+                className={`flex min-h-11 items-center justify-center rounded-xl border text-xs font-extrabold transition ${
                   paymentMethod === 'gcash'
-                    ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-600/20'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    ? 'border-blue-600 bg-blue-600 text-white shadow-xs'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <span>📱 GCash e-Wallet</span>
+                GCash
               </button>
             </div>
           </div>
 
-          {/* 2. Dedicated Driver Note Section */}
-          <div className="pt-2 border-t border-gray-100 space-y-1.5">
-            <label className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <span>📝 Note to Driver (Optional):</span>
+          <div className="space-y-2 border-t border-gray-100 pt-3">
+            <label className="flex items-baseline gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-700">
+              Note to Rider
+              <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">
+                optional
+              </span>
             </label>
             <input
               type="text"
               value={notes}
               onChange={(e) => onChangeNotes(e.target.value)}
-              placeholder="e.g. Waiting in front of Sans Rival / near Silliman Portal..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-medium text-gray-900 focus:outline-none focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-200/50 transition"
+              placeholder="e.g. Waiting in front of Sans Rival, near the gate"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs font-medium text-gray-900 transition focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-200/50"
             />
           </div>
 

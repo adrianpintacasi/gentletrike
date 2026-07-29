@@ -2,7 +2,10 @@ import React from 'react';
 import { Driver, RideBooking } from '../types';
 import type { OpenRide } from '../api';
 import { sequenceStops } from '../../shared/dispatch';
-import { Power, MapPin, ArrowRight, Users, Plus, X, CheckCircle } from 'lucide-react';
+import { VEHICLE_DETAILS } from '../../shared/transport';
+import { Power, MapPin, ArrowRight, Users, Plus, X, CheckCircle, Phone, MessageSquare } from 'lucide-react';
+import { RiderChatPanel } from './RiderChatPanel';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
 
 interface DriverModePanelProps {
   currentDriver: Driver;
@@ -13,7 +16,6 @@ interface DriverModePanelProps {
   onDeclineRequest: (rideId: string) => void;
   onAdvanceRideStatus: (rideId: string, status: RideBooking['status']) => void;
   onToggleOnline: (isOnline: boolean) => void;
-  onExitDriverMode: () => void;
 }
 
 /** The next stage a rider moves a trip into, and the button that does it. */
@@ -33,13 +35,27 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   onDeclineRequest,
   onAdvanceRideStatus,
   onToggleOnline,
-  onExitDriverMode,
 }) => {
   // Earnings and trip counts are the server's numbers, credited on completion.
   const earningsToday = currentDriver.earningsToday ?? 0;
   const tripsCompletedToday = currentDriver.tripsToday ?? 0;
 
+  // Only one thread open at a time — a rider glancing at their phone should
+  // see one conversation, not a stack of them.
+  const [chatRideId, setChatRideId] = React.useState<string | null>(null);
+
+  // Polled in the background so a passenger message is announced even while
+  // the rider is looking at the queue rather than the thread.
+  const { unread, markRead } = useUnreadMessages(
+    React.useMemo(() => acceptedPooledRides.map((r) => r.id), [acceptedPooledRides]),
+    'driver'
+  );
+
   const currentCapacityCount = acceptedPooledRides.reduce((sum, r) => sum + r.passengers, 0);
+
+  // Was hardcoded to 6, which is only right for a pedicab — a habal-habal seats
+  // one and an EasyRide twelve. Same number the server enforces on accept.
+  const seatCapacity = VEHICLE_DETAILS[currentDriver.vehicleType]?.maxPassengers ?? 6;
 
   /**
    * Passengers listed in the order the rider will next deal with them, so the
@@ -74,86 +90,81 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   }, [acceptedPooledRides, currentDriver.currentLat, currentDriver.currentLng]);
 
   return (
-    <div className="bg-white text-gray-900 rounded-2xl border border-gray-200 shadow-md p-5 md:p-6 flex flex-col gap-5">
-      {/* Driver Header */}
-      <div className="flex flex-wrap items-center justify-between border-b border-gray-100 pb-4 gap-3">
-        <div className="flex items-center gap-3">
-          <img
-            src={currentDriver.avatar}
-            alt={currentDriver.name}
-            className="w-12 h-12 rounded-xl object-cover border border-gray-200 shadow-xs"
-          />
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-base text-gray-900">{currentDriver.name}</h3>
-              <span className="text-[11px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-md border border-amber-200">
-                {currentDriver.unitNumber}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 font-medium">
-              Verified Dumaguete Rider • ★ {currentDriver.rating}
-            </p>
-          </div>
-        </div>
+    <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-md md:p-5">
+      {/* Rider header. The online toggle sits here, in the space the identity
+          block left empty, so the control a rider reaches for most is the
+          largest target on the card. Switching back to the passenger app lives
+          in the navbar. */}
+      <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
+        <img
+          src={currentDriver.avatar}
+          alt={currentDriver.name}
+          className="h-12 w-12 shrink-0 rounded-xl border border-gray-200 object-cover shadow-xs"
+        />
 
-        <div className="flex items-center gap-2">
-          {/* Online / Offline Status Toggle Button */}
-          <button
-            onClick={() => onToggleOnline(!currentDriver.isOnline)}
-            className={`px-3.5 py-2 rounded-xl font-extrabold text-xs flex items-center gap-1.5 transition shadow-xs active:scale-95 ${
-              currentDriver.isOnline
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                : 'bg-rose-600 text-white hover:bg-rose-700'
-            }`}
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span>{currentDriver.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
-          </button>
-          <button
-            onClick={onExitDriverMode}
-            className="text-xs font-bold text-gray-700 hover:bg-gray-100 px-3 py-2 rounded-xl border border-gray-200 transition"
-          >
-            Passenger App
-          </button>
-        </div>
-      </div>
-
-      {/* Driver Metrics Dashboard */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-amber-50 p-4 rounded-xl border border-amber-200">
-        <div>
-          <span className="text-[10px] text-amber-900 font-bold uppercase tracking-wider block">
-            Today's Earnings:
-          </span>
-          <p className="text-xl font-extrabold text-gray-900">₱{earningsToday}</p>
-        </div>
-        <div>
-          <span className="text-[10px] text-amber-900 font-bold uppercase tracking-wider block">
-            Trips Completed:
-          </span>
-          <p className="text-xl font-extrabold text-gray-900">{tripsCompletedToday} rides</p>
-        </div>
-        <div className="col-span-2 sm:col-span-1">
-          <span className="text-[10px] text-amber-900 font-bold uppercase tracking-wider block">
-            Pooled Capacity:
-          </span>
-          <div className="flex items-center gap-1.5 mt-1">
-            <Users className="w-4 h-4 text-amber-800" />
-            <span className="text-sm font-bold text-gray-900">
-              {currentCapacityCount} / 6 Seats Filled
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-base font-bold text-gray-900">{currentDriver.name}</h3>
+            <span className="shrink-0 rounded-md border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+              {currentDriver.unitNumber}
             </span>
           </div>
+          <p className="truncate text-xs font-medium text-gray-500">
+            Verified Dumaguete Rider • ★ {currentDriver.rating}
+          </p>
+        </div>
+
+        <button
+          onClick={() => onToggleOnline(!currentDriver.isOnline)}
+          className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-xs font-extrabold shadow-xs transition active:scale-95 ${
+            currentDriver.isOnline
+              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+              : 'bg-rose-600 text-white hover:bg-rose-700'
+          }`}
+        >
+          <Power className="h-4 w-4" />
+          <span>{currentDriver.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+        </button>
+      </div>
+
+      {/* Today's numbers. Three equal columns with the labels and values on
+          shared baselines, so the row scans left to right instead of the third
+          item dropping to its own line at narrow widths. */}
+      <div className="grid grid-cols-3 divide-x divide-amber-200 rounded-xl border border-amber-200 bg-amber-50">
+        <div className="px-3 py-3 text-center">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
+            Earnings
+          </span>
+          <p className="mt-1 text-xl font-extrabold leading-none text-gray-900">₱{earningsToday}</p>
+        </div>
+        <div className="px-3 py-3 text-center">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
+            Trips
+          </span>
+          <p className="mt-1 text-xl font-extrabold leading-none text-gray-900">
+            {tripsCompletedToday}
+          </p>
+        </div>
+        <div className="px-3 py-3 text-center">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
+            Seats
+          </span>
+          <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-extrabold leading-none text-gray-900">
+            <Users className="h-4 w-4 text-amber-800" />
+            {currentCapacityCount}/{seatCapacity}
+          </p>
         </div>
       </div>
 
       {/* Accepted Passengers Pool — the rider drives each trip through its stages */}
       {acceptedPooledRides.length > 0 && (
-        <div className="bg-gray-900 text-white p-4 rounded-xl border border-gray-800 space-y-3">
+        <div className="space-y-2.5 rounded-xl border border-gray-800 bg-gray-900 p-3 text-white">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              <span>🤝</span> Passengers Onboard / Route:
+            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+              Passengers Onboard
             </h4>
-            <span className="text-[10px] bg-amber-400 text-gray-900 font-bold px-2 py-0.5 rounded-md">
-              {acceptedPooledRides.length} Active Pooled
+            <span className="rounded-md bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-gray-900">
+              {acceptedPooledRides.length} active
             </span>
           </div>
 
@@ -164,46 +175,95 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
               return (
                 <div
                   key={ride.id}
-                  className="bg-gray-800 border border-gray-700 p-3 rounded-lg space-y-2.5"
+                  className="space-y-2 rounded-lg border border-gray-700 bg-gray-800 p-2.5"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 text-xs text-amber-300 font-bold">
-                        <span className="bg-amber-400 text-gray-900 rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold shrink-0">
-                          {idx + 1}
-                        </span>
-                        <span className="truncate">{ride.pickupLocation.name.split(' ')[0]}</span>
-                        <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
-                        <span className="truncate">{ride.dropoffLocation.name.split(' ')[0]}</span>
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        {ride.passengers} pax • ₱{ride.totalFare} •{' '}
-                        {ride.paymentMethod.toUpperCase()} • {ride.distanceKm} km
+                  <div className="flex items-start gap-2">
+                    <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 text-[11px] font-black text-gray-900">
+                      {idx + 1}
+                    </span>
+
+                    {/* Full place names. Truncating to the first word turned
+                        "Doctor Venancio Aldecoa Drive" into "Doctor". */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold leading-snug text-white">
+                        {ride.pickupLocation.name}
+                      </p>
+                      <p className="flex items-center gap-1 truncate text-xs font-bold leading-snug text-amber-300">
+                        <ArrowRight className="h-3 w-3 shrink-0 text-gray-500" />
+                        {ride.dropoffLocation.name}
+                      </p>
+                      <p className="mt-0.5 truncate text-[10px] text-gray-400">
+                        {ride.passengerName ? `${ride.passengerName} · ` : ''}
+                        {ride.passengers} pax · {ride.distanceKm} km
                       </p>
                     </div>
-                    <span className="text-[9px] font-black uppercase tracking-wider bg-amber-400 text-gray-900 px-2 py-0.5 rounded-md shrink-0">
-                      {ride.status.replace(/_/g, ' ')}
-                    </span>
+
+                    {/* Reaching the passenger is half the job — "I'm at the
+                        corner, where are you?" Chat works for everyone; calling
+                        needs a number, and riders often sign up without one, so
+                        the button is disabled rather than dialling nothing. */}
+                    <div className="flex shrink-0 gap-1.5">
+                      {ride.passengerPhone ? (
+                        <a
+                          href={`tel:${ride.passengerPhone}`}
+                          title={`Call ${ride.passengerName ?? 'passenger'}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-amber-300 transition active:scale-95 hover:bg-gray-600"
+                        >
+                          <Phone className="h-4 w-4" />
+                        </a>
+                      ) : (
+                        <span
+                          title="This passenger has no contact number on file"
+                          className="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-lg bg-gray-800 text-gray-600"
+                        >
+                          <Phone className="h-4 w-4" />
+                        </span>
+                      )}
+                      <button
+                        onClick={() => {
+                          const opening = chatRideId !== ride.id;
+                          setChatRideId(opening ? ride.id : null);
+                          if (opening) void markRead(ride.id);
+                        }}
+                        title="Message passenger"
+                        className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition active:scale-95 ${
+                          chatRideId === ride.id
+                            ? 'bg-amber-400 text-gray-900'
+                            : 'bg-gray-700 text-amber-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        {(unread[ride.id] ?? 0) > 0 && chatRideId !== ride.id && (
+                          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                            {unread[ride.id]}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {chatRideId === ride.id && (
+                    <RiderChatPanel ride={ride} onClose={() => setChatRideId(null)} />
+                  )}
+
+                  <div className="flex gap-2">
                     {nextStage && (
                       <button
                         onClick={() => onAdvanceRideStatus(ride.id, nextStage.status)}
-                        className="flex-1 text-xs font-extrabold bg-amber-400 hover:bg-amber-300 text-gray-900 px-3 py-2 rounded-lg shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5"
+                        className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-400 px-2 text-xs font-extrabold text-gray-900 shadow-xs transition active:scale-95 hover:bg-amber-300"
                       >
-                        <MapPin className="w-3.5 h-3.5" />
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{nextStage.label}</span>
                       </button>
                     )}
                     <button
                       onClick={() => onAdvanceRideStatus(ride.id, 'completed')}
-                      className={`text-xs font-extrabold bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg shadow-xs transition active:scale-95 flex items-center justify-center gap-1 ${
+                      className={`flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-extrabold text-white shadow-xs transition active:scale-95 hover:bg-emerald-600 ${
                         nextStage ? 'shrink-0' : 'flex-1'
                       }`}
                     >
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Complete • ₱{ride.totalFare}</span>
+                      <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>₱{ride.totalFare}</span>
                     </button>
                   </div>
                 </div>
@@ -252,74 +312,89 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            /* One request per card, laid out top to bottom: where the trip
+               goes, what it is worth, then the two decisions. The previous
+               single-row layout truncated both place names to a few characters
+               and put Accept beside Decline at thumb width, which is the pair
+               you least want to mis-tap. */
+            <div className="space-y-3">
               {activeRequests.map((req) => (
+                /* Kept deliberately short — a rider scans this list on a phone,
+                   so fitting three or four trips on screen matters more than
+                   breathing room. Route, price and both actions in three rows. */
                 <div
                   key={req.id}
-                  className="p-3.5 bg-gray-50 border border-gray-200 hover:border-amber-400 rounded-xl flex flex-wrap items-center justify-between gap-3 transition"
+                  className="rounded-xl border border-gray-200 bg-white p-3 transition hover:border-amber-400"
                 >
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900 truncate">
-                      <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span className="truncate">{req.pickupLocation.name}</span>
-                      <ArrowRight className="w-3 h-3 text-gray-400 shrink-0" />
-                      <span className="truncate">{req.dropoffLocation.name}</span>
+                  <div className="flex gap-2.5">
+                    <div className="flex flex-col items-center pt-1">
+                      <span className="h-2 w-2 rounded-full border-2 border-emerald-600" />
+                      <span className="my-0.5 w-px flex-1 bg-gray-300" />
+                      <span className="h-2 w-2 rounded-full bg-red-600" />
                     </div>
-                    <p className="text-xs text-gray-600 font-medium">
-                      {req.passengers} Pax • {req.vehicleType.replace('_', ' ').toUpperCase()} • {req.distanceKm} km
-                    </p>
-                    {/* How far off the current route this trip is. Riders judge a
-                        pickup by the diversion it costs, not by its distance from
-                        them, so show the diversion once they are carrying someone. */}
-                    {typeof req.detourKm === 'number' && (
-                      <p className="text-[11px] font-bold">
-                        {acceptedPooledRides.length === 0 ? (
-                          <span className="text-emerald-700">
-                            {Math.round((req.pickupDistanceKm ?? 0) * 1000)} m away
-                          </span>
-                        ) : req.alongTheWay ? (
-                          <span className="text-emerald-700">
-                            On your route · +{Math.round(req.detourKm * 1000)} m
-                          </span>
-                        ) : (
-                          <span className="text-amber-800">
-                            +{Math.round(req.detourKm * 1000)} m off your route
-                          </span>
-                        )}
+
+                    {/* Full names on two lines. Truncating to one word turned
+                        "Doctor Venancio Aldecoa Drive" into "Doctor". */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold leading-snug text-gray-900">
+                        {req.pickupLocation.name}
                       </p>
-                    )}
-                    {req.notes && (
-                      <p className="text-[11px] font-medium text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-md inline-block">
-                        "{req.notes}"
+                      <p className="truncate text-[13px] font-bold leading-snug text-gray-900">
+                        {req.dropoffLocation.name}
                       </p>
-                    )}
+                    </div>
+
+                    <div className="shrink-0 text-right leading-none">
+                      <p className="text-lg font-extrabold text-gray-900">₱{req.totalFare}</p>
+                      <p className="mt-0.5 text-[9px] font-bold uppercase text-gray-400">
+                        {req.paymentMethod}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-right mr-1">
-                      <span className="text-lg font-bold text-gray-900">₱{req.totalFare}</span>
-                    </div>
+                  {/* Plain text rather than chips — same information, roughly a
+                      third of the height. */}
+                  <p className="mt-1.5 truncate text-[11px] font-bold text-gray-500">
+                    {typeof req.detourKm === 'number' && (
+                      <span
+                        className={
+                          acceptedPooledRides.length === 0 || req.alongTheWay
+                            ? 'text-emerald-700'
+                            : 'text-amber-700'
+                        }
+                      >
+                        {acceptedPooledRides.length === 0
+                          ? `${Math.round((req.pickupDistanceKm ?? 0) * 1000)} m away`
+                          : req.alongTheWay
+                            ? `on route +${Math.round(req.detourKm * 1000)} m`
+                            : `+${Math.round(req.detourKm * 1000)} m off route`}
+                        {' · '}
+                      </span>
+                    )}
+                    {req.passengers} pax · {req.distanceKm} km
+                    {req.notes ? ` · "${req.notes}"` : ''}
+                  </p>
 
-                    {/* Decline Option */}
+                  {/* 40px targets: comfortably tappable while keeping the card
+                      compact. Accept takes the remaining width so the
+                      destructive choice is never the easier tap. */}
+                  <div className="mt-2 flex gap-2">
                     <button
                       onClick={() => onDeclineRequest(req.id)}
-                      className="bg-rose-100 text-rose-800 hover:bg-rose-200 font-bold text-xs px-3 py-2 rounded-xl transition active:scale-95 flex items-center gap-1 border border-rose-200"
-                      title="Decline request"
+                      className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-bold text-rose-700 transition active:scale-95 hover:bg-rose-50"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <X className="h-3.5 w-3.5" />
                       <span>Decline</span>
                     </button>
-
-                    {/* Accept Option */}
                     <button
                       onClick={() => {
                         // Earnings and trip count are credited on completion,
                         // not on acceptance — otherwise every ride counts twice.
                         onAcceptRequest(req.id);
                       }}
-                      className="bg-amber-400 text-gray-900 hover:bg-amber-300 font-extrabold text-xs px-3.5 py-2 rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5"
+                      className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-400 text-sm font-extrabold text-gray-900 shadow-xs transition active:scale-95 hover:bg-amber-300"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="h-4 w-4" />
                       <span>Accept</span>
                     </button>
                   </div>
