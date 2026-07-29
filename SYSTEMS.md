@@ -1,4 +1,4 @@
-# GentleTrike — Systems Documentation & Defense Notes
+# GentleTrike — Systems Documentation & Architecture
 
 > **Vision:** To make every ride in Dumaguete fair, findable, and full.
 
@@ -27,8 +27,8 @@ Every constant in this document was read from the running system, not estimated.
 10. [Security](#10-security)
 11. [Testing strategy](#11-testing-strategy)
 12. [Known limits](#12-known-limits)
-13. [Defense question bank](#13-defense-question-bank)
-14. [The night-before sheet](#14-the-night-before-sheet)
+13. [Architecture FAQ](#13-architecture-faq)
+14. [Quick Reference Facts](#14-quick-reference-facts)
 
 ---
 
@@ -514,9 +514,7 @@ Naming these yourself converts a weakness into evidence of judgement.
 
 ---
 
-## 13. Defense question bank
-
-Try to answer aloud before reading the answer.
+## 13. Architecture FAQ
 
 ### On RAG and the AI
 
@@ -737,9 +735,9 @@ message.
 
 ---
 
-## 14. The night-before sheet
+## 14. Quick Reference Facts
 
-### Five sentences that answer half the questions
+### Key Design Principles
 
 1. **The system computes, the model proposes, the human commits** — no fare comes
    from the LLM and no booking happens without a tap.
@@ -752,7 +750,7 @@ message.
 5. **When the system is unsure which place you mean, it asks** — silently picking
    is how the Valencia bug happened.
 
-### Numbers to have ready
+### System Metrics
 
 | Fact | Value |
 |---|---:|
@@ -766,9 +764,4 @@ message.
 | Boundary polygon points | 165 |
 | Total API spend | ≈ $0.04 of $50 |
 
-### If you are asked something you don't know
 
-Say so, then say where the answer lives — *"that's in `shared/dispatch.ts`, I'd
-want to check the constant rather than guess."* Knowing the shape of your own
-system reads as competence. Inventing a number does not, and it is the one
-mistake this whole project was designed to avoid.

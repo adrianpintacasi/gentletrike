@@ -36,7 +36,7 @@ Please refer to it for a complete technical overview.
 ---
 
 
-## 7. Deploying and iterating
+## 3. Deploying and iterating
 
 ### Local development
 
@@ -69,7 +69,7 @@ old JS bundle.
 
 ---
 
-## 8. Known gaps / future ideas
+## 4. Known gaps / future ideas
 
 - **No type safety at the React layer.** The project ships without
   `@types/react` and with `strict`/`noImplicitAny` **off**, so `tsc` passes but
@@ -85,11 +85,11 @@ old JS bundle.
 - **OSRM has no live traffic**, so "fastest route" is based on typical road
   speeds. Real-time traffic would mean a paid routing API.
 - **Persistence** — done: the app runs on Neon Postgres, so data persists and can
-  be shared across teammates and multiple server instances.
+  be shared across multiple server instances.
 
 ---
 
-## 9. History at a glance
+## 5. History at a glance
 
 Built incrementally on `main`:
 
