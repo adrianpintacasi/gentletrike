@@ -1,148 +1,99 @@
 import React from 'react';
-import { Power, Wallet, Route, TrendingUp, Star } from 'lucide-react';
+import { Star, Route, CloudRain } from 'lucide-react';
 import type { Driver } from '../types';
 import type { TodayTotals } from '../api';
-import { VEHICLE_DETAILS , vehicleDetail } from '../../shared/transport';
+import { vehicleDetail } from '../../shared/transport';
 import { useWeather, describeWeather } from '../hooks/useWeather';
 
 /**
- * The rider's home screen.
+ * The rider's instrument strip.
  *
- * Laid out like the reference: a greeting, the unit they are driving, a hero
- * image of it, then a grid of the things worth knowing before setting off.
+ * This was a home screen: a greeting, a 160px hero card holding one emoji, a
+ * duty toggle, and four stat tiles — most of a phone screen spent on things a
+ * rider reads once a day, sitting above the queue they actually opened the app
+ * for. Worse, it carried a second duty toggle and a second earnings figure, so
+ * the same two facts appeared twice on one screen and disagreed.
  *
- * The numbers come from `/me/today`, which derives them from completed trips
- * rather than reading `drivers.earnings_today` — that column is incremented on
- * every trip and never reset, so it had quietly become a career total labelled
- * "today".
+ * It is now a strip. One line of numbers, read at a glance, over the map rather
+ * than instead of it — because everything below it is the job.
+ *
+ * Dark, unlike every passenger surface in the app. Not decoration: a rider
+ * works at night and in glare, holds the phone at arm's length on a mount, and
+ * looks at it for well under a second at a time. Dark ground with one bright
+ * figure survives that; a white card with grey captions does not. It also means
+ * a glance tells you which mode you are in before you have read a word.
  */
 
 interface HomeRiderProps {
   driver: Driver;
   today: TodayTotals | null;
-  onToggleOnline: (online: boolean) => void;
-  onGoToQueue: () => void;
+  /** Where the rider is, so the forecast is theirs and not a fixed city's. */
+  position?: { lat: number; lng: number } | null;
 }
 
-/**
- * Stand-ins until real unit photography exists.
- *
- * Deliberately per vehicle type rather than one generic trike: a habal-habal
- * rider opening the app to a picture of a pedicab learns immediately that the
- * screen is not really about them.
- */
-const VEHICLE_ART: Record<string, string> = {
-  pedicab_standard: '🛺',
-  pakyaw_charter: '🚐',
-};
-
-export const HomeRider: React.FC<HomeRiderProps> = ({
-  driver,
-  today,
-  onToggleOnline,
-  onGoToQueue,
-}) => {
-  const { weather } = useWeather();
-  const vehicle = vehicleDetail(driver.vehicleType);
+export const HomeRider: React.FC<HomeRiderProps> = ({ driver, today, position }) => {
+  const { weather } = useWeather(position);
   const sky = weather ? describeWeather(weather.code) : null;
+  const vehicle = vehicleDetail(driver.vehicleType);
 
+  /*
+   * Every figure here comes from `/me/today`, which derives them from completed
+   * trips. `drivers.earnings_today` is incremented on completion and never
+   * reset, so it had quietly become a career total wearing the word "today" —
+   * and the two were displayed side by side, disagreeing, on this very screen.
+   */
   const earnings = today?.driver.earnings ?? 0;
   const trips = today?.driver.trips ?? 0;
   const distanceKm = today?.driver.distanceKm ?? 0;
 
   return (
-    <div className="space-y-4 pb-2">
-      <header className="pt-1">
-        <p className="text-xs font-semibold text-gray-500">Ready to have a ride today?</p>
-        <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-gray-900">
-          {vehicle?.title ?? 'Your unit'}
-        </h1>
-        <p className="mt-0.5 text-xs font-bold text-gray-400">
-          {driver.unitNumber}
-        </p>
-      </header>
-
-      {/* Hero. A placeholder until unit photos exist — sized and framed as the
-          real image will be, so dropping one in changes nothing else. */}
-      <div className="flex h-40 items-center justify-center rounded-3xl border border-gray-200 bg-gradient-to-b from-amber-50 to-white shadow-xs">
-        <span className="text-7xl drop-shadow-md" role="img" aria-label={vehicle?.title}>
-          {VEHICLE_ART[driver.vehicleType] ?? '🛺'}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {/* Duty status is the biggest control on the screen: it is the one thing
-            a rider opens this app to change. */}
-        <button
-          onClick={() => onToggleOnline(!driver.isOnline)}
-          className={`col-span-2 flex items-center gap-3 rounded-2xl p-4 text-left shadow-sm transition active:scale-[0.99] ${
-            driver.isOnline
-              ? 'bg-emerald-600 text-white'
-              : 'border border-rose-200 bg-rose-50 text-rose-950'
-          }`}
-        >
-          <Power className="h-6 w-6 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold">
-              {driver.isOnline ? 'You are ONLINE' : 'You are OFFLINE'}
-            </p>
-            <p
-              className={`truncate text-[11px] font-semibold ${
-                driver.isOnline ? 'text-emerald-100' : 'text-rose-700'
-              }`}
-            >
-              {driver.isOnline ? 'Receiving trip requests' : 'Tap to start receiving trips'}
-            </p>
-          </div>
-        </button>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
-          <Wallet className="mb-2 h-5 w-5 text-amber-600" />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+    <div className="overflow-hidden rounded-2xl bg-gray-900 text-white shadow-lg">
+      <div className="flex items-stretch">
+        {/* The one number worth a glance. Everything else is context for it. */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">
             Earned today
           </p>
-          <p className="mt-0.5 text-2xl font-bold leading-none text-gray-900">₱{earnings}</p>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
-          <Route className="mb-2 h-5 w-5 text-amber-600" />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-            Trips today
-          </p>
-          <p className="mt-0.5 text-2xl font-bold leading-none text-gray-900">{trips}</p>
-          <p className="mt-1 text-[11px] font-semibold text-gray-400">{distanceKm} km driven</p>
-        </div>
-
-        {/* Rain is not decoration here: a downpour changes both the job and the
-            demand, so it earns a card rather than a line of small print. */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
-          <p className="mb-1 text-2xl leading-none">{sky?.icon ?? '🌤️'}</p>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dumaguete</p>
-          <p className="mt-0.5 text-2xl font-bold leading-none text-gray-900">
-            {weather ? `${weather.temperature}°C` : '—'}
-          </p>
-          <p className="mt-1 truncate text-[11px] font-semibold text-gray-400">
-            {weather ? `${sky?.label} · ${weather.rainChance}% rain` : 'Weather unavailable'}
+          <p className="mt-0.5 text-3xl font-bold leading-none tracking-tight text-amber-400 tabular-nums">
+            ₱{earnings}
           </p>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
-          <Star className="mb-2 h-5 w-5 text-amber-600" />
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Rating</p>
-          <p className="mt-0.5 text-2xl font-bold leading-none text-gray-900">{driver.rating}</p>
-          <p className="mt-1 text-[11px] font-semibold text-gray-400">
-            {driver.tripsCompleted} trips all time
-          </p>
+        {/* A hairline rather than a gap: this is one instrument, not two cards. */}
+        <div className="my-3 w-px shrink-0 bg-white/10" />
+
+        <div className="flex shrink-0 flex-col justify-center gap-1.5 px-4 py-3">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-300 tabular-nums">
+            <Route className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+            {trips} trips · {distanceKm} km
+          </span>
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-300 tabular-nums">
+            <Star className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+            {driver.rating} rating
+          </span>
+          {weather && (
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-300 tabular-nums">
+              <CloudRain className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+              {weather.temperature}°C · {weather.rainChance}% rain
+            </span>
+          )}
         </div>
       </div>
 
-      <button
-        onClick={onGoToQueue}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 text-sm font-semibold text-amber-400 shadow-sm transition active:scale-[0.99] hover:bg-gray-800"
-      >
-        <TrendingUp className="h-4 w-4" />
-        Open trip queue
-      </button>
+      {/* Which unit is on duty. Small, because it never changes — but present,
+          because a rider driving someone else's trike needs to see it is the
+          right one before they accept work against it. */}
+      <div className="flex items-center gap-2 border-t border-white/10 px-4 py-2">
+        <span className="text-sm leading-none" role="img" aria-label={vehicle.title}>
+          🛺
+        </span>
+        <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-gray-400">
+          {vehicle.title} · {driver.unitNumber}
+        </p>
+        {sky && (
+          <span className="shrink-0 text-[11px] font-semibold text-gray-500">{sky.label}</span>
+        )}
+      </div>
     </div>
   );
 };

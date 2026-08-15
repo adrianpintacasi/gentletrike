@@ -1,8 +1,7 @@
 import React from 'react';
-import { ArrowRight, Check, MapPin, Users, X } from 'lucide-react';
+import { ArrowRight, Check, X } from 'lucide-react';
 import type { OpenRide } from '../api';
 import { isExclusiveTrip } from '../../shared/dispatch';
-import { VEHICLE_DETAILS , vehicleDetail } from '../../shared/transport';
 
 /**
  * A trip offer, thrown over the map rather than buried in the sheet.
@@ -79,7 +78,6 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
   const progress = Math.min(1, Math.abs(dragX) / COMMIT_PX);
   const leaning = dragX > 8 ? 'accept' : dragX < -8 ? 'decline' : null;
 
-  const vehicle = vehicleDetail(ride.vehicleType);
   const isCharter = isExclusiveTrip(ride.vehicleType);
 
   return (
@@ -108,78 +106,78 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            className="relative touch-pan-y rounded-2xl border border-gray-200 bg-white p-3.5 shadow-2xl"
+            className="relative touch-pan-y rounded-2xl bg-gray-900 p-3.5 shadow-2xl ring-1 ring-white/10"
             style={{
               transform: `translateX(${dragX}px) rotate(${dragX * 0.02}deg)`,
               transition: dragStart.current === null ? 'transform 200ms ease-out' : 'none',
               opacity: committing ? 0 : 1,
             }}
           >
-            <div className="mb-2.5 flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-70" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+            {/* One line of identity, so the card can start with the trip. */}
+            <div className="mb-2 flex items-center gap-2">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-900">
-                New trip request
+              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
+                New request
               </span>
-              {remaining > 0 && (
-                <span className="ml-auto rounded-md bg-gray-900 px-1.5 py-0.5 text-[10px] font-bold text-amber-400">
-                  +{remaining} more
-                </span>
-              )}
-            </div>
-
-            <div className="mb-2 min-w-0">
-              <p className="truncate text-sm font-semibold leading-snug text-gray-900">
-                {ride.pickupLocation.name}
-              </p>
-              <p className="flex items-center gap-1 truncate text-sm font-semibold leading-snug text-amber-700">
-                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                {ride.dropoffLocation.name}
-              </p>
-            </div>
-
-            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-gray-600">
-              <span className="flex items-center gap-1">
-                <MapPin className="h-3 w-3 text-gray-400" />
-                {ride.distanceKm} km
-              </span>
-              <span className="flex items-center gap-1">
-                <Users className="h-3 w-3 text-gray-400" />
-                {ride.passengers} pax
-              </span>
-              <span className="truncate text-gray-500">{vehicle?.title ?? ride.vehicleType}</span>
               {isCharter && (
-                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-gray-900">
                   PAKYAW
                 </span>
               )}
-              <span className="ml-auto text-base font-bold text-gray-900">₱{ride.totalFare}</span>
+              <span className="ml-auto flex items-center gap-2 text-[11px] font-bold text-gray-400 tabular-nums">
+                <span>{ride.distanceKm} km</span>
+                <span>{ride.passengers} pax</span>
+                {remaining > 0 && (
+                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-amber-400">
+                    +{remaining}
+                  </span>
+                )}
+              </span>
             </div>
 
-            {/* Buttons carry the same two actions. Decline is deliberately the
-                smaller target: a mis-tap that turns work away costs the rider
-                money, a mis-tap that accepts costs them a short detour. */}
+            {/* The trip and the money, on one row. These are the only two facts
+                a decision needs, so they get the whole width and the largest
+                type on the card — the rest is reference. */}
+            <div className="mb-3 flex items-end gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold leading-tight text-gray-300">
+                  {ride.pickupLocation.name}
+                </p>
+                <p className="flex items-center gap-1 truncate text-[15px] font-bold leading-tight text-white">
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  {ride.dropoffLocation.name}
+                </p>
+              </div>
+              <p className="shrink-0 text-2xl font-bold leading-none text-amber-400 tabular-nums">
+                ₱{ride.totalFare}
+              </p>
+            </div>
+
+            {/* Decline is deliberately the smaller target: a mis-tap that turns
+                work away costs the rider money, a mis-tap that accepts costs
+                them a short detour. */}
             <div className="flex gap-2">
               <button
                 onClick={() => commit('decline')}
                 aria-label="Decline this trip"
-                className="flex h-12 w-14 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition active:scale-95 hover:bg-gray-100"
+                className="flex h-14 w-16 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-400 transition active:scale-95 hover:bg-white/10"
               >
-                <X className="h-5 w-5" />
+                <X className="h-6 w-6" />
               </button>
               <button
                 onClick={() => commit('accept')}
-                className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white shadow-sm transition active:scale-95 hover:bg-emerald-700"
+                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 text-base font-bold text-white shadow-sm transition active:scale-95 hover:bg-emerald-400"
               >
-                <Check className="h-4 w-4" />
-                Accept trip
+                <Check className="h-5 w-5" />
+                Accept
               </button>
             </div>
 
-            <p className="mt-2 text-center text-[10px] font-semibold text-gray-400">
-              or swipe right to accept, left to decline
+            <p className="mt-2 text-center text-[10px] font-semibold text-gray-600">
+              swipe right to accept · left to decline
             </p>
           </div>
         </div>

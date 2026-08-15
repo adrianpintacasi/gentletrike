@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Receipt, Menu } from 'lucide-react';
+import { Home, Receipt, Menu, Navigation } from 'lucide-react';
 
 /**
  * The phone tab bar: three destinations, floating over the app in a dark pill.
@@ -14,10 +14,25 @@ import { Home, Receipt, Menu } from 'lucide-react';
 
 export type NavTab = 'home' | 'ride' | 'fares' | 'menu';
 
-/** The three that actually appear as buttons. `ride` is entered, never chosen. */
-const TABS = [
+/** What a passenger navigates. `ride` is entered, never chosen. */
+const PASSENGER_TABS = [
   { key: 'home' as const, label: 'Home', icon: Home },
   { key: 'fares' as const, label: 'Fares', icon: Receipt },
+  { key: 'menu' as const, label: 'Menu', icon: Menu },
+];
+
+/**
+ * What a rider navigates.
+ *
+ * Two, and Fares is not one of them. The fare table answers "am I being
+ * overcharged", which is a passenger's question — a rider is quoted the fare on
+ * every offer and paid it on completion, so the tab was a destination they had
+ * no reason to visit. Removing it makes the remaining targets bigger, which
+ * matters more here than anywhere else in the app: this bar gets pressed by
+ * someone holding handlebars.
+ */
+const RIDER_TABS = [
+  { key: 'home' as const, label: 'Drive', icon: Navigation },
   { key: 'menu' as const, label: 'Menu', icon: Menu },
 ];
 
@@ -26,15 +41,22 @@ interface BottomNavProps {
   onTabChange: (tab: NavTab) => void;
   /** Shown as a dot on Home when a rider has offers waiting. */
   badgeCount?: number;
+  /** Riders get a shorter bar with bigger targets. */
+  variant?: 'passenger' | 'rider';
 }
 
 /** Pill height plus the gap beneath it, so content can sit clear of both. */
 export const BOTTOM_NAV_HEIGHT = 84;
 
-export const BottomNav: React.FC<BottomNavProps> = ({ tab, onTabChange, badgeCount = 0 }) => (
+export const BottomNav: React.FC<BottomNavProps> = ({
+  tab,
+  onTabChange,
+  badgeCount = 0,
+  variant = 'passenger',
+}) => (
   <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
     <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-gray-900 p-2 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-      {TABS.map(({ key, label, icon: Icon }) => {
+      {(variant === 'rider' ? RIDER_TABS : PASSENGER_TABS).map(({ key, label, icon: Icon }) => {
         const active = tab === key;
         return (
           <button

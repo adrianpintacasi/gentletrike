@@ -19,8 +19,14 @@ import React from 'react';
 export type SheetSnap = 'peek' | 'half' | 'full';
 
 /** Fractions of viewport height. Peek fits the grabber plus one pinned row. */
+/*
+ * Peek was 0.26 while the pinned row stacked four lines. That row is now two,
+ * so a quarter of the screen was reserved for content that no longer needed it
+ * — and on this app the space is not neutral: whatever the sheet holds, it
+ * holds it over the map a rider is steering by.
+ */
 const SNAP_FRACTIONS: Record<SheetSnap, number> = {
-  peek: 0.26,
+  peek: 0.21,
   half: 0.55,
   full: 0.9,
 };

@@ -13,7 +13,7 @@ import {
   KeyRound,
   Moon,
   Sun,
-  Check,
+  Check,  Wallet,
 } from 'lucide-react';
 import * as api from '../api';
 import type { Driver } from '../types';
@@ -30,7 +30,7 @@ import type { HistoryRide, MyReport, TodayTotals } from '../api';
  * how to reach you; a page repeating it was a second door to the same room.
  */
 
-type MenuScreen = 'root' | 'history' | 'reports' | 'payment' | 'settings';
+type MenuScreen = 'root' | 'history' | 'reports' | 'transactions' | 'settings';
 
 interface MenuPageProps {
   user: { name: string; role: 'passenger' | 'rider' | 'admin'; contact_number?: string };
@@ -258,63 +258,125 @@ export const MenuPage: React.FC<MenuPageProps> = ({
     );
   }
 
-  if (screen === 'payment') {
+  if (screen === 'transactions') {
+    /*
+     * A ledger, not a wallet.
+     *
+     * This screen was four payment-method cards — Cash, GCash, Maya — drawn as
+     * gradient credit cards with masked digits, none of them connected to
+     * anything. It looked like an account page and was a mock, and for a rider
+     * it answered a question nobody has: they do not choose how they are paid,
+     * the passenger does.
+     *
+     * What both sides actually want is the record. Every completed trip already
+     * carries its fare and how it settled, so this reads that back: what came in
+     * or went out, by method, with the trips that make up the total. Nothing on
+     * this page is invented — remove a trip and the figure changes.
+     */
+    const settled = history.filter((r) => r.status === 'completed');
+    const byMethod: Record<string, { count: number; total: number }> = {};
+    for (const r of settled) {
+      const key = r.paymentMethod ?? 'cash';
+      if (!byMethod[key]) byMethod[key] = { count: 0, total: 0 };
+      byMethod[key].count += 1;
+      byMethod[key].total += r.totalFare ?? 0;
+    }
+    const grandTotal = settled.reduce((sum, r) => sum + (r.totalFare ?? 0), 0);
+    const inbound = isDriverMode;
+
+    const METHOD_LABEL: Record<string, string> = {
+      cash: 'Cash',
+      gcash: 'GCash',
+      card: 'Card',
+    };
+
     return (
       <div className="space-y-3 pb-2">
-        <Header title="Payment" />
+        <Header title="Transactions" />
 
-        {/* The method that actually settles today, stated first. */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-500 p-4 text-gray-900 shadow-sm">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">
-                Default method
-              </p>
-              <p className="mt-1 text-xl font-bold">Cash</p>
-            </div>
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-900/15">
-              <Check className="h-4 w-4" />
-            </span>
-          </div>
-          <p className="mt-6 text-[11px] font-medium opacity-80">
-            Paid directly to your driver at the end of the trip.
+        {/* The total first, because it is the answer to why anyone opened this. */}
+        <div className="rounded-2xl bg-gray-900 p-5 text-white shadow-sm">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">
+            {inbound ? 'Received, all time' : 'Paid, all time'}
+          </p>
+          <p className="mt-1 text-4xl font-bold leading-none tracking-tight text-amber-400 tabular-nums">
+            ₱{grandTotal}
+          </p>
+          <p className="mt-2 text-[11px] font-semibold text-gray-400 tabular-nums">
+            across {settled.length} completed trip{settled.length === 1 ? '' : 's'}
           </p>
         </div>
 
+        {Object.keys(byMethod).length > 0 && (
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            {Object.entries(byMethod).map(([method, m]) => (
+              <div key={method} className="flex items-center gap-3 px-4 py-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100">
+                  {method === 'cash' ? (
+                    <Wallet className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <CreditCard className="h-4 w-4 text-gray-500" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {METHOD_LABEL[method] ?? method}
+                  </p>
+                  <p className="text-[11px] font-medium text-gray-500 tabular-nums">
+                    {m.count} trip{m.count === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-bold text-gray-900 tabular-nums">₱{m.total}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         <p className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-          Link an account
+          Recent
         </p>
 
-        {WALLETS.map((wallet) => (
-          <button
-            key={wallet.key}
-            className={`relative w-full overflow-hidden rounded-2xl bg-gradient-to-br ${wallet.tint} p-4 text-left text-white shadow-sm transition active:scale-[0.99]`}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider opacity-70">
-                  {wallet.name}
+        {settled.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center">
+            <p className="text-sm font-semibold text-gray-900">Nothing settled yet</p>
+            <p className="mx-auto mt-1 max-w-xs text-[11px] font-medium text-gray-500">
+              {inbound
+                ? 'Fares appear here as you complete trips.'
+                : 'Your trip payments appear here once a ride is finished.'}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            {settled.slice(0, 12).map((r) => (
+              <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-900">
+                    {r.dropoffLocation.name}
+                  </p>
+                  <p className="truncate text-[11px] font-medium text-gray-500">
+                    {formatWhen(r.createdAt)} · {METHOD_LABEL[r.paymentMethod ?? 'cash'] ?? r.paymentMethod}
+                  </p>
+                </div>
+                <p
+                  className={`shrink-0 text-sm font-bold tabular-nums ${
+                    inbound ? 'text-emerald-600' : 'text-gray-900'
+                  }`}
+                >
+                  {inbound ? '+' : ''}₱{r.totalFare}
                 </p>
-                <p className="mt-1 font-mono text-base tracking-widest opacity-90">•••• ••••</p>
               </div>
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 text-base font-bold">
-                {wallet.glyph}
-              </span>
-            </div>
-            <span className="mt-5 flex items-center gap-1.5 text-[11px] font-semibold opacity-90">
-              <Plus className="h-3.5 w-3.5" />
-              Not linked
-            </span>
-          </button>
-        ))}
+            ))}
+          </div>
+        )}
 
-        {/* Said plainly, because the cards above look like working accounts. */}
+        {/* Said plainly, because a ledger implies a processor behind it. */}
         <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <p className="text-xs font-semibold text-gray-900">Not connected yet</p>
+          <p className="text-xs font-semibold text-gray-900">Cash settles in person</p>
           <p className="mt-1 text-[11px] text-gray-500">
-            GentleTrike does not process payments. GCash is arranged directly with your
-            driver, and linking accounts here needs a payment provider the app does not
-            have yet — so nothing on this page will move money.
+            GentleTrike records what a trip cost and how it was paid; it does not move the
+            money. Online and card settlement needs a payment provider the app is not
+            connected to yet, so every figure here is a record of a cash fare
+            {inbound ? ' you collected' : ' you handed over'} at the end of a trip.
           </p>
         </div>
       </div>
@@ -474,7 +536,12 @@ export const MenuPage: React.FC<MenuPageProps> = ({
   const items = [
     { key: 'history' as const, label: 'Trip History', icon: History, hint: `${history.length} finished` },
     { key: 'reports' as const, label: 'Report Status', icon: FileText, hint: `${reports.length} filed` },
-    { key: 'payment' as const, label: 'Payment', icon: CreditCard, hint: 'Cash · no account linked' },
+    {
+      key: 'transactions' as const,
+      label: 'Transactions',
+      icon: CreditCard,
+      hint: `${history.filter((r) => r.status === 'completed').length} settled`,
+    },
     { key: 'settings' as const, label: 'Settings', icon: Settings, hint: 'Appearance, account, mode' },
   ];
 

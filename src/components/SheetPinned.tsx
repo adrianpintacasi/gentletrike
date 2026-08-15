@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  MapPin,
-  CheckCircle,
-  Power,
-  Radar,
-  Navigation,
-  MessageSquare,
-  Phone,
-} from 'lucide-react';
+import { CheckCircle, Power, Radar, Navigation, MessageSquare, Phone } from 'lucide-react';
 import type { Driver, RideBooking } from '../types';
 import { NEXT_STAGE } from './DriverModePanel';
 import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
@@ -15,10 +7,17 @@ import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
 /**
  * The row that never scrolls.
  *
- * A rider driving through Dumaguete should be able to glance at the phone and
- * see the road plus the one button they need, without touching the sheet. That
- * is the whole reason this slot exists: the same action is further down inside
- * DriverModePanel, but "further down" is exactly the problem.
+ * A rider should be able to glance at the phone and see the road plus the one
+ * button they need, without touching the sheet. That is the whole reason this
+ * slot exists — the same actions live inside DriverModePanel, and "further
+ * down" is exactly the problem when you are driving.
+ *
+ * Rebuilt to be short. It previously stacked a route line, a pair of primary
+ * buttons, and a second pair for message and call — four rows deep, sitting on
+ * top of a sheet that was already covering most of the map. Every millimetre
+ * here is a millimetre of road the rider cannot see, so the layout is now one
+ * line of context and one line of controls, with message and call as icons
+ * beside the action rather than a row of their own.
  */
 
 interface DriverPinnedProps {
@@ -31,6 +30,8 @@ interface DriverPinnedProps {
   onOpenChat: (rideId: string) => void;
   /** Unread count per ride, so a waiting question is visible without opening. */
   unread?: Record<string, number>;
+  /** Duty toggle, so going off shift never needs the sheet opened. */
+  onToggleOnline?: (online: boolean) => void;
 }
 
 export const DriverPinned: React.FC<DriverPinnedProps> = ({
@@ -41,6 +42,7 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
   onExpand,
   onOpenChat,
   unread = {},
+  onToggleOnline,
 }) => {
   const ordered = useRouteOrderedRides(driver, acceptedPooledRides);
   const next = ordered[0];
@@ -48,126 +50,129 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
   if (!driver.isOnline) {
     return (
       <button
-        onClick={onExpand}
-        className="flex w-full items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-left transition active:scale-[0.99]"
+        onClick={() => onToggleOnline?.(true)}
+        className="flex w-full items-center gap-3 rounded-xl bg-gray-900 px-4 py-3 text-left transition active:scale-[0.99]"
       >
-        <Power className="h-5 w-5 shrink-0 text-rose-600" />
+        <Power className="h-5 w-5 shrink-0 text-rose-400" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-rose-950">You are OFFLINE</p>
-          <p className="truncate text-[11px] font-medium text-rose-800">
+          <p className="text-sm font-bold text-white">You are OFFLINE</p>
+          <p className="truncate text-[11px] font-semibold text-gray-400">
             Tap to go online and start receiving trips
           </p>
         </div>
+        <span className="shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white">
+          Go online
+        </span>
       </button>
     );
   }
 
-  // Online with nothing accepted: the useful signal is whether anything is
-  // waiting, not a button, so this row reports and invites rather than acts.
+  // Online with nothing accepted. The useful signal is whether anything is
+  // waiting, so this row reports rather than acts — but it still carries the way
+  // off duty, because hunting for that through a menu while parked is the most
+  // common reason a rider opens the sheet at all.
   if (!next) {
     return (
-      <button
-        onClick={onExpand}
-        className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-left transition active:scale-[0.99]"
-      >
-        <Radar className="h-5 w-5 shrink-0 animate-pulse text-emerald-600" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-gray-900">
+      <div className="flex items-center gap-3 rounded-xl bg-gray-900 px-4 py-3">
+        <Radar className="h-5 w-5 shrink-0 animate-pulse text-emerald-400" />
+        <button onClick={onExpand} className="min-w-0 flex-1 text-left">
+          <p className="text-sm font-bold text-white">
             {pendingRequestCount > 0
               ? `${pendingRequestCount} request${pendingRequestCount > 1 ? 's' : ''} waiting`
-              : 'Online — searching for passengers'}
+              : 'Online — searching'}
           </p>
-          <p className="truncate text-[11px] font-medium text-gray-500">
-            ₱{driver.earningsToday ?? 0} today · {driver.tripsToday ?? 0} trips
+          <p className="truncate text-[11px] font-semibold text-gray-400">
+            Tap for the full queue
           </p>
-        </div>
-      </button>
+        </button>
+        <button
+          onClick={() => onToggleOnline?.(false)}
+          className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-bold text-gray-300 transition active:scale-95 hover:bg-white/10"
+        >
+          Go offline
+        </button>
+      </div>
     );
   }
 
   const stage = NEXT_STAGE[next.status];
+  const unreadHere = unread[next.id] ?? 0;
 
   return (
-    <div className="space-y-2">
+    <div className="overflow-hidden rounded-xl bg-gray-900">
+      {/* Where the rider is headed, in one line. Tapping it opens the queue. */}
       <button
         onClick={onExpand}
-        className="flex w-full items-center gap-2 text-left"
+        className="flex w-full items-center gap-2 px-4 pt-2.5 text-left"
         aria-label="Expand trip details"
       >
-        <Navigation className="h-3.5 w-3.5 shrink-0 text-amber-600" />
-        <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-gray-600">
-          {next.status === 'in_transit' ? 'Dropping off' : 'Next pickup'} ·{' '}
-          <span className="text-gray-900">
-            {next.status === 'in_transit'
-              ? next.dropoffLocation.name
-              : next.pickupLocation.name}
+        <Navigation className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+        <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-gray-400">
+          {next.status === 'in_transit' ? 'Dropping off' : 'Next pickup'}
+          <span className="ml-1 text-white">
+            {next.status === 'in_transit' ? next.dropoffLocation.name : next.pickupLocation.name}
           </span>
-          {next.passengerName ? ` · ${next.passengerName}` : ''}
         </p>
         {acceptedPooledRides.length > 1 && (
-          <span className="shrink-0 rounded-md bg-gray-900 px-1.5 py-0.5 text-[10px] font-bold text-amber-400">
+          <span className="shrink-0 rounded-md bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-gray-900">
             +{acceptedPooledRides.length - 1}
           </span>
         )}
       </button>
 
-      <div className="flex gap-2">
+      {/* One row of controls. The stage button takes the width it needs to be
+          hit without aiming; contact and completion are fixed-size icons beside
+          it, because they are known targets a rider finds by position. */}
+      <div className="flex items-center gap-2 px-3 pb-3 pt-2">
         {stage && (
           <button
             onClick={() => onAdvanceRideStatus(next.id, stage.status)}
-            className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-400 px-3 text-sm font-semibold text-gray-900 shadow-sm transition active:scale-95 hover:bg-amber-300"
+            className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-xl bg-amber-400 px-3 text-sm font-bold text-gray-900 shadow-sm transition active:scale-95 hover:bg-amber-300"
           >
-            <MapPin className="h-4 w-4 shrink-0" />
             <span className="truncate">{stage.label}</span>
           </button>
         )}
-        <button
-          onClick={() => onAdvanceRideStatus(next.id, 'completed')}
-          className={`flex h-12 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-white shadow-sm transition active:scale-95 hover:bg-emerald-600 ${
-            stage ? 'shrink-0' : 'flex-1'
-          }`}
-        >
-          <CheckCircle className="h-4 w-4 shrink-0" />
-          <span>₱{next.totalFare}</span>
-        </button>
-      </div>
 
-      {/* Reaching the passenger is half the job — "I'm at the corner, where are
-          you?" Both live here rather than inside the queue below, because a
-          rider looking for them is a rider scrolling while driving. */}
-      <div className="flex gap-2">
         <button
           onClick={() => onOpenChat(next.id)}
-          className="relative flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 text-xs font-bold text-gray-700 transition active:scale-95 hover:bg-gray-100"
+          aria-label={unreadHere > 0 ? `${unreadHere} unread messages` : 'Message passenger'}
+          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-300 transition active:scale-95 hover:bg-white/10"
         >
-          <MessageSquare className="h-4 w-4" />
-          Message
-          {(unread[next.id] ?? 0) > 0 && (
-            <span className="absolute right-2 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
-              {unread[next.id]}
+          <MessageSquare className="h-5 w-5" />
+          {unreadHere > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-gray-900">
+              {unreadHere > 9 ? '9+' : unreadHere}
             </span>
           )}
         </button>
 
-        {/* Calling needs a number, and riders often sign up without one, so the
-            button is disabled rather than dialling nothing. */}
+        {/* Riders often sign up without a number, so this is disabled rather
+            than offering a link that dials nothing. */}
         {next.passengerPhone ? (
           <a
             href={`tel:${next.passengerPhone}`}
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 text-xs font-bold text-gray-700 transition active:scale-95 hover:bg-gray-100"
+            aria-label="Call passenger"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-300 transition active:scale-95 hover:bg-white/10"
           >
-            <Phone className="h-4 w-4" />
-            Call
+            <Phone className="h-5 w-5" />
           </a>
         ) : (
           <span
             title="This passenger has no contact number on file"
-            className="flex h-10 flex-1 cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-gray-100 bg-gray-50 text-xs font-bold text-gray-300"
+            aria-label="No contact number on file"
+            className="flex h-12 w-12 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/5 text-gray-700"
           >
-            <Phone className="h-4 w-4" />
-            Call
+            <Phone className="h-5 w-5" />
           </span>
         )}
+
+        <button
+          onClick={() => onAdvanceRideStatus(next.id, 'completed')}
+          aria-label={`Complete trip and collect ₱${next.totalFare}`}
+          className="flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 text-sm font-bold text-white shadow-sm transition active:scale-95 hover:bg-emerald-600 tabular-nums"
+        >
+          <CheckCircle className="h-4 w-4 shrink-0" />₱{next.totalFare}
+        </button>
       </div>
     </div>
   );

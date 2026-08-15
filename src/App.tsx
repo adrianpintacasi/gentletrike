@@ -1296,14 +1296,38 @@ function MainApp({
           ? acceptedPooledRides.length > 0
           : activeRide?.status === 'in_transit'
       }
-      unreadMessages={isDriverMode ? 0 : passengerUnreadCount}
+      /*
+       * Unread messages, on the map, for both roles.
+       *
+       * The passenger already had this. A rider did not, so a waiting question
+       * was only visible once they opened the sheet over the road they were
+       * driving — which is the one moment they should not have to. The badge now
+       * floats on the map for whoever is carrying unread threads, and tapping it
+       * opens the conversation directly rather than the sheet.
+       */
+      unreadMessages={
+        isDriverMode
+          ? Object.values(driverUnread).reduce<number>((sum, n) => sum + Number(n ?? 0), 0)
+          : passengerUnreadCount
+      }
       onOpenMessages={
-        !isDriverMode && activeRide
+        isDriverMode
           ? () => {
-              void markPassengerRead(activeRide.id);
-              setSheetSnap('half');
+              // The thread with something waiting in it. With several, the one
+              // for the trip they are actively driving comes first.
+              const waiting =
+                acceptedPooledRides.find((r) => (driverUnread[r.id] ?? 0) > 0) ??
+                acceptedPooledRides[0];
+              if (!waiting) return;
+              setChatRideId(waiting.id);
+              void markDriverRead(waiting.id);
             }
-          : undefined
+          : activeRide
+            ? () => {
+                void markPassengerRead(activeRide.id);
+                setSheetSnap('half');
+              }
+            : undefined
       }
     />
   );
@@ -1323,7 +1347,14 @@ function MainApp({
         pendingRequestCount={incomingRequests.length}
         onAdvanceRideStatus={handleAdvanceRideStatus}
         onExpand={() => setSheetSnap('half')}
-        onOpenChat={setChatRideId}
+        // Going on and off duty from the row that is always visible. Hunting
+        // for that switch through an opened sheet is the single most common
+        // reason a rider touches the phone while parked.
+        onToggleOnline={handleToggleOnline}
+        onOpenChat={(rideId) => {
+          setChatRideId(rideId);
+          void markDriverRead(rideId);
+        }}
         unread={driverUnread}
       />
     ) : undefined
@@ -1333,15 +1364,21 @@ function MainApp({
   const sheetContent =
     effectiveTab === 'home' ? (
       isDriverMode && myDriver ? (
-        <HomeRider
-          driver={myDriver}
-          today={todayTotals}
-          onToggleOnline={handleToggleOnline}
-          onGoToQueue={() => {
-            setNavTab('ride');
-            setSheetSnap('half');
-          }}
-        />
+        /*
+         * A rider lands on the work, not on a dashboard about the work.
+         *
+         * Home used to be a greeting, a hero card holding one emoji, a duty
+         * toggle, four stat tiles and a button that went to the queue — so the
+         * screen a rider opens fifty times a shift ended in "now navigate
+         * somewhere else". It also carried its own duty toggle and earnings
+         * figure alongside the panel's, and the two disagreed.
+         *
+         * Now: one instrument strip, then the queue itself.
+         */
+        <div className="space-y-3">
+          <HomeRider driver={myDriver} today={todayTotals} position={myPosition} />
+          {panelContent}
+        </div>
       ) : (
         <HomePassenger
           name={user.name}
@@ -1604,6 +1641,7 @@ function MainApp({
 
           {showNavbar && (
             <BottomNav
+              variant={isDriverMode ? 'rider' : 'passenger'}
               tab={effectiveTab}
               onTabChange={(next) => {
                 setNavTab(next);
@@ -1640,6 +1678,7 @@ function MainApp({
 
           {showNavbar && (
             <BottomNav
+              variant={isDriverMode ? 'rider' : 'passenger'}
               tab={effectiveTab}
               onTabChange={(next) => {
                 setNavTab(next);
