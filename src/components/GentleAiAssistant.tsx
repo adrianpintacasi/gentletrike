@@ -126,12 +126,21 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
 
   if (!isOpen) return null;
 
+  /*
+   * Openers that work wherever the app is opened.
+   *
+   * These used to name Silliman, Rizal Boulevard and Dumaguete festivals, which
+   * made the first thing a passenger saw a set of questions about a city they
+   * may never have been to. Gently resolves "here" and "near me" against their
+   * actual position, so the prompts can ask about where they are without
+   * naming anywhere at all.
+   */
   const quickQuestions = [
-    'How much is pedicab fare from Silliman to Boulevard?',
-    'Book me a ride from Rizal Boulevard to Robinsons',
-    'What festivals happen in Dumaguete?',
-    'How do I report an overcharging driver to TMO?',
-    'What can I see near Rizal Boulevard?',
+    'Where am I right now?',
+    'How much is a pedicab fare per kilometre?',
+    'How much from here to the mall?',
+    'What can I see near here?',
+    'How do I report an overcharging driver?',
   ];
 
   const handleSendQuery = async (queryText?: string) => {

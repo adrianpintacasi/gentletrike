@@ -66,19 +66,31 @@ app.post("/api/dumaguete/ai-assistant", async (req, res) => {
       Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : undefined;
 
     /*
-     * Where the passenger is, in words.
+     * Where the passenger is, in words — but only when it is going to be used.
      *
-     * Coordinates alone let Gently *search* correctly but not *speak* — asked
-     * "where am I?" it could only read six decimal places back. One reverse
-     * lookup turns that into "you are near Cebu Institute of Technology", which
-     * is also what makes "how far is the mall from here" answerable. Cached
-     * server-side, so a whole conversation costs one call.
+     * Coordinates let Gently search correctly but not speak, so a reverse lookup
+     * turns "10.2949, 123.8811" into "Cebu Institute of Technology". The catch is
+     * that it is a network round trip sitting in front of the model, and most
+     * questions name both ends of the trip and never need it. Paying for it on
+     * every message added a visible pause to every reply.
+     *
+     * So it runs only when the message actually leans on where the passenger is,
+     * and it is capped: a slow lookup must not hold up an answer that would have
+     * been fine without it.
      */
-    const nearName = near
-      ? await placeAtPoint(near.lat, near.lng)
-          .then((p) => p?.name ?? null)
-          .catch(() => null)
-      : null;
+    const raw = String(prompt ?? '').toLowerCase();
+    const needsPlaceName =
+      /\b(here|near me|nearby|around me|where am i|my location|current location|closest|nearest)\b/.test(
+        raw
+      );
+
+    const nearName =
+      near && needsPlaceName
+        ? await Promise.race([
+            placeAtPoint(near.lat, near.lng).then((p) => p?.name ?? null),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+          ]).catch(() => null)
+        : null;
 
     const userMessage = String(prompt ?? "").trim()
       ? String(prompt).slice(0, MAX_TURN_CHARS)
