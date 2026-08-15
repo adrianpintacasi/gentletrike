@@ -82,6 +82,23 @@ const findDriver = (id: string) =>
 const findRide = (id: string) =>
   selectOne<RideRow>("SELECT * FROM rides WHERE id = ?", id);
 
+/**
+ * How many this unit seats.
+ *
+ * The rate card's `maxPassengers` is the legal ceiling for the vehicle class,
+ * not a measurement of any one trike — a sidecar built for two and one built
+ * for six are both pedicabs. A rider sets their own figure in Settings; this is
+ * the single place that decides which number wins, so dispatch, the seat
+ * display and the walk-in clamp can never disagree about it.
+ */
+function seatsOf(driver: DriverRow): number {
+  const ceiling =
+    VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+  const declared = driver.seat_capacity;
+  if (declared == null || !Number.isFinite(declared)) return ceiling;
+  return Math.max(1, Math.min(ceiling, declared));
+}
+
 /** Statuses where a rider has committed to a trip, so it sits on their path. */
 const COMMITTED_STATUSES = ["driver_assigned", "driver_arriving", "in_transit"];
 
@@ -296,7 +313,7 @@ api.patch(
       return res.status(404).json({ error: "Driver not found" });
     }
 
-    const { lat, lng, isOnline, walkInSeats } = req.body ?? {};
+    const { lat, lng, isOnline, walkInSeats, seatCapacity } = req.body ?? {};
 
     // A rider may only go ONLINE once the TMO has verified them. Pending,
     // suspended, and declined riders are blocked here with a clear reason.
@@ -336,14 +353,31 @@ api.patch(
      * from a client would silently take a rider out of circulation.
      */
     if (walkInSeats !== undefined) {
-      const seats =
-        VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+      const seats = seatsOf(driver);
       const wanted = Number(walkInSeats);
       if (!Number.isFinite(wanted)) {
         return res.status(400).json({ error: "walkInSeats must be a number" });
       }
       sets.push("walk_in_seats = ?");
       values.push(Math.max(0, Math.min(seats, Math.round(wanted))));
+    }
+
+    /*
+     * What this unit seats, bounded by the class ceiling.
+     *
+     * Clamped rather than trusted for the same reason as walk-ins, and for one
+     * more: the ceiling is the franchise limit. A rider cannot declare twelve
+     * seats on a trike and have the app dispatch parties of twelve to it.
+     */
+    if (seatCapacity !== undefined) {
+      const ceiling =
+        VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+      const wanted = Number(seatCapacity);
+      if (!Number.isFinite(wanted)) {
+        return res.status(400).json({ error: "seatCapacity must be a number" });
+      }
+      sets.push("seat_capacity = ?");
+      values.push(Math.max(1, Math.min(ceiling, Math.round(wanted))));
     }
 
     if (sets.length === 0) {
@@ -524,7 +558,7 @@ api.get(
       active.reduce((n, r) => n + (r.passengers || 1), 0) + (driver.walk_in_seats ?? 0);
     const seatsAvailable = Math.max(
       0,
-      (VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1) - seatsTaken
+      seatsOf(driver) - seatsTaken
     );
 
     const riderAt = { lat: driver.current_lat, lng: driver.current_lng };
@@ -676,7 +710,7 @@ api.post(
     }
 
     const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
-    const seats = VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+    const seats = seatsOf(driver);
 
     if (seatsTaken + (wanted.passengers || 1) > seats) {
       return res.status(409).json({

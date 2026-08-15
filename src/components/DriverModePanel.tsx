@@ -3,7 +3,7 @@ import { Driver, RideBooking } from '../types';
 import type { OpenRide } from '../api';
 import { isExclusiveTrip } from '../../shared/dispatch';
 import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
-import { VEHICLE_DETAILS } from '../../shared/transport';
+import { VEHICLE_DETAILS , vehicleDetail } from '../../shared/transport';
 import {
   Power,
   MapPin,
@@ -94,7 +94,10 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
 
   // Was hardcoded to 6, which is only right for a pedicab — a habal-habal seats
   // one and an EasyRide twelve. Same number the server enforces on accept.
-  const seatCapacity = VEHICLE_DETAILS[currentDriver.vehicleType]?.maxPassengers ?? 6;
+  // The rider's own figure, not the vehicle class ceiling. Set in Settings and
+  // clamped by the server, so this can be trusted as-is.
+  const seatCapacity =
+    currentDriver.seatCapacity ?? vehicleDetail(currentDriver.vehicleType).maxPassengers;
 
   /**
    * Passengers listed in the order the rider will next deal with them, so the

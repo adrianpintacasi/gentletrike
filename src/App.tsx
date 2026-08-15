@@ -690,6 +690,27 @@ function MainApp({
    * round trip per tap makes it feel broken — then reconciled with whatever the
    * server clamps it to, since the server, not the client, decides what fits.
    */
+  /**
+   * Set how many this rider's own unit seats.
+   *
+   * Optimistic like the walk-in stepper, and reconciled the same way: the
+   * server clamps to the vehicle class ceiling, which is the franchise limit,
+   * so its answer is the one that counts.
+   */
+  const handleSetSeatCapacity = useCallback(
+    async (seats: number) => {
+      if (!myDriver) return;
+      setMyDriver((current) => (current ? { ...current, seatCapacity: seats } : current));
+      try {
+        const updated = await api.updateDriver(myDriver.id, { seatCapacity: seats });
+        setMyDriver(updated);
+      } catch (err) {
+        reportError(err, 'Could not update your seat count.');
+      }
+    },
+    [myDriver?.id]
+  );
+
   const handleSetWalkInSeats = useCallback(
     async (seats: number) => {
       if (!myDriver) return;
@@ -1301,7 +1322,7 @@ function MainApp({
               waiting: incomingRequests.length,
               seatsFree: Math.max(
                 0,
-                (vehicleDetail(myDriver.vehicleType).maxPassengers ?? 1) -
+                (myDriver.seatCapacity ?? vehicleDetail(myDriver.vehicleType).maxPassengers) -
                   acceptedPooledRides.reduce((n, r) => n + (r.passengers || 1), 0) -
                   (myDriver.walkInSeats ?? 0)
               ),
@@ -1466,6 +1487,7 @@ function MainApp({
       <FareMatrixPage position={passengerPosition} />
     ) : effectiveTab === 'menu' ? (
       <MenuPage
+        onSeatCapacityChange={isDriverMode && myDriver ? handleSetSeatCapacity : undefined}
         riderToday={
           isDriverMode && myDriver ? (
             <HomeRider driver={myDriver} today={todayTotals} position={myPosition} />

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import * as api from '../api';
 import type { Driver } from '../types';
+import { vehicleDetail } from '../../shared/transport';
 import type { HistoryRide, MyReport, TodayTotals } from '../api';
 
 /**
@@ -56,6 +57,8 @@ interface MenuPageProps {
    * top third of the screen a rider reads while deciding whether to take a trip.
    */
   riderToday?: React.ReactNode;
+  /** Sets how many this rider's own unit seats. Omit to hide the control. */
+  onSeatCapacityChange?: (seats: number) => void;
 }
 
 const formatWhen = (iso: string) => {
@@ -108,8 +111,13 @@ export const MenuPage: React.FC<MenuPageProps> = ({
   initialScreen = 'root',
   onScreenChange,
   riderToday,
+  onSeatCapacityChange,
 }) => {
   const [screen, setScreen] = React.useState<MenuScreen>(initialScreen);
+
+  // The class ceiling is the franchise limit; the rider picks within it.
+  const seatCeiling = driver ? vehicleDetail(driver.vehicleType).maxPassengers : 0;
+  const currentSeats = driver?.seatCapacity ?? seatCeiling;
 
   /** Which account form is open, if any. Only one at a time. */
   const [editing, setEditing] = React.useState<'contact' | 'password' | null>(null);
@@ -417,6 +425,50 @@ export const MenuPage: React.FC<MenuPageProps> = ({
             ))}
           </div>
         </div>
+
+        {/*
+          How many this unit seats.
+          
+          The rate card carries one figure per vehicle class, and it was applied
+          to every trike — so a sidecar built for two was offered parties of six
+          and had to decline them. This is the rider's own measurement, bounded
+          by the class ceiling because that ceiling is the franchise limit.
+          
+          A row of numbers rather than a text field: the range is small, the
+          choice is exact, and a rider setting this is doing it once, on a phone,
+          probably parked.
+        */}
+        {driver && onSeatCapacityChange && (
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <p className="border-b border-gray-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              Seats in your unit
+            </p>
+            <div className="flex flex-wrap gap-2 p-3">
+              {Array.from({ length: seatCeiling }, (_, i) => i + 1).map((n) => {
+                const active = currentSeats === n;
+                return (
+                  <button
+                    key={n}
+                    onClick={() => onSeatCapacityChange(n)}
+                    aria-pressed={active}
+                    className={`h-12 min-w-12 flex-1 rounded-xl text-sm font-bold tabular-nums transition active:scale-95 ${
+                      active
+                        ? 'bg-gray-900 text-white'
+                        : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="border-t border-gray-100 px-4 py-2.5 text-[11px] font-medium text-gray-500">
+              Dispatch will not offer you a party larger than this, and a trip that
+              would overfill the trike is never sent. The maximum for a{' '}
+              {vehicleDetail(driver.vehicleType).title.toLowerCase()} is {seatCeiling}.
+            </p>
+          </div>
+        )}
 
         {saved && (
           <p className="rounded-xl bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">

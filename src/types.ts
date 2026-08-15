@@ -51,6 +51,14 @@ export interface Driver {
   earningsToday?: number;
   /** Seats taken by passengers who did not book through the app. */
   walkInSeats?: number;
+  /**
+   * What this unit actually seats.
+   *
+   * The rate card's figure is the legal ceiling for the vehicle class, not a
+   * measurement of any one trike. The rider sets this; the server clamps it to
+   * the ceiling so the franchise limit still holds.
+   */
+  seatCapacity?: number;
   tripsToday?: number;
   /** TMO standing. Only 'verified' riders may go online. */
   verificationStatus?: 'verified' | 'pending' | 'suspended' | 'declined';
