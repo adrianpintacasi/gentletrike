@@ -360,8 +360,17 @@ export async function resolvePlace(
     return { kind: 'resolved', location: curated[0].location, source: 'curated' };
   }
 
+  /*
+   * Short names are still names.
+   *
+   * `tokens` drops anything under three characters, which is right for fuzzy
+   * scoring — "to", "at" and "of" should not match anything. But it also meant
+   * a query of nothing *but* short words never reached the geocoder at all, and
+   * in the Philippines "SM" is how millions of people name the place they are
+   * going. Empty tokens now suppress the local scoring, not the search.
+   */
   const queryTokens = tokens(input);
-  if (!queryTokens.length) return { kind: 'not-found' };
+  if (!queryTokens.length && input.trim().length < 2) return { kind: 'not-found' };
 
   const { results } = await searchPlaces(input, near);
   if (!results.length) return { kind: 'not-found' };
@@ -371,7 +380,26 @@ export async function resolvePlace(
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  if (!ranked.length) return { kind: 'not-found' };
+  /*
+   * Google found something; our scorer just could not see it.
+   *
+   * The score is word overlap between the query and the result name, which
+   * cannot match an acronym against what it stands for. "CIT-U" tokenises to
+   * ["cit"], and no part of "Cebu Institute of Technology - University"
+   * contains that — so every result scored zero and a passenger standing at the
+   * gate was told the place does not exist. The same happens for "SM", "USC",
+   * "Robinsons Galleria" and most of how people actually name places.
+   *
+   * Google's own ranking is the better answer here: it already does acronyms
+   * and abbreviations, and the search was biased to the passenger's position,
+   * so its first hit is a place near them. Falling back to it is strictly
+   * better than refusing. The scored path above still runs first, and still
+   * owns the ambiguity check, so nothing about the Sans Rival branch problem
+   * changes — this only fires where the alternative was "not found".
+   */
+  if (!ranked.length) {
+    return { kind: 'resolved', location: toPoint(results[0]), source: 'geocoded' };
+  }
 
   // Rivals are only genuine alternatives if they are somewhere else. Two hits
   // for the same mall entrance do not need a question.
