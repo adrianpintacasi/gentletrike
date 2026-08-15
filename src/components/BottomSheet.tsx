@@ -20,16 +20,24 @@ export type SheetSnap = 'peek' | 'half' | 'full';
 
 /** Fractions of viewport height. Peek fits the grabber plus one pinned row. */
 /*
- * Peek was 0.26 while the pinned row stacked four lines. That row is now two,
- * so a quarter of the screen was reserved for content that no longer needed it
- * — and on this app the space is not neutral: whatever the sheet holds, it
- * holds it over the map a rider is steering by.
+ * Half and full are fractions of the screen. Peek is not.
+ *
+ * Peek was 0.26, chosen when the pinned row stacked four lines — so it was
+ * always either wasting map or clipping content, and after that row was cut to
+ * two it did both: a quarter of the screen reserved, with the floating tab bar
+ * still landing on top of the row it was reserving space for.
+ *
+ * Peek is now measured. It is exactly the grabber, plus whatever the pinned row
+ * actually is, plus the tab bar's height so the two never overlap. Nothing is
+ * hidden and nothing is spare, whatever the pinned row happens to contain.
  */
-const SNAP_FRACTIONS: Record<SheetSnap, number> = {
-  peek: 0.21,
+const SNAP_FRACTIONS: Record<Exclude<SheetSnap, 'peek'>, number> = {
   half: 0.55,
   full: 0.9,
 };
+
+/** Used until the pinned row has been measured, and when there is none. */
+const PEEK_FALLBACK = 132;
 
 const ORDER: SheetSnap[] = ['peek', 'half', 'full'];
 
@@ -72,8 +80,34 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   // floating pill, which read as a rendering fault rather than a design.
   // `bottomOffset` now only pads the content, so the last row still clears
   // the tab bar.
+  /**
+   * The pinned row's real height, so peek can be exactly big enough.
+   *
+   * A ResizeObserver rather than a one-off measurement: the row changes shape as
+   * a trip moves through its stages — offline, searching, driving to a pickup —
+   * and each of those is a different height.
+   */
+  const pinnedRef = React.useRef<HTMLDivElement>(null);
+  const [pinnedH, setPinnedH] = React.useState(0);
+
+  React.useEffect(() => {
+    const el = pinnedRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      setPinnedH(entry.contentRect.height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pinned]);
+
   const available = viewportH;
-  const heightFor = (s: SheetSnap) => Math.round(SNAP_FRACTIONS[s] * available);
+  const GRABBER_H = 26;
+  const peekHeight = pinned
+    ? Math.round(GRABBER_H + (pinnedH || PEEK_FALLBACK - GRABBER_H) + bottomOffset + 8)
+    : PEEK_FALLBACK;
+
+  const heightFor = (s: SheetSnap) =>
+    s === 'peek' ? peekHeight : Math.round(SNAP_FRACTIONS[s] * available);
   const fullHeight = heightFor('full');
 
   /** How far the sheet is pushed down from its fully-open position. */
@@ -169,13 +203,24 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         />
       </div>
 
-      {pinned && <div className="shrink-0 px-4 pb-2">{pinned}</div>}
+      {/* Padded clear of the floating tab bar. Without this the pill lands on
+          top of the one row that must never be covered — the row exists so a
+          rider does not have to open the sheet while driving. */}
+      {pinned && (
+        <div
+          ref={pinnedRef}
+          className="shrink-0 px-5 sm:px-6"
+          style={{ paddingBottom: bottomOffset > 0 ? 8 : 8 }}
+        >
+          {pinned}
+        </div>
+      )}
 
       {/* The only scrollable region in the entire mobile layout. The bottom
           padding is the tab bar's height, so the last row can be scrolled clear
           of the floating pill instead of hiding under it. */}
       <div
-        className="gt-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4"
+        className="gt-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6"
         style={{ touchAction: 'pan-y', paddingBottom: bottomOffset + 16 }}
       >
         {children}

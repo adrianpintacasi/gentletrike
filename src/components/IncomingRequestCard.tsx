@@ -81,7 +81,7 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
   const isCharter = isExclusiveTrip(ride.vehicleType);
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-3 pt-3">
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-4 pt-4">
       <div className="pointer-events-auto w-full max-w-md">
         {/* The intent rails. They brighten as the card is pushed toward one, so
             the gesture says what it will do before it is finished. */}

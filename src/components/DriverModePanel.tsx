@@ -14,7 +14,6 @@ import {
   CheckCircle,
   Phone,
   MessageSquare,
-  BadgeCheck,
   AlertTriangle,
 } from 'lucide-react';
 import { RiderChatPanel } from './RiderChatPanel';
@@ -57,9 +56,12 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   // Loading state for online toggle
   const [isTogglingOnline, setIsTogglingOnline] = React.useState(false);
 
-  // Earnings and trip counts are the server's numbers, credited on completion.
-  const earningsToday = currentDriver.earningsToday ?? 0;
-  const tripsCompletedToday = currentDriver.tripsToday ?? 0;
+  /*
+   * `earningsToday` and `tripsToday` used to be read here and shown on this
+   * screen. They come from columns that are incremented on completion and never
+   * reset, so they were career totals labelled "today" — and they sat beside the
+   * real figures, disagreeing. The Menu now derives both from completed trips.
+   */
 
   // Only one thread open at a time — a rider glancing at their phone should
   // see one conversation, not a stack of them.
@@ -98,94 +100,68 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   const routeOrderedRides = useRouteOrderedRides(currentDriver, acceptedPooledRides);
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-md md:p-5">
-      {/* Rider header. The online toggle sits here, in the space the identity
-          block left empty, so the control a rider reaches for most is the
-          largest target on the card. Switching back to the passenger app lives
-          in the navbar. */}
-      <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
-        <img
-          src={currentDriver.avatar}
-          alt={currentDriver.name}
-          className="h-12 w-12 shrink-0 rounded-xl border border-gray-200 object-cover shadow-xs"
-        />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-bold text-gray-900">{currentDriver.name}</h3>
-            <span className="shrink-0 rounded-md border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-              {currentDriver.unitNumber}
-            </span>
-          </div>
-          {/* A rider's own standing, stated honestly. Telling someone they are
-              "Verified" while the server refuses to let them go online is the
-              kind of contradiction that turns into a support message. */}
-          {verification === 'verified' ? (
-            <p className="flex items-center gap-1 truncate text-xs font-medium text-emerald-700">
-              <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
-              Verified Dumaguete Rider · ★ {currentDriver.rating}
-            </p>
-          ) : (
-            <p className="flex items-center gap-1 truncate text-xs font-bold text-amber-700">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              {verification === 'pending'
-                ? 'Pending TMO verification'
-                : `Rider account ${verification}`}
-            </p>
-          )}
-        </div>
-
+    <div className="flex flex-col gap-3 text-gray-900">
+      {/*
+        Duty, and nothing else.
+        
+        The identity block and the day's figures used to live here — avatar,
+        name, verification badge, then Earnings, Trips and Seats. None of them
+        answer a question a rider has while hailing, and the earnings figure
+        read from a counter that is never reset, so it sat on screen disagreeing
+        with the real total two rows above it. All of it moved to the Menu,
+        where a rider looks once a day rather than fifty times a shift.
+        
+        What stays is the switch, because being on or off duty IS the hailing
+        control, and seats, because it decides what can be accepted at all.
+      */}
+      <div className="flex items-center gap-3">
         <button
           onClick={handleToggleOnline}
           disabled={isTogglingOnline}
-          className={`flex min-h-12 shrink-0 items-center gap-2.5 rounded-xl px-5 text-sm font-extrabold shadow-sm transition active:scale-95 ${
+          className={`flex min-h-14 flex-1 items-center justify-center gap-2.5 rounded-2xl px-5 text-sm font-bold shadow-sm transition active:scale-[0.98] ${
             currentDriver.isOnline
               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-              : 'bg-rose-600 text-white hover:bg-rose-700'
-          } ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
+              : 'bg-gray-900 text-white hover:bg-gray-800'
+          } ${isTogglingOnline ? 'cursor-not-allowed opacity-60' : ''}`}
         >
           {isTogglingOnline ? (
             <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>{currentDriver.isOnline ? 'GOING OFFLINE...' : 'GOING ONLINE...'}</span>
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span>{currentDriver.isOnline ? 'Going offline…' : 'Going online…'}</span>
             </>
           ) : (
             <>
-              <Power className="h-4 w-4" />
-              <span>{currentDriver.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+              <Power className="h-5 w-5 shrink-0" />
+              <span>{currentDriver.isOnline ? 'On duty — tap to stop' : 'Go on duty'}</span>
             </>
           )}
         </button>
+
+        {/* Seats left, as a figure not a card. It gates what may be accepted,
+            so it belongs beside the switch that turns accepting on. */}
+        <div className="flex min-h-14 shrink-0 flex-col items-center justify-center rounded-2xl border border-gray-200 px-4">
+          <span className="flex items-center gap-1 text-lg font-bold leading-none text-gray-900 tabular-nums">
+            <Users className="h-4 w-4 text-gray-400" />
+            {currentCapacityCount}/{seatCapacity}
+          </span>
+          <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            seats
+          </span>
+        </div>
       </div>
 
-      {/* Today's numbers. Three equal columns with the labels and values on
-          shared baselines, so the row scans left to right instead of the third
-          item dropping to its own line at narrow widths. */}
-      <div className="grid grid-cols-3 divide-x divide-amber-200 rounded-xl border border-amber-200 bg-amber-50">
-        <div className="px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
-            Earnings
-          </span>
-          <p className="mt-1 text-xl font-extrabold leading-none text-gray-900">₱{earningsToday}</p>
-        </div>
-        <div className="px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
-            Trips
-          </span>
-          <p className="mt-1 text-xl font-extrabold leading-none text-gray-900">
-            {tripsCompletedToday}
+      {/* Verification only when it is a problem. A rider who is verified does
+          not need telling; one who is not cannot go online and must know why. */}
+      {verification !== 'verified' && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
+          <p className="text-xs font-semibold text-amber-900">
+            {verification === 'pending'
+              ? 'Pending TMO verification — you cannot go on duty yet.'
+              : `Rider account ${verification}.`}
           </p>
         </div>
-        <div className="px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
-            Seats
-          </span>
-          <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-extrabold leading-none text-gray-900">
-            <Users className="h-4 w-4 text-amber-800" />
-            {currentCapacityCount}/{seatCapacity}
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Accepted Passengers Pool — the rider drives each trip through its stages */}
       {acceptedPooledRides.length > 0 && (

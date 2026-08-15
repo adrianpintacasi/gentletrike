@@ -51,45 +51,47 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
     return (
       <button
         onClick={() => onToggleOnline?.(true)}
-        className="flex w-full items-center gap-3 rounded-xl bg-gray-900 px-4 py-3 text-left transition active:scale-[0.99]"
+        className="flex w-full items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-left transition active:scale-[0.99]"
       >
         <Power className="h-5 w-5 shrink-0 text-rose-400" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-white">You are OFFLINE</p>
+          <p className="text-sm font-bold text-white">Off duty</p>
           <p className="truncate text-[11px] font-semibold text-gray-400">
-            Tap to go online and start receiving trips
+            You are not receiving trips
           </p>
         </div>
-        <span className="shrink-0 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white">
-          Go online
+        <span className="shrink-0 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white">
+          Start shift
         </span>
       </button>
     );
   }
 
-  // Online with nothing accepted. The useful signal is whether anything is
-  // waiting, so this row reports rather than acts — but it still carries the way
-  // off duty, because hunting for that through a menu while parked is the most
-  // common reason a rider opens the sheet at all.
+  /*
+   * Online, nothing accepted yet.
+   *
+   * This said "Online — searching" over "Tap for the full queue", which the map
+   * was already saying in its own chip a few centimetres above. Two labels for
+   * one state, on the smallest screen in the app. What is left is the only
+   * thing this row can offer that the map cannot: the way off duty, and a count
+   * when something is actually waiting.
+   */
   if (!next) {
     return (
-      <div className="flex items-center gap-3 rounded-xl bg-gray-900 px-4 py-3">
-        <Radar className="h-5 w-5 shrink-0 animate-pulse text-emerald-400" />
-        <button onClick={onExpand} className="min-w-0 flex-1 text-left">
-          <p className="text-sm font-bold text-white">
+      <div className="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3">
+        <button onClick={onExpand} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+          <Radar className="h-4 w-4 shrink-0 animate-pulse text-emerald-400" />
+          <span className="truncate text-sm font-semibold text-white">
             {pendingRequestCount > 0
               ? `${pendingRequestCount} request${pendingRequestCount > 1 ? 's' : ''} waiting`
-              : 'Online — searching'}
-          </p>
-          <p className="truncate text-[11px] font-semibold text-gray-400">
-            Tap for the full queue
-          </p>
+              : 'On duty'}
+          </span>
         </button>
         <button
           onClick={() => onToggleOnline?.(false)}
-          className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-bold text-gray-300 transition active:scale-95 hover:bg-white/10"
+          className="shrink-0 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-bold text-gray-300 transition active:scale-95 hover:bg-white/10"
         >
-          Go offline
+          End shift
         </button>
       </div>
     );
@@ -99,7 +101,7 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
   const unreadHere = unread[next.id] ?? 0;
 
   return (
-    <div className="overflow-hidden rounded-xl bg-gray-900">
+    <div className="overflow-hidden rounded-2xl bg-gray-900">
       {/* Where the rider is headed, in one line. Tapping it opens the queue. */}
       <button
         onClick={onExpand}

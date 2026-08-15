@@ -1375,10 +1375,15 @@ function MainApp({
          *
          * Now: one instrument strip, then the queue itself.
          */
-        <div className="space-y-3">
-          <HomeRider driver={myDriver} today={todayTotals} position={myPosition} />
-          {panelContent}
-        </div>
+        /*
+         * The Drive tab carries the queue and nothing else.
+         *
+         * The instrument strip that briefly lived here — earnings, trips,
+         * rating, weather — moved to the Menu. It was worth knowing, and it was
+         * not worth the top third of the screen a rider looks at while deciding
+         * whether to take a trip.
+         */
+        panelContent
       ) : (
         <HomePassenger
           name={user.name}
@@ -1424,6 +1429,11 @@ function MainApp({
       <FareMatrixPage position={passengerPosition} />
     ) : effectiveTab === 'menu' ? (
       <MenuPage
+        riderToday={
+          isDriverMode && myDriver ? (
+            <HomeRider driver={myDriver} today={todayTotals} position={myPosition} />
+          ) : undefined
+        }
         user={menuUser}
         driver={myDriver}
         today={todayTotals}
@@ -1496,7 +1506,7 @@ function MainApp({
       {isAdminMode ? (
         <AdminDashboard />
       ) : isDesktop ? (
-        <main className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-4 md:px-6 lg:grid-cols-12">
+        <main className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-5 py-4 md:px-6 lg:grid-cols-12">
           {/*
             Both columns are exactly one viewport tall and neither grows.
             The page itself never scrolls: the left column scrolls its own
@@ -1660,7 +1670,7 @@ function MainApp({
            so spending half the display on a map was half the display wasted. */
         <>
           <div
-            className="gt-scroll h-[100dvh] overflow-y-auto overscroll-contain px-4 pt-4"
+            className="gt-scroll h-[100dvh] overflow-y-auto overscroll-contain px-5 pt-5 sm:px-6"
             style={{ paddingBottom: BOTTOM_NAV_HEIGHT + 16 }}
           >
             {sheetContent}

@@ -49,6 +49,13 @@ interface MenuPageProps {
   onContactChanged?: (contactNumber: string) => void;
   initialScreen?: MenuScreen;
   onScreenChange?: (screen: MenuScreen) => void;
+  /**
+   * The rider's figures for today, rendered by the caller.
+   *
+   * They belong here rather than on the Drive tab: worth knowing, not worth the
+   * top third of the screen a rider reads while deciding whether to take a trip.
+   */
+  riderToday?: React.ReactNode;
 }
 
 const formatWhen = (iso: string) => {
@@ -100,6 +107,7 @@ export const MenuPage: React.FC<MenuPageProps> = ({
   onContactChanged,
   initialScreen = 'root',
   onScreenChange,
+  riderToday,
 }) => {
   const [screen, setScreen] = React.useState<MenuScreen>(initialScreen);
 
@@ -560,6 +568,10 @@ export const MenuPage: React.FC<MenuPageProps> = ({
           </p>
         </div>
       </div>
+
+      {/* A rider's day, moved off the Drive tab. Read once or twice a shift,
+          which is what the Menu is for. */}
+      {riderToday && <div className="gt-rise" style={{ animationDelay: '60ms' }}>{riderToday}</div>}
 
       <div className="space-y-2">
         {items.map(({ key, label, icon: Icon, hint }, index) => (
