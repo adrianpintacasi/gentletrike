@@ -201,7 +201,7 @@ export const claimDriver = (driverId?: string) =>
 
 export const updateDriver = (
   driverId: string,
-  update: { lat?: number; lng?: number; isOnline?: boolean }
+  update: { lat?: number; lng?: number; isOnline?: boolean; walkInSeats?: number }
 ) => patch<{ driver: Driver }>(`/drivers/${driverId}`, update).then((r) => r.driver);
 
 export const listDriverRides = (driverId: string) =>

@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Users,
   Plus,
+  Minus,
   X,
   CheckCircle,
   Phone,
@@ -28,6 +29,8 @@ interface DriverModePanelProps {
   onDeclineRequest: (rideId: string) => void;
   onAdvanceRideStatus: (rideId: string, status: RideBooking['status']) => void;
   onToggleOnline: (isOnline: boolean) => void;
+  /** Records passengers picked up off the app, so capacity stays truthful. */
+  onSetWalkInSeats?: (seats: number) => void;
 }
 
 /**
@@ -52,6 +55,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   onDeclineRequest,
   onAdvanceRideStatus,
   onToggleOnline,
+  onSetWalkInSeats,
 }) => {
   // Loading state for online toggle
   const [isTogglingOnline, setIsTogglingOnline] = React.useState(false);
@@ -99,54 +103,84 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
    */
   const routeOrderedRides = useRouteOrderedRides(currentDriver, acceptedPooledRides);
 
+  // Seats booked through the app, plus anyone flagged down on the road. The
+  // server applies exactly the same sum before offering a trip.
+  const walkIn = currentDriver.walkInSeats ?? 0;
+  const bookedSeats = currentCapacityCount;
+  const seatsFree = Math.max(0, seatCapacity - bookedSeats - walkIn);
+
   return (
     <div className="flex flex-col gap-3 text-gray-900">
       {/*
-        Duty, and nothing else.
+        Duty and seats, on one line.
         
-        The identity block and the day's figures used to live here — avatar,
-        name, verification badge, then Earnings, Trips and Seats. None of them
-        answer a question a rider has while hailing, and the earnings figure
-        read from a counter that is never reset, so it sat on screen disagreeing
-        with the real total two rows above it. All of it moved to the Menu,
-        where a rider looks once a day rather than fifty times a shift.
-        
-        What stays is the switch, because being on or off duty IS the hailing
-        control, and seats, because it decides what can be accepted at all.
+        There were two duty buttons on screen at once — a full-width slab here
+        and a black card in the pinned row above saying the same thing. Both are
+        gone. What is left is an icon: green means on duty, and it is the only
+        round control on the screen, so it is found by shape rather than read.
       */}
       <div className="flex items-center gap-3">
         <button
           onClick={handleToggleOnline}
           disabled={isTogglingOnline}
-          className={`flex min-h-14 flex-1 items-center justify-center gap-2.5 rounded-2xl px-5 text-sm font-bold shadow-sm transition active:scale-[0.98] ${
+          aria-pressed={currentDriver.isOnline}
+          aria-label={currentDriver.isOnline ? 'End shift' : 'Start shift'}
+          title={currentDriver.isOnline ? 'On duty — tap to end shift' : 'Off duty — tap to start'}
+          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
             currentDriver.isOnline
               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-              : 'bg-gray-900 text-white hover:bg-gray-800'
+              : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
           } ${isTogglingOnline ? 'cursor-not-allowed opacity-60' : ''}`}
         >
           {isTogglingOnline ? (
-            <>
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              <span>{currentDriver.isOnline ? 'Going offline…' : 'Going online…'}</span>
-            </>
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
           ) : (
-            <>
-              <Power className="h-5 w-5 shrink-0" />
-              <span>{currentDriver.isOnline ? 'On duty — tap to stop' : 'Go on duty'}</span>
-            </>
+            <Power className="h-6 w-6" />
           )}
         </button>
 
-        {/* Seats left, as a figure not a card. It gates what may be accepted,
-            so it belongs beside the switch that turns accepting on. */}
-        <div className="flex min-h-14 shrink-0 flex-col items-center justify-center rounded-2xl border border-gray-200 px-4">
-          <span className="flex items-center gap-1 text-lg font-bold leading-none text-gray-900 tabular-nums">
-            <Users className="h-4 w-4 text-gray-400" />
-            {currentCapacityCount}/{seatCapacity}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-gray-900">
+            {currentDriver.isOnline ? 'On duty' : 'Off duty'}
+          </p>
+          <p className="truncate text-[11px] font-semibold text-gray-500">
+            {currentDriver.isOnline
+              ? `${seatsFree} of ${seatCapacity} seats free`
+              : 'Not receiving trips'}
+          </p>
+        </div>
+
+        {/*
+          Passengers the rider picked up off the app.
+          
+          A trike flagged down on the road is still a full trike, and until now
+          the app had no way to know — so it went on offering seats that were
+          physically occupied and the rider declined each one by hand. Two taps,
+          and dispatch stops offering what does not fit.
+        */}
+        <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-gray-200 p-1">
+          <button
+            onClick={() => onSetWalkInSeats?.(Math.max(0, walkIn - 1))}
+            disabled={walkIn === 0}
+            aria-label="Remove a walk-in passenger"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <span className="flex min-w-8 flex-col items-center leading-none">
+            <span className="text-base font-bold text-gray-900 tabular-nums">{walkIn}</span>
+            <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
+              walk-in
+            </span>
           </span>
-          <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            seats
-          </span>
+          <button
+            onClick={() => onSetWalkInSeats?.(Math.min(seatCapacity, walkIn + 1))}
+            disabled={walkIn >= seatCapacity - bookedSeats}
+            aria-label="Add a walk-in passenger"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -324,18 +358,39 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
       ) : (
         /* ONLINE REQUESTS QUEUE */
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Passenger Requests ({activeRequests.length}):</span>
+          <div className="mb-3 flex items-center gap-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              {activeRequests.length === 0
+                ? 'Waiting for requests'
+                : `${activeRequests.length} request${activeRequests.length > 1 ? 's' : ''}`}
             </h4>
+            {seatsFree === 0 && (
+              <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                Full
+              </span>
+            )}
           </div>
 
           {activeRequests.length === 0 ? (
-            <div className="p-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center text-gray-500 text-xs font-medium">
-              <p className="text-gray-900 font-bold text-sm">Searching for nearby Dumaguete passengers...</p>
-              <p className="text-gray-500 mt-1">
-                Popular zones: Silliman Portal, Boulevard, Public Market, and Robinsons.
+            /* The old empty state named Dumaguete and listed four Dumaguete
+               landmarks as "popular zones", which is wrong everywhere else and
+               was never true anywhere — nothing measured them. It now says only
+               what is actually known: whether there is room, and that the app is
+               listening. */
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
+              <span className="mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-xs">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+              </span>
+              <p className="text-sm font-bold text-gray-900">
+                {seatsFree === 0 ? 'No seats free' : 'Listening for nearby trips'}
+              </p>
+              <p className="mx-auto mt-1 max-w-[16rem] text-[11px] font-medium text-gray-500">
+                {seatsFree === 0
+                  ? 'Set a passenger down, or lower the walk-in count, to start receiving offers again.'
+                  : 'Offers appear here the moment a passenger books nearby. You do not need to keep this open.'}
               </p>
             </div>
           ) : (

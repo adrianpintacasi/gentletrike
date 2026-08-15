@@ -273,6 +273,14 @@ interface DumagueteMapProps {
    * is correct for a trip nobody else is on.
    */
   poolPath?: PooledStop[];
+  /**
+   * The rider's live duty state, for the status chip.
+   *
+   * The chip used to show a spinner and the words "Searching for passengers",
+   * whatever was actually true — off duty, full, or three offers waiting. A
+   * spinner also says "loading", which is the one thing it never meant.
+   */
+  riderStatus?: { online: boolean; waiting: number; seatsFree: number };
   pooledRides?: RideBooking[];
   isDriverMode?: boolean;
   /** Which end the next tap fills, or null when tapping does nothing. */
@@ -314,6 +322,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   driverHeading,
   rideStatus,
   poolPath,
+  riderStatus,
   pooledRides = [],
   isDriverMode = false,
   nextPinTarget,
@@ -1432,19 +1441,62 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           className="absolute left-4 z-10 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-xl border border-gray-800 bg-gray-900/90 px-3.5 py-2 text-[11px] font-medium text-white shadow-lg backdrop-blur-sm transition-all duration-200"
           style={{ bottom: bottomInset + 16 }}
         >
-          {pooledRides.length === 0 ? (
-            <>
-              <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
-              <span className="truncate">Searching for passengers…</span>
-            </>
-          ) : (
-            <>
-              <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
-              <span className="truncate">
-                {pooledRides.length} passenger{pooledRides.length > 1 ? 's' : ''} on your route
-              </span>
-            </>
-          )}
+          {(() => {
+            /* One chip, four truths, in the order that matters to a rider:
+               off duty beats everything, then a full trike, then work waiting,
+               then quiet. Each gets its own mark — a steady dot, a bar, a
+               pulse — so the state is readable before the words are. */
+            if (riderStatus && !riderStatus.online) {
+              return (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-gray-500" />
+                  <span className="truncate text-gray-300">Off duty</span>
+                </>
+              );
+            }
+            if (pooledRides.length > 0) {
+              return (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
+                  <span className="truncate">
+                    {pooledRides.length} passenger{pooledRides.length > 1 ? 's' : ''} on your route
+                  </span>
+                </>
+              );
+            }
+            if (riderStatus && riderStatus.seatsFree === 0) {
+              return (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
+                  <span className="truncate">Full — no seats free</span>
+                </>
+              );
+            }
+            if (riderStatus && riderStatus.waiting > 0) {
+              return (
+                <>
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+                  </span>
+                  <span className="truncate">
+                    {riderStatus.waiting} request{riderStatus.waiting > 1 ? 's' : ''} waiting
+                  </span>
+                </>
+              );
+            }
+            return (
+              <>
+                {/* A radar sweep, not a spinner: nothing is loading — the app is
+                    listening, and may listen for a long time. */}
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                </span>
+                <span className="truncate text-gray-300">Listening for trips</span>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

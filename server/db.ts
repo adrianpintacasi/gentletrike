@@ -114,6 +114,11 @@ const SCHEMA = `
     claimed_by      TEXT,
     earnings_today  INTEGER NOT NULL DEFAULT 0,
     trips_today     INTEGER NOT NULL DEFAULT 0,
+    -- Passengers riding who did not book through the app: flagged down on the
+    -- road, or a family member along for the trip. Without somewhere to record
+    -- them the app keeps offering seats that are physically occupied, and the
+    -- rider has to decline every one of those offers by hand.
+    walk_in_seats   INTEGER NOT NULL DEFAULT 0,
     updated_at      TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
@@ -137,6 +142,8 @@ const SCHEMA = `
     updated_at           TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
+  -- Existing deployments predate walk-in seats; CREATE TABLE only runs once.
+  ALTER TABLE drivers ADD COLUMN IF NOT EXISTS walk_in_seats INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE rides ADD COLUMN IF NOT EXISTS started_at   TEXT;
   ALTER TABLE rides ADD COLUMN IF NOT EXISTS completed_at TEXT;
 
@@ -333,6 +340,7 @@ export interface DriverRow {
   claimed_by: string | null;
   earnings_today: number;
   trips_today: number;
+  walk_in_seats: number;
   updated_at: string;
   verification_status: string | null;
   registered_at: string | null;
@@ -377,6 +385,8 @@ export function toDriver(row: DriverRow) {
     isOnline: row.is_online === 1,
     earningsToday: row.earnings_today,
     tripsToday: row.trips_today,
+    /** Seats taken by passengers who did not book through the app. */
+    walkInSeats: row.walk_in_seats ?? 0,
     // Sent so both screens can tell the truth about a rider: the passenger sees
     // a verified badge only when the TMO has actually verified them, and the
     // rider sees their own pending state instead of a badge they have not

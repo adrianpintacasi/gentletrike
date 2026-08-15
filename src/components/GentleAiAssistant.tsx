@@ -305,9 +305,18 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
     );
   };
 
+  /*
+   * A sheet on a phone, a dialog on a desktop.
+   *
+   * It was 85vh of a centred card at every width, so on a phone it covered the
+   * map, the booking, and everything else the question was probably about — you
+   * could not read your own fare while asking about it. Anchored to the bottom
+   * it behaves like every other sheet in the app and leaves the top of the
+   * screen showing whatever you were looking at.
+   */
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-      <div className="flex h-[85vh] max-h-[620px] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs animate-fadeIn sm:items-center sm:p-4">
+      <div className="flex h-[72dvh] max-h-[620px] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl sm:h-[80vh] sm:rounded-3xl">
         {/* Header */}
         <div className="gt-gently-header relative flex items-center justify-between overflow-hidden p-4 text-amber-400">
           <div className="flex items-center gap-3">
@@ -391,7 +400,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask about fares, routes or places..."
-            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 font-medium focus:outline-none focus:bg-white focus:border-amber-400"
+            className="gt-field flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 font-medium text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
           />
           <button
             type="submit"

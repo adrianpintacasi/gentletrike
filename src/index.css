@@ -286,3 +286,32 @@
 @media (prefers-reduced-motion: reduce) {
   .gt-star-lit { animation: none; }
 }
+
+/*
+ * Text fields that do not make the page jump.
+ *
+ * iOS Safari zooms the entire viewport when a focused input's font-size is
+ * under 16px — so every search box and chat field in the app yanked the layout
+ * sideways the moment a thumb touched it, and left it zoomed afterwards. There
+ * is no setting for this; 16px is the whole fix.
+ *
+ * Applied at the small breakpoint only. Above it there is no zoom behaviour to
+ * avoid, and 16px is larger than these fields want to be on a desktop.
+ */
+.gt-field {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .gt-field,
+  input[type='text'],
+  input[type='search'],
+  input[type='email'],
+  input[type='password'],
+  input[type='tel'],
+  input[type='number'],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

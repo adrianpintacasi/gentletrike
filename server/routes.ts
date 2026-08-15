@@ -296,7 +296,7 @@ api.patch(
       return res.status(404).json({ error: "Driver not found" });
     }
 
-    const { lat, lng, isOnline } = req.body ?? {};
+    const { lat, lng, isOnline, walkInSeats } = req.body ?? {};
 
     // A rider may only go ONLINE once the TMO has verified them. Pending,
     // suspended, and declined riders are blocked here with a clear reason.
@@ -328,6 +328,24 @@ api.patch(
       sets.push("is_online = ?");
       values.push(isOnline ? 1 : 0);
     }
+    /*
+     * Passengers the rider picked up off the app.
+     *
+     * Clamped to the vehicle's own capacity rather than trusted: this figure
+     * decides whether dispatch offers any more trips, so an unbounded value
+     * from a client would silently take a rider out of circulation.
+     */
+    if (walkInSeats !== undefined) {
+      const seats =
+        VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+      const wanted = Number(walkInSeats);
+      if (!Number.isFinite(wanted)) {
+        return res.status(400).json({ error: "walkInSeats must be a number" });
+      }
+      sets.push("walk_in_seats = ?");
+      values.push(Math.max(0, Math.min(seats, Math.round(wanted))));
+    }
+
     if (sets.length === 0) {
       return res.status(400).json({ error: "Nothing to update" });
     }
@@ -500,7 +518,10 @@ api.get(
       ];
     });
 
-    const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
+    // Booked passengers plus anyone flagged down on the road. Leaving walk-ins
+    // out is how a full trike keeps being offered trips it has no room for.
+    const seatsTaken =
+      active.reduce((n, r) => n + (r.passengers || 1), 0) + (driver.walk_in_seats ?? 0);
     const seatsAvailable = Math.max(
       0,
       (VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1) - seatsTaken

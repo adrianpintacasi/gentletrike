@@ -31,6 +31,7 @@ import { RideCompleteModal } from './components/RideCompleteModal';
 import { BottomSheet, type SheetSnap } from './components/BottomSheet';
 import { BottomNav, BOTTOM_NAV_HEIGHT, type NavTab } from './components/BottomNav';
 import { simulatedLocation, LOCATION_PRESETS } from './utils/simulatedLocation';
+import { vehicleDetail } from '../shared/transport';
 import { SectionTabs } from './components/SectionTabs';
 import { DriverPinned } from './components/SheetPinned';
 import { IncomingRequestCard } from './components/IncomingRequestCard';
@@ -682,6 +683,27 @@ function MainApp({
     setNavTab('home');
   };
 
+  /**
+   * Record a passenger the rider picked up off the app.
+   *
+   * Applied optimistically because the control is a stepper — waiting for a
+   * round trip per tap makes it feel broken — then reconciled with whatever the
+   * server clamps it to, since the server, not the client, decides what fits.
+   */
+  const handleSetWalkInSeats = useCallback(
+    async (seats: number) => {
+      if (!myDriver) return;
+      setMyDriver((current) => (current ? { ...current, walkInSeats: seats } : current));
+      try {
+        const updated = await api.updateDriver(myDriver.id, { walkInSeats: seats });
+        setMyDriver(updated);
+      } catch (err) {
+        reportError(err, 'Could not update your passenger count.');
+      }
+    },
+    [myDriver?.id]
+  );
+
   const handleCancelRide = async () => {
     if (!activeRide) return;
     const id = activeRide.id;
@@ -1181,6 +1203,7 @@ function MainApp({
         onDeclineRequest={handleDeclineDriverRequest}
         onAdvanceRideStatus={handleAdvanceRideStatus}
         onToggleOnline={handleToggleOnline}
+        onSetWalkInSeats={handleSetWalkInSeats}
       />
     ) : (
       <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-md text-center text-xs font-bold text-gray-600">
@@ -1271,6 +1294,20 @@ function MainApp({
       // Only a passenger has one, and only on a shared trike. A rider already
       // has the whole picture in `pooledRides`.
       poolPath={isDriverMode ? undefined : activeRide?.poolPath}
+      riderStatus={
+        isDriverMode && myDriver
+          ? {
+              online: myDriver.isOnline,
+              waiting: incomingRequests.length,
+              seatsFree: Math.max(
+                0,
+                (vehicleDetail(myDriver.vehicleType).maxPassengers ?? 1) -
+                  acceptedPooledRides.reduce((n, r) => n + (r.passengers || 1), 0) -
+                  (myDriver.walkInSeats ?? 0)
+              ),
+            }
+          : undefined
+      }
       pooledRides={acceptedPooledRides}
       isDriverMode={isDriverMode}
       nextPinTarget={isDriverMode || activeRide || !inBookingFlow ? null : nextPinTarget}
