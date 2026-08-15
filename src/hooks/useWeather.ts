@@ -43,9 +43,29 @@ export function describeWeather(code: number): { label: string; icon: string } {
   return { label: 'Unsettled', icon: '🌤️' };
 }
 
-export function useWeather(): { weather: Weather | null; error: boolean } {
+/**
+ * The forecast where the passenger actually is.
+ *
+ * This was pinned to Dumaguete's coordinates, which was fine while the app went
+ * no further — and became wrong the moment it did. Someone standing in Cebu was
+ * shown the temperature 250 km away, under a label naming a city they were not
+ * in. Rain matters to a passenger deciding whether to wait by the road, so the
+ * one thing it must be is local.
+ *
+ * Falls back to Dumaguete only when there is no fix yet.
+ */
+export function useWeather(position?: { lat: number; lng: number } | null): {
+  weather: Weather | null;
+  error: boolean;
+} {
   const [weather, setWeather] = useState<Weather | null>(null);
   const [error, setError] = useState(false);
+
+  // Rounded, so a GPS watch that reports every second does not refetch the
+  // forecast every second. Two decimals is ~1 km — far finer than the model's
+  // own grid, and stable while somebody stands still.
+  const lat = position ? Number(position.lat.toFixed(2)) : DUMAGUETE.lat;
+  const lng = position ? Number(position.lng.toFixed(2)) : DUMAGUETE.lng;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +73,7 @@ export function useWeather(): { weather: Weather | null; error: boolean } {
     const load = async () => {
       try {
         const url =
-          `https://api.open-meteo.com/v1/forecast?latitude=${DUMAGUETE.lat}&longitude=${DUMAGUETE.lng}` +
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
           `&current=temperature_2m,weather_code,is_day` +
           `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
           `&timezone=Asia%2FManila&forecast_days=1`;
@@ -86,7 +106,7 @@ export function useWeather(): { weather: Weather | null; error: boolean } {
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [lat, lng]);
 
   return { weather, error };
 }

@@ -80,7 +80,7 @@ export const HomePassenger: React.FC<HomePassengerProps> = ({
   onRepeatDestination,
   onSeeAllHistory,
 }) => {
-  const { weather } = useWeather();
+  const { weather } = useWeather(position);
   const sky = weather ? describeWeather(weather.code) : null;
 
   const [isSearching, setIsSearching] = React.useState(false);
@@ -273,7 +273,11 @@ export const HomePassenger: React.FC<HomePassengerProps> = ({
       <div className="gt-rise grid grid-cols-2 gap-3 pt-2" style={{ animationDelay: '110ms' }}>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md">
           <p className="mb-1 text-2xl leading-none">{sky?.icon ?? '🌤️'}</p>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dumaguete</p>
+          {/* No city name. The forecast follows the passenger now, so naming
+              one city was wrong everywhere except that city. */}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            Right now
+          </p>
           <p className="mt-0.5 text-2xl font-bold leading-none text-gray-900">
             {weather ? `${weather.temperature}°C` : '—'}
           </p>
