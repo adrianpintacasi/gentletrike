@@ -44,10 +44,69 @@ export const HIDE_BEYOND_KM = 3;
  */
 export const FIRST_PASSENGER_RADIUS_KM = 3;
 
+/**
+ * How much longer a passenger's own journey may become through pooling.
+ *
+ * Each detour was checked on its own and nothing stopped them accumulating:
+ * three accepts at 400 m each quietly added 1.2 km to the ride of the passenger
+ * already aboard, who was never asked and was set down last. Pooling is only
+ * fair if the person already in the pedicab keeps roughly the trip they booked.
+ *
+ * Calibrated against that reported case rather than picked round: a passenger who
+ * booked 1.9 km was being carried 2.6 km, so a cap has to sit below 1.4x to catch
+ * it. 1.3x leaves real room for pooling while ruling out the long way round.
+ */
+export const MAX_ONBOARD_STRETCH = 1.3;
+
+/**
+ * Floor under the cap above, in km, so short trips are not over-protected.
+ *
+ * A ratio alone makes brief journeys almost unpoolable — 1.3x of a 450 m hop is
+ * 585 m, which forbids the ordinary sideways jog to collect somebody. Any trip
+ * may reach this distance regardless of what it booked.
+ *
+ * A floor rather than a bonus added on top: adding it would have made the cap
+ * meaningless on medium trips, where 800 m of slack is itself a 40% diversion.
+ */
+export const MIN_ONBOARD_ALLOWANCE_KM = 0.8;
+
+/**
+ * How long a trip may sit unaccepted before the passenger is told plainly that
+ * nothing is coming.
+ *
+ * There is no auto-cancel: a pedicab may genuinely be four minutes away, and
+ * cancelling a ride the passenger still wants is worse than making them wait.
+ * This only changes what they are shown — "waiting for a rider" forever is the
+ * one thing we must not do.
+ */
+export const SEARCH_STALL_MINUTES = 3;
+
+/**
+ * How long a rider's decline hides a trip from them.
+ *
+ * Declines used to be permanent, which had a nasty failure mode: once every
+ * nearby rider had passed on a trip it was invisible to all of them while the
+ * passenger was still told to wait. Expiring the decline puts the trip back in
+ * the queue — circumstances change, and a rider heading the other way ten
+ * minutes ago may now be pointed straight at it.
+ *
+ * Comfortably longer than the stall warning, so a rider is not re-shown the
+ * same trip they just dismissed.
+ */
+export const DECLINE_COOLDOWN_MINUTES = 10;
+
 export interface Stop {
   at: LatLng;
   kind: 'pickup' | 'dropoff';
   rideId: string;
+  /**
+   * Where this passenger was collected.
+   *
+   * Only needed on a drop-off whose pickup has already been left behind — the
+   * passenger is aboard, so their pickup is no longer a stop to visit, but it is
+   * still what their journey has to be measured against.
+   */
+  origin?: LatLng;
 }
 
 export interface Candidate {
@@ -67,7 +126,13 @@ export interface DispatchScore {
   eligible: boolean;
   /** Close enough to the current route to badge as on the way. */
   alongTheWay: boolean;
-  reason: 'idle' | 'along-the-way' | 'worth-a-detour' | 'too-far' | 'wrong-direction' | 'over-capacity';
+  reason:
+    | 'idle'
+    | 'along-the-way'
+    | 'worth-a-detour'
+    | 'too-far'
+    | 'wrong-direction'
+    | 'over-capacity';
 }
 
 /** Road-ish length of a path through the given points, in km. */
@@ -77,40 +142,198 @@ function pathLengthKm(points: LatLng[]): number {
   return km * ROAD_FACTOR;
 }
 
+/** A point on a trial route, tagged with whose trip it belongs to. */
+interface RoutePoint {
+  at: LatLng;
+  /** Null for the rider's own current position, which belongs to no trip. */
+  rideId: string | null;
+  kind: 'pickup' | 'dropoff' | 'rider';
+  origin?: LatLng;
+}
+
+export interface StretchLimits {
+  /** Most a passenger's own journey may be multiplied by. */
+  maxStretch: number;
+  /** Distance any trip may reach regardless of the multiplier — a floor, not a bonus. */
+  minAllowedKm: number;
+}
+
+/** Limits that permit anything — for callers measuring raw distance only. */
+const NO_STRETCH_LIMITS: StretchLimits = {
+  maxStretch: Infinity,
+  minAllowedKm: Infinity,
+};
+
+/** The distance a trip that booked `bookedKm` may be carried, in km. */
+const allowedKm = (bookedKm: number, limits: StretchLimits): number =>
+  Math.max(bookedKm * limits.maxStretch, limits.minAllowedKm);
+
+/** The shape both the scorer and the sequencer can be measured through. */
+interface FairnessPoint {
+  at: LatLng;
+  rideId: string | null;
+  kind: 'pickup' | 'dropoff' | 'rider';
+  origin?: LatLng;
+}
+
+/**
+ * How far this route carries people beyond the journey they agreed to, in km,
+ * summed over everyone aboard or waiting. Zero means nobody is worse off than
+ * the trip they booked plus the allowance.
+ *
+ * Measured per passenger rather than per accept, because that is where the
+ * unfairness lives: three individually cheap diversions add up to a long way
+ * round for whoever is sitting in the pedicab through all of them, and the
+ * person who booked first can end up set down last.
+ *
+ * A number rather than a yes/no so it can rank orderings, not just veto them —
+ * the useful answer to "this ordering is unfair" is almost always a different
+ * ordering rather than a refused trip.
+ */
+function stretchExcessKm(
+  riderAt: LatLng,
+  points: FairnessPoint[],
+  limits: StretchLimits
+): number {
+  if (limits.maxStretch === Infinity) return 0;
+
+  // Distance from the rider's current position to each point along this route.
+  const cumulative: number[] = [];
+  let travelled = 0;
+  let previous = riderAt;
+  for (const p of points) {
+    travelled += haversineKm(previous, p.at) * ROAD_FACTOR;
+    cumulative.push(travelled);
+    previous = p.at;
+  }
+
+  let excess = 0;
+
+  for (let k = 0; k < points.length; k++) {
+    const stop = points[k];
+    if (stop.kind !== 'dropoff') continue;
+
+    const pickupIndex = points.findIndex(
+      (p) => p.kind === 'pickup' && p.rideId === stop.rideId
+    );
+
+    let booked: number;
+    let planned: number;
+
+    if (pickupIndex >= 0) {
+      // Not collected yet, so their whole journey is still ahead: it is exactly
+      // the stretch of route between their pickup and their drop-off.
+      booked = haversineKm(points[pickupIndex].at, stop.at) * ROAD_FACTOR;
+      planned = cumulative[k] - cumulative[pickupIndex];
+    } else if (stop.origin) {
+      // Aboard already. What they have travelled so far cannot be recovered from
+      // the remaining route, so count it as the direct line from where they got
+      // on — an under-estimate, which keeps this on the permissive side rather
+      // than penalising a route on a guess.
+      booked = haversineKm(stop.origin, stop.at) * ROAD_FACTOR;
+      planned = haversineKm(stop.origin, riderAt) * ROAD_FACTOR + cumulative[k];
+    } else {
+      // Aboard, but we were not told where from — nothing to measure against.
+      continue;
+    }
+
+    const allowed = allowedKm(booked, limits);
+    if (planned > allowed) excess += planned - allowed;
+  }
+
+  return excess;
+}
+
+interface Insertion {
+  detourKm: number;
+  order: RoutePoint[];
+}
+
 /**
  * Cheapest way to fit a new pickup and drop-off into the route the rider is
- * already committed to.
+ * already committed to, without treating the people already on it unfairly.
  *
  * Tries every position for the pickup and every later position for the
  * drop-off — a passenger cannot be set down before being collected. The stop
  * list is short (a pedicab holds a handful of trips), so the quadratic search
  * is cheaper than it looks and always finds the true best insertion rather than
  * approximating one.
+ *
+ * Fairness is weighed before distance, not after: the shortest ordering overall
+ * is often the one that drags whoever is aboard to the back of the queue, and a
+ * slightly longer ordering that sets them down on time is the better route. In
+ * practice a fair ordering always exists — serving each trip in turn leaves
+ * nobody stretched — so this is a re-ordering rule rather than a veto.
+ *
+ * The consequence for the rider is honest rather than hidden: a trip that can
+ * only be served by keeping someone aboard the long way round reports the larger
+ * detour of the fair ordering, and the ordinary distance thresholds then judge it
+ * on that.
+ */
+function bestInsertion(
+  riderAt: LatLng,
+  committed: Stop[],
+  candidate: Candidate,
+  limits: StretchLimits
+): Insertion {
+  const base: RoutePoint[] = committed.map((s) => ({
+    at: s.at,
+    rideId: s.rideId,
+    kind: s.kind,
+    origin: s.origin,
+  }));
+  const baseline = pathLengthKm([riderAt, ...base.map((p) => p.at)]);
+
+  let best: Insertion | null = null;
+  let bestExcess = Infinity;
+
+  // i = index to insert the pickup at, j = index to insert the drop-off at.
+  for (let i = 0; i <= base.length; i++) {
+    for (let j = i; j <= base.length; j++) {
+      const order = [...base];
+      order.splice(i, 0, {
+        at: candidate.pickup,
+        rideId: candidate.rideId,
+        kind: 'pickup',
+      });
+      order.splice(j + 1, 0, {
+        at: candidate.dropoff,
+        rideId: candidate.rideId,
+        kind: 'dropoff',
+      });
+
+      const detourKm = Math.max(
+        0,
+        pathLengthKm([riderAt, ...order.map((p) => p.at)]) - baseline
+      );
+      const excess = stretchExcessKm(riderAt, order, limits);
+
+      // Least unfair first, shortest among equals.
+      if (excess > bestExcess) continue;
+      if (excess === bestExcess && best && detourKm >= best.detourKm) continue;
+
+      bestExcess = excess;
+      best = { detourKm, order };
+    }
+  }
+
+  // Unreachable — the loops always produce at least one ordering — but typed as
+  // definite so callers do not carry a null case that cannot happen.
+  return best ?? { detourKm: 0, order: base };
+}
+
+/**
+ * Extra kilometres this trip adds to the rider's route, ignoring fairness.
+ *
+ * The raw geometric figure, kept separate so it can be reasoned about (and
+ * tested) without the onboard-stretch policy folded in.
  */
 export function detourKmFor(
   riderAt: LatLng,
   committed: Stop[],
   candidate: Candidate
 ): number {
-  const base = [riderAt, ...committed.map((s) => s.at)];
-  const baseline = pathLengthKm(base);
-
-  let best = Infinity;
-
-  // i = index to insert the pickup at, j = index to insert the drop-off at.
-  // Both are offsets into the stop list after the rider's own position, so
-  // i starts at 1 — a passenger cannot be collected before the rider sets off.
-  for (let i = 1; i <= base.length; i++) {
-    for (let j = i; j <= base.length; j++) {
-      const withStops = [...base];
-      withStops.splice(i, 0, candidate.pickup);
-      withStops.splice(j + 1, 0, candidate.dropoff);
-      const length = pathLengthKm(withStops);
-      if (length < best) best = length;
-    }
-  }
-
-  return Math.max(0, best - baseline);
+  return bestInsertion(riderAt, committed, candidate, NO_STRETCH_LIMITS).detourKm;
 }
 
 /**
@@ -143,6 +366,14 @@ export interface RideStops {
   /** Null once the passenger is aboard — that stop is behind the rider. */
   pickup: LatLng | null;
   dropoff: LatLng;
+  /**
+   * Where this passenger was collected, for a trip already under way.
+   *
+   * Supply it whenever `pickup` is null, so the ordering knows what this
+   * passenger's journey should be measured against. Without it their trip is
+   * ordered on distance alone and they can be set down last.
+   */
+  origin?: LatLng;
 }
 
 export interface SequencedStop {
@@ -161,12 +392,23 @@ export interface SequencedStop {
  * draws a zigzag and describes a journey no rider would make. Pooling only
  * makes sense if the stops are interleaved.
  *
- * Greedy nearest-next, with the one rule that cannot be broken: a passenger is
- * collected before they are set down. A pedicab carries a handful of trips, so
- * the greedy answer is effectively the good one and costs nothing to compute on
- * every GPS tick.
+ * Two rules, in order of priority: nobody is carried far past the journey they
+ * booked, and among the orderings that manage that, the shortest wins. A
+ * passenger is always collected before they are set down.
+ *
+ * Fairness has to be applied here and not only when scoring a new trip, because
+ * this is the route the rider actually drives. Ordering on distance alone let the
+ * first passenger aboard be set down last whenever that happened to save the
+ * rider a few hundred metres.
  */
-export function sequenceStops(riderAt: LatLng, rides: RideStops[]): SequencedStop[] {
+export function sequenceStops(
+  riderAt: LatLng,
+  rides: RideStops[],
+  limits: StretchLimits = {
+    maxStretch: MAX_ONBOARD_STRETCH,
+    minAllowedKm: MIN_ONBOARD_ALLOWANCE_KM,
+  }
+): SequencedStop[] {
   const pending: PendingStop[] = [];
   for (const r of rides) {
     if (r.pickup) {
@@ -174,12 +416,18 @@ export function sequenceStops(riderAt: LatLng, rides: RideStops[]): SequencedSto
       pending.push({ rideId: r.rideId, kind: 'dropoff', at: r.dropoff, blockedBy: r.rideId });
     } else {
       // Already aboard: the drop-off is immediately available.
-      pending.push({ rideId: r.rideId, kind: 'dropoff', at: r.dropoff, blockedBy: null });
+      pending.push({
+        rideId: r.rideId,
+        kind: 'dropoff',
+        at: r.dropoff,
+        blockedBy: null,
+        origin: r.origin,
+      });
     }
   }
 
   const ordered = pending.length <= EXACT_SEQUENCE_LIMIT
-    ? exactOrder(riderAt, pending)
+    ? exactOrder(riderAt, pending, limits)
     : greedyOrder(riderAt, pending);
 
   return ordered.map((p, i) => ({
@@ -195,6 +443,7 @@ interface PendingStop {
   kind: 'pickup' | 'dropoff';
   at: LatLng;
   blockedBy: string | null;
+  origin?: LatLng;
 }
 
 /**
@@ -215,20 +464,32 @@ function pathKm(riderAt: LatLng, order: PendingStop[]): number {
 }
 
 /**
- * Shortest ordering that never sets a passenger down before collecting them.
+ * Fairest ordering that never sets a passenger down before collecting them, and
+ * the shortest of those.
  *
  * Greedy nearest-next can strand a stop and double back for it; with eight or
  * fewer stops every legal ordering can simply be measured, so it does not have
- * to guess.
+ * to guess. Measuring them all is also what makes the fairness rule affordable —
+ * each candidate ordering is already in hand, so checking who it treats badly
+ * costs one pass over a handful of stops.
  */
-function exactOrder(riderAt: LatLng, pending: PendingStop[]): PendingStop[] {
+function exactOrder(
+  riderAt: LatLng,
+  pending: PendingStop[],
+  limits: StretchLimits
+): PendingStop[] {
   let best: PendingStop[] = [];
   let bestKm = Infinity;
+  let bestExcess = Infinity;
 
   const walk = (chosen: PendingStop[], left: PendingStop[], collected: Set<string>) => {
     if (!left.length) {
       const km = pathKm(riderAt, chosen);
-      if (km < bestKm) {
+      const excess = stretchExcessKm(riderAt, chosen, limits);
+
+      // Least unfair first, shortest among equals.
+      if (excess < bestExcess || (excess === bestExcess && km < bestKm)) {
+        bestExcess = excess;
         bestKm = km;
         best = [...chosen];
       }
@@ -293,6 +554,10 @@ export interface ScoreOptions {
   firstPassengerRadiusKm?: number;
   /** Seats left on the vehicle. Candidates needing more are rejected outright. */
   seatsAvailable?: number;
+  /** Most a committed passenger's own journey may be multiplied by. */
+  maxOnboardStretch?: number;
+  /** Distance any trip may reach regardless of the multiplier. */
+  minOnboardAllowanceKm?: number;
 }
 
 export function scoreCandidate(
@@ -335,7 +600,14 @@ export function scoreCandidate(
     };
   }
 
-  const detourKm = detourKmFor(riderAt, committed, candidate);
+  // Costed against the fair ordering, not the shortest one. A trip that can only
+  // be served by carrying someone aboard the long way round therefore reports the
+  // larger figure, and the thresholds below judge it on that — the protection
+  // shows up as an honest price rather than a silent rejection.
+  const detourKm = bestInsertion(riderAt, committed, candidate, {
+    maxStretch: opts.maxOnboardStretch ?? MAX_ONBOARD_STRETCH,
+    minAllowedKm: opts.minOnboardAllowanceKm ?? MIN_ONBOARD_ALLOWANCE_KM,
+  }).detourKm;
 
   return {
     rideId: candidate.rideId,

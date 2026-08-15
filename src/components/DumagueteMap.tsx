@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { Driver, LocationPoint, RideBooking } from '../types';
-import { getStreetRoute, LatLng } from '../utils/dumagueteRouting';
+import { Driver, LocationPoint, PooledStop, RideBooking } from '../types';
+import { bearingDegrees, getStreetRoute, haversineKm, LatLng } from '../utils/dumagueteRouting';
 import { sequenceStops } from '../../shared/dispatch';
-import { Crosshair } from 'lucide-react';
+import { Crosshair, MapPinOff, MessageSquare } from 'lucide-react';
 import { DUMAGUETE_LOCATIONS } from '../data/dumagueteData';
+import { loadGoogleMaps, MAP_ID } from '../utils/loadGoogleMaps';
 
 const getCategoryStyles = (category?: string) => {
   switch (category) {
@@ -23,6 +22,239 @@ const getCategoryStyles = (category?: string) => {
   }
 };
 
+const DUMAGUETE_CENTRE = { lat: 9.3082, lng: 123.3075 };
+
+/** How long the camera takes to settle on a newly framed trip. */
+const FRAME_ANIMATION_MS = 700;
+
+/**
+ * The closest the framing camera will go.
+ *
+ * A 700m hop fits at a zoom of nearly 18, which fills the screen with two pins
+ * and one street and tells the passenger nothing about where in the city they
+ * are. Stopping short leaves the surrounding blocks in frame.
+ */
+const MAX_FRAME_ZOOM = 16.5;
+
+/** Tile size the Maps projection is defined against. */
+const WORLD_PX = 256;
+
+/** Mercator y for a latitude, in the projection's own radians. */
+const mercatorY = (lat: number): number => {
+  const s = Math.sin((lat * Math.PI) / 180);
+  return Math.log((1 + s) / (1 - s)) / 2;
+};
+
+/** Slow at both ends, quick through the middle — a camera, not a cut. */
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+/**
+ * The camera a set of bounds implies — worked out, not applied.
+ *
+ * `fitBounds` is the usual way to answer this, but it answers by *moving*: it
+ * snaps, and there is no way to ask it what it would have done. Deriving the
+ * camera ourselves is the whole basis of the animation, because it means
+ * knowing where the map is going before it starts going there.
+ *
+ * Returns world coordinates rather than a LatLng, since interpolating a pan
+ * has to happen in the projection's flat space to travel in a straight line.
+ */
+function cameraForBounds(
+  map: google.maps.Map,
+  bounds: google.maps.LatLngBounds,
+  padding: { top: number; right: number; bottom: number; left: number }
+): { center: google.maps.Point; zoom: number } | null {
+  const projection = map.getProjection();
+  const div = map.getDiv() as HTMLElement | null;
+  if (!projection || !div) return null;
+
+  const width = div.clientWidth - padding.left - padding.right;
+  const height = div.clientHeight - padding.top - padding.bottom;
+  if (width <= 0 || height <= 0) return null;
+
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+
+  const latFraction = (mercatorY(ne.lat()) - mercatorY(sw.lat())) / (2 * Math.PI);
+  let lngSpan = ne.lng() - sw.lng();
+  if (lngSpan < 0) lngSpan += 360;
+  const lngFraction = lngSpan / 360;
+  if (latFraction <= 0 && lngFraction <= 0) return null;
+
+  const zoom = Math.min(
+    latFraction > 0 ? Math.log2(height / WORLD_PX / latFraction) : Infinity,
+    lngFraction > 0 ? Math.log2(width / WORLD_PX / lngFraction) : Infinity,
+    MAX_FRAME_ZOOM
+  );
+  if (!Number.isFinite(zoom)) return null;
+
+  // Padding is not symmetric — the bottom sheet eats the lower half of a phone
+  // screen — so the trip's centre is not the camera's centre. Shift by half the
+  // difference, converted from pixels to world units at the zoom we will land
+  // on. Without this the route sits behind the sheet on a phone.
+  const scale = Math.pow(2, zoom);
+  const dx = (padding.left - padding.right) / 2;
+  const dy = (padding.top - padding.bottom) / 2;
+
+  const middle = projection.fromLatLngToPoint(bounds.getCenter());
+  if (!middle) return null;
+
+  return {
+    center: new google.maps.Point(middle.x - dx / scale, middle.y - dy / scale),
+    zoom,
+  };
+}
+
+/**
+ * Whether two polylines describe the same road.
+ *
+ * Compared by endpoints and length rather than every vertex: the router returns
+ * a fresh array each call, and walking a few hundred points to notice they are
+ * identical costs more than the redraw it prevents.
+ */
+function sameRoute(a: LatLng[], b: LatLng[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length || a.length === 0) return false;
+
+  const close = (p: LatLng, q: LatLng) =>
+    Math.abs(p.lat - q.lat) < 1e-6 && Math.abs(p.lng - q.lng) < 1e-6;
+
+  const mid = Math.floor(a.length / 2);
+  return (
+    close(a[0], b[0]) && close(a[a.length - 1], b[b.length - 1]) && close(a[mid], b[mid])
+  );
+}
+
+
+/**
+ * Turn a marker's HTML into a positioned DOM node.
+ *
+ * Advanced markers place the *bottom centre* of their content on the coordinate,
+ * which is what a teardrop pin wants. Icons that should sit centred on their
+ * point — the landmark dots, the heading arrows — are pushed down half their own
+ * height by an outer wrapper, so any transform on the inner element (the compass
+ * rotation, for one) survives untouched.
+ */
+function markerContent(html: string, anchor: 'bottom' | 'centre'): HTMLElement {
+  const outer = document.createElement('div');
+  outer.innerHTML = html.trim();
+  if (anchor === 'centre') outer.style.transform = 'translateY(50%)';
+  return outer;
+}
+
+type MarkerStore = Record<string, google.maps.marker.AdvancedMarkerElement>;
+
+/** Detach every marker from the map. Setting `map` to null is the removal API. */
+function clearMarkers(store: MarkerStore): void {
+  for (const key of Object.keys(store)) store[key].map = null;
+}
+
+/**
+ * Create a marker, or move the one that is already there.
+ *
+ * The effect below used to clear every marker and build them again on each run,
+ * and it runs on every GPS ping, driver poll and route change. Destroying a DOM
+ * node and inserting a replacement in the same place is exactly what a flicker
+ * looks like. Reusing the element means a marker that only moved just moves.
+ */
+function upsertMarker(
+  store: MarkerStore,
+  key: string,
+  map: google.maps.Map,
+  position: google.maps.LatLngLiteral,
+  html: string,
+  anchor: 'bottom' | 'centre',
+  options: { zIndex?: number; title?: string; clickable?: boolean } = {}
+): google.maps.marker.AdvancedMarkerElement {
+  const existing = store[key];
+
+  if (existing) {
+    existing.position = position;
+    if (options.zIndex !== undefined) existing.zIndex = options.zIndex;
+    const content = existing.content as HTMLElement | null;
+    // Only touch the DOM when the markup genuinely differs; rewriting identical
+    // innerHTML restarts every CSS animation inside it.
+    if (content && content.dataset.html !== html) {
+      content.innerHTML = html.trim();
+      content.dataset.html = html;
+    }
+    if (content && options.title) content.title = options.title;
+    return existing;
+  }
+
+  const content = markerContent(html, anchor);
+  content.dataset.html = html;
+  if (options.title) content.title = options.title;
+
+  const marker = new google.maps.marker.AdvancedMarkerElement({
+    map,
+    position,
+    content,
+    ...(options.zIndex !== undefined ? { zIndex: options.zIndex } : {}),
+    ...(options.clickable ? { gmpClickable: true } : {}),
+  });
+  store[key] = marker;
+  return marker;
+}
+
+/** Detach markers whose keys were not written on this pass. */
+function pruneMarkers(store: MarkerStore, keep: Set<string>): void {
+  for (const key of Object.keys(store)) {
+    if (keep.has(key)) continue;
+    store[key].map = null;
+    delete store[key];
+  }
+}
+
+/**
+ * Camera pitch while navigating, in degrees.
+ *
+ * Enough to raise the buildings and open the road out ahead; past about 60 the
+ * near foreground swells and the route disappears over the horizon.
+ */
+const NAVIGATION_TILT = 47.5;
+
+/** Below this zoom the vector basemap does not extrude buildings at all. */
+const BUILDINGS_MIN_ZOOM = 16;
+
+/**
+ * How far ahead along the route to aim the camera.
+ *
+ * Far enough that a single bend does not swing the view, close enough that the
+ * turn being taken is the one the map is pointing at.
+ */
+const LOOK_AHEAD_KM = 0.06;
+
+/** Fraction of the remaining turn applied per update, so rotation eases. */
+const HEADING_EASING = 0.35;
+
+/**
+ * Bearing from the start of the path to a point a fixed *distance* along it.
+ *
+ * Walking by distance rather than by vertex count is the whole point: the
+ * router's spacing is not uniform, so counting points gives a look-ahead that
+ * changes length as the road does.
+ */
+function courseAhead(path: LatLng[], km: number): number | null {
+  if (path.length < 2) return null;
+
+  const from = path[0];
+  let travelled = 0;
+
+  for (let i = 1; i < path.length; i++) {
+    travelled += haversineKm(path[i - 1], path[i]);
+    if (travelled >= km) return bearingDegrees(from, path[i]);
+  }
+
+  // Route shorter than the look-ahead — aim at the end of it.
+  return bearingDegrees(from, path[path.length - 1]);
+}
+
 interface DumagueteMapProps {
   pickup: LocationPoint | null;
   dropoff: LocationPoint | null;
@@ -33,11 +265,44 @@ interface DumagueteMapProps {
   /** Compass heading of the rider's own device, for the arrow in driver mode. */
   driverHeading?: number | null;
   rideStatus?: string;
+  /**
+   * The rider's committed stops, when this passenger is sharing the trike.
+   *
+   * Ends at this passenger's own drop-off. Given, the map draws the road the
+   * rider will really take; withheld, it falls back to the direct line, which
+   * is correct for a trip nobody else is on.
+   */
+  poolPath?: PooledStop[];
   pooledRides?: RideBooking[];
   isDriverMode?: boolean;
   /** Which end the next tap fills, or null when tapping does nothing. */
   nextPinTarget?: 'pickup' | 'dropoff' | null;
   onMapClickLocation?: (lat: number, lng: number) => void;
+  /**
+   * Pixels of the map hidden behind the bottom sheet on a phone.
+   *
+   * Framing a route without this puts half of it under the sheet, so the
+   * passenger fits a trip on screen and then cannot see where it goes.
+   */
+  bottomInset?: number;
+  /** Full-bleed on a phone; a rounded card inside the desktop column. */
+  fullBleed?: boolean;
+  /**
+   * Draw Google's live traffic layer over the roads.
+   *
+   * Left to the caller rather than defaulted on. Congestion is worth colouring
+   * the roads for when a trip is actually happening; on the idle home map it is
+   * decoration that competes with the route line for the same pixels.
+   */
+  showTraffic?: boolean;
+  /**
+   * Draw the saved pickup points as pins.
+   *
+   * Thirteen labelled dots over a phone-sized map is most of the screen, and a
+   * passenger who is about to search for a destination is not helped by them.
+   * Kept for the desktop column, where there is room.
+   */
+  showLandmarks?: boolean;
 }
 
 export const DumagueteMap: React.FC<DumagueteMapProps> = ({
@@ -48,16 +313,27 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   passengerLocation,
   driverHeading,
   rideStatus,
+  poolPath,
   pooledRides = [],
   isDriverMode = false,
   nextPinTarget,
   onMapClickLocation,
+  bottomInset = 0,
+  fullBleed = false,
+  showLandmarks = true,
+  showTraffic = false,
+  followHeading = false,
+  unreadMessages = 0,
+  onOpenMessages,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<{ [key: string]: L.Marker }>({});
-  const routePolylineRef = useRef<L.Polyline | null>(null);
-  const routePolylineGlowRef = useRef<L.Polyline | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<Record<string, google.maps.marker.AdvancedMarkerElement>>({});
+  const routePolylineRef = useRef<google.maps.Polyline | null>(null);
+  const routePolylineGlowRef = useRef<google.maps.Polyline | null>(null);
+
+  const [isReady, setIsReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Real-time compass rotation for the rider's arrow. Driven imperatively from
   // the device-orientation sensor rather than React state, so it can update at
@@ -77,25 +353,208 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   /** Route we have already framed, so a new pickup/dropoff pair fits exactly once. */
   const fittedRouteRef = useRef<string | null>(null);
 
-  /** Wrap a view change so the zoomstart it raises is not read as user input. */
-  const moveMap = (apply: (map: L.Map) => void) => {
+  /**
+   * This device's own position.
+   *
+   * In rider mode `driverLocation` is the rider's own GPS; for a passenger it
+   * is the trike they are watching, so their own fix is the separate one. Both
+   * answer the same question — where is the person holding this phone — and the
+   * camera needs one answer, not two.
+   */
+  const selfLocation = isDriverMode
+    ? driverLocation ?? null
+    : passengerLocation
+      ? { lat: passengerLocation.lat, lng: passengerLocation.lng }
+      : null;
+
+  /**
+   * Padding that keeps a framed route clear of the sheet and the top pills.
+   *
+   * The 60px gap below only applies when there is no sheet. `bottomInset` is
+   * already the sheet's exact height, so adding a full gap on top of it spent
+   * another 60px of a phone's usable strip on nothing — and that strip is the
+   * scarcest thing on the screen.
+   */
+  const framePadding = () => ({
+    top: 72,
+    right: 60,
+    bottom: (bottomInset > 0 ? 16 : 60) + bottomInset,
+    left: 60,
+  });
+
+  /** Wrap a view change so the zoom change it raises is not read as user input. */
+  const moveMap = (apply: (map: google.maps.Map) => void) => {
     const map = mapInstanceRef.current;
     if (!map) return;
     programmaticMoveRef.current = true;
     if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current);
-    // Safety net: if the view was already correct, no moveend fires to clear it.
+    // Safety net: if the view was already correct, no idle fires to clear it.
     programmaticTimerRef.current = setTimeout(() => {
       programmaticMoveRef.current = false;
     }, 800);
     apply(map);
   };
 
+  /** In-flight framing animation, so a new one or a user gesture can stop it. */
+  const frameAnimationRef = useRef<number | null>(null);
+
+  const stopFraming = () => {
+    if (frameAnimationRef.current !== null) {
+      cancelAnimationFrame(frameAnimationRef.current);
+      frameAnimationRef.current = null;
+    }
+  };
+
+  useEffect(() => stopFraming, []);
+
+  /**
+   * Ease the camera onto a set of bounds instead of snapping to them.
+   *
+   * `fitBounds` arrives in a single frame, which on a phone reads less as a
+   * camera move than as the map having been replaced — and when the jump is
+   * large it is easy to mistake for a stall. Interpolating pan and zoom
+   * together over {@link FRAME_ANIMATION_MS} keeps the roads under the route
+   * continuous, so the eye follows them out to the wider view.
+   *
+   * Only possible because the map is a vector map: raster maps quantise zoom to
+   * integers, which would make this eight visible steps rather than a movement.
+   */
+  const frameBounds = (bounds: google.maps.LatLngBounds) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    stopFraming();
+
+    const padding = framePadding();
+    const target = cameraForBounds(map, bounds, padding);
+    const projection = map.getProjection();
+    const from = map.getCenter();
+    const fromZoom = map.getZoom();
+    const start = from && projection ? projection.fromLatLngToPoint(from) : null;
+
+    // Anything missing — no projection yet, a zero-sized container — and the
+    // honest fallback is the instant fit. It is abrupt, but it is correct, and
+    // a correct frame beats a smooth move to the wrong place.
+    if (!target || !projection || !start || fromZoom == null || prefersReducedMotion()) {
+      moveMap((m) => m.fitBounds(bounds, padding));
+      return;
+    }
+
+    const began = performance.now();
+
+    const step = () => {
+      if (!mapInstanceRef.current) return;
+      const progress = Math.min(1, (performance.now() - began) / FRAME_ANIMATION_MS);
+      const eased = easeInOutCubic(progress);
+
+      const centre = projection.fromPointToLatLng(
+        new google.maps.Point(
+          start.x + (target.center.x - start.x) * eased,
+          start.y + (target.center.y - start.y) * eased
+        )
+      );
+
+      // Routed through moveMap so every frame refreshes the "this was us"
+      // guard: an animation raises a stream of zoom_changed events, and one of
+      // them landing outside the guard would latch the view as user-adjusted
+      // and stop the map following ever again.
+      moveMap((m) =>
+        m.moveCamera({
+          ...(centre ? { center: centre } : {}),
+          zoom: fromZoom + (target.zoom - fromZoom) * eased,
+        })
+      );
+
+      frameAnimationRef.current = progress < 1 ? requestAnimationFrame(step) : null;
+    };
+
+    frameAnimationRef.current = requestAnimationFrame(step);
+  };
+
   // Identity of the current trip. Driver GPS deliberately does not appear here:
   // the map must not chase a moving pedicab around.
   const routeSignature = [
-    pickup?.lat, pickup?.lng, pickup?.isCustomPinned,
-    dropoff?.lat, dropoff?.lng, dropoff?.isCustomPinned,
+    pickup?.lat, pickup?.lng, pickup?.pickedOnMap,
+    dropoff?.lat, dropoff?.lng, dropoff?.pickedOnMap,
   ].join('|');
+
+  /** Both ends known and the road geometry in — there is a whole trip to show. */
+  const hasWholeTrip = !!pickup && !!dropoff && routeStreetCoords.length >= 2;
+
+  /**
+   * Which leg of the journey is on screen.
+   *
+   * Coarser than the ride status on purpose. The camera should move when the
+   * journey changes *shape* — a rider starts coming, a passenger gets in — and
+   * not every time the server relabels a status. Three phases, three framings:
+   *
+   *   quote     the trip being priced, pickup to drop-off
+   *   approach  the rider closing in, their position to the pickup
+   *   transit   aboard, their position to the destination
+   *
+   * The route effect below reads the same value, so the line being drawn and
+   * the camera framing it can never disagree about which leg this is.
+   */
+  const ridePhase: 'quote' | 'approach' | 'transit' =
+    rideStatus === 'in_transit'
+      ? 'transit'
+      : rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving'
+        ? 'approach'
+        : 'quote';
+
+  /**
+   * The rider's stops between here and one end of this passenger's trip.
+   *
+   * On a shared trike the honest line from the rider to a passenger runs
+   * through everyone the rider collects or sets down first. Slicing the path
+   * at the passenger's own pickup gives the approach; the whole path ends at
+   * their drop-off and gives the ride.
+   *
+   * Null whenever the trip is not shared, which is the ordinary case — the
+   * caller then falls back to the direct route, and nothing changes.
+   */
+  const pooledLegTo = (kind: 'pickup' | 'dropoff'): LatLng[] | null => {
+    if (!poolPath || poolPath.length === 0) return null;
+    const end = poolPath.findIndex((s) => s.mine && s.kind === kind);
+    if (end === -1) return null;
+    return poolPath.slice(0, end + 1).map((s) => ({ lat: s.lat, lng: s.lng }));
+  };
+
+  /**
+   * What the pooled path looks like, ignoring exactly where its stops are.
+   *
+   * Enough to notice a stop being consumed — someone else collected, someone
+   * else set down — which reshapes this passenger's journey and so deserves a
+   * re-framing. The coordinates are left out on purpose: the ordering can
+   * re-optimise as the rider moves, and re-framing the map over a swap between
+   * two stops that are equally far away would be motion without information.
+   */
+  const poolSignature = poolPath
+    ? poolPath.map((s) => `${s.kind}${s.mine ? '*' : ''}`).join(',')
+    : '';
+
+  /**
+   * What "already framed" means.
+   *
+   * The trip's identity is not enough on its own: the same trip framed against
+   * a half-open sheet and against a peeking one wants two different cameras.
+   * Booking happens with the sheet at 0.55 of the screen and the ride begins
+   * with it at 0.26, so a route framed during booking — into a strip about
+   * 60px tall — stayed at that far-too-wide zoom for the whole trip, even once
+   * the sheet dropped and gave it four times the room.
+   *
+   * Keying on the visible area as well means the sheet settling re-frames the
+   * route, which is now an eased move rather than a jump. The sheet reports
+   * only on settle and never mid-drag, so this cannot thrash. On desktop
+   * `bottomInset` is a constant 0, so nothing here changes.
+   *
+   * The phase belongs here for the same reason. A rider accepting swaps the
+   * drawn line from "your trip" to "the rider coming to get you", but the
+   * pickup and drop-off it is keyed on have not moved — so the camera sat on
+   * the old framing and the passenger watched a rider approach from off
+   * screen. Note what is deliberately *not* here: the driver's live position.
+   * Framing on that would re-frame the map on every GPS ping.
+   */
+  const frameKey = `${routeSignature}|${bottomInset}|${ridePhase}|${poolSignature}`;
 
   // Ref to store latest click handler to prevent stale closures
   const onMapClickLocationRef = useRef(onMapClickLocation);
@@ -103,93 +562,119 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     onMapClickLocationRef.current = onMapClickLocation;
   }, [onMapClickLocation]);
 
-  // Initialize Map with White Minimalist Tile Layer
+  // Initialise the map once the API script has landed.
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    let cancelled = false;
 
-    const map = L.map(mapContainerRef.current, {
-      center: [9.3082, 123.3075],
-      zoom: 15,
-      zoomControl: false,
-    });
+    loadGoogleMaps()
+      .then(() => {
+        if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
-    // White Minimalist Tile Layer (CartoDB Positron)
-    const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      subdomains: 'abcd',
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    });
-    
-    tileLayer.addTo(map);
+        const map = new google.maps.Map(mapContainerRef.current, {
+          center: DUMAGUETE_CENTRE,
+          zoom: 15,
+          // Advanced markers require a Map ID; styling now lives in the cloud
+          // console rather than in a tile URL.
+          mapId: MAP_ID,
+          disableDefaultUI: true,
+          zoomControl: true,
+          // Right-centre keeps the zoom buttons clear of the Center pill above
+          // and the bottom sheet below, at every snap point.
+          zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_CENTER },
+          clickableIcons: false,
+          gestureHandling: 'greedy',
+        });
 
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+        mapInstanceRef.current = map;
 
-    mapInstanceRef.current = map;
+        map.addListener('click', (event: google.maps.MapMouseEvent) => {
+          if (event.latLng && onMapClickLocationRef.current) {
+            onMapClickLocationRef.current(event.latLng.lat(), event.latLng.lng());
+          }
+        });
 
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      if (onMapClickLocationRef.current) {
-        onMapClickLocationRef.current(e.latlng.lat, e.latlng.lng);
-      }
-    });
+        // Once the passenger pans or zooms, the view is theirs. Markers
+        // re-render every few seconds as GPS and the fleet poll come in, and any
+        // automatic recentre on those would yank the map back while they are
+        // reading it. Only the Center button hands control back.
+        map.addListener('dragstart', () => {
+          userAdjustedViewRef.current = true;
+          // A hand on the map outranks a camera move already under way.
+          stopFraming();
+        });
+        map.addListener('zoom_changed', () => {
+          // fitBounds/setZoom also change zoom, so ignore our own moves. The
+          // animation check is belt and braces: `idle` can fire between frames
+          // and clear the guard, and a zoom raised by our own rAF loop must
+          // never be read as the user reaching for the map.
+          if (!programmaticMoveRef.current && frameAnimationRef.current === null) {
+            userAdjustedViewRef.current = true;
+          }
+        });
+        map.addListener('idle', () => {
+          programmaticMoveRef.current = false;
+        });
 
-    // Once the passenger pans or zooms, the view is theirs. Markers re-render
-    // every few seconds as GPS and the fleet poll come in, and any automatic
-    // recentre on those would yank the map back while they are reading it.
-    // Only the Center button hands control back.
-    map.on('dragstart', () => {
-      userAdjustedViewRef.current = true;
-    });
-    map.on('zoomstart', () => {
-      // fitBounds/setView also raise zoomstart, so ignore our own moves.
-      if (!programmaticMoveRef.current) userAdjustedViewRef.current = true;
-    });
-    map.on('moveend', () => {
-      programmaticMoveRef.current = false;
-    });
-
-    const resizeObserver = new ResizeObserver(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.invalidateSize();
-      }
-    });
-    resizeObserver.observe(mapContainerRef.current);
-
-    // Initial size invalidate after render
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 200);
+        setIsReady(true);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setLoadError(err.message);
+      });
 
     return () => {
-      resizeObserver.disconnect();
+      cancelled = true;
       if (programmaticTimerRef.current) clearTimeout(programmaticTimerRef.current);
-      map.remove();
-      mapInstanceRef.current = null;
+      clearMarkers(markersRef.current);
+      markersRef.current = {};
+      routePolylineRef.current?.setMap(null);
+      routePolylineGlowRef.current?.setMap(null);
+      if (mapInstanceRef.current) {
+        google.maps.event.clearInstanceListeners(mapInstanceRef.current);
+        mapInstanceRef.current = null;
+      }
     };
   }, []);
 
-  // Fetch street routing coordinates (OSRM street geometry)
+  /**
+   * Google's live traffic, drawn over the roads.
+   *
+   * The layer is built once and then attached or detached with `setMap`.
+   * Constructing a new one per toggle would re-request the tiles and flash the
+   * roads, which is the same mistake the markers used to make.
+   *
+   * It costs nothing extra: the traffic layer rides on the map load already
+   * paid for, unlike the routing call, which does change SKU when it is asked
+   * to account for traffic.
+   */
+  const trafficLayerRef = useRef<google.maps.TrafficLayer | null>(null);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isReady) return;
+
+    if (!trafficLayerRef.current) {
+      trafficLayerRef.current = new google.maps.TrafficLayer({ autoRefresh: true });
+    }
+    trafficLayerRef.current.setMap(showTraffic ? map : null);
+  }, [isReady, showTraffic]);
+
+  // Fetch street routing coordinates (Routes API geometry, via /api/route)
   useEffect(() => {
     let waypoints: LatLng[] = [];
 
     // Before pickup, the passenger wants to watch the rider closing in on them,
-    // so route from the pedicab to the pickup point. `driver_assigned` matters
-    // as much as `driver_arriving` — it is the status set the instant a rider
-    // accepts, and leaving it out meant the map still showed the whole trip.
-    const headingToPickup =
-      rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving';
-
-    if (headingToPickup && driverLocation && pickup) {
+    // so route from the pedicab to the pickup point — through any stop the
+    // rider is making first, on a shared trike.
+    if (ridePhase === 'approach' && driverLocation && pickup) {
       waypoints = [
         { lat: driverLocation.lat, lng: driverLocation.lng },
-        { lat: pickup.lat, lng: pickup.lng },
+        ...(pooledLegTo('pickup') ?? [{ lat: pickup.lat, lng: pickup.lng }]),
       ];
-    } else if (rideStatus === 'in_transit' && driverLocation && dropoff) {
+    } else if (ridePhase === 'transit' && driverLocation && dropoff) {
       // Passenger is aboard: the route becomes the run to the destination they
-      // pinned when booking.
+      // pinned when booking, by way of whoever else is sharing the trike.
       waypoints = [
         { lat: driverLocation.lat, lng: driverLocation.lng },
-        { lat: dropoff.lat, lng: dropoff.lng },
+        ...(pooledLegTo('dropoff') ?? [{ lat: dropoff.lat, lng: dropoff.lng }]),
       ];
     } else if (pickup && dropoff) {
       waypoints = [
@@ -212,12 +697,14 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         from,
         pooledRides.map((r) => ({
           rideId: r.id,
-          // A passenger already aboard has no pickup left to make.
+          // A passenger already aboard has no pickup left to make, but where they
+          // got on is still what their journey is measured against.
           pickup:
             r.status === 'in_transit'
               ? null
               : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
           dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
+          origin: { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
         }))
       ).forEach((s) => waypoints.push(s.at));
     }
@@ -227,8 +714,20 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       // out of order. Ignore any that resolve after this effect has been
       // superseded, otherwise the route snaps back to a stale geometry.
       let cancelled = false;
-      getStreetRoute(waypoints).then((route) => {
-        if (!cancelled) setRouteStreetCoords(route.coords);
+      // Traffic-aware only once a trip is running. A fare quote is charged on
+      // distance, so paying the higher-tier routing call for it would buy a
+      // number the ordinance ignores.
+      const live = ridePhase !== 'quote';
+
+      getStreetRoute(waypoints, { trafficAware: live }).then((route) => {
+        if (cancelled) return;
+        // Only accept genuinely different geometry. Traffic-aware routes are
+        // deliberately not cached, so an unchanged road came back as a brand
+        // new array on every GPS ping — a state change, and with it a full
+        // teardown and rebuild of every marker on the map.
+        setRouteStreetCoords((previous) =>
+          sameRoute(previous, route.coords) ? previous : route.coords
+        );
       });
       return () => {
         cancelled = true;
@@ -238,37 +737,48 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     // Keep the existing reference when it is already empty. Handing back a new
     // [] would be a state change, re-render, and re-run this effect forever.
     setRouteStreetCoords((prev) => (prev.length === 0 ? prev : []));
-  }, [pickup, dropoff, activeDriver, driverLocation, rideStatus, pooledRides, isDriverMode]);
+  }, [
+    pickup,
+    dropoff,
+    activeDriver,
+    driverLocation,
+    ridePhase,
+    poolSignature,
+    pooledRides,
+    isDriverMode,
+  ]);
 
-  // Render Markers and Polyline (Sleek pins, no heavy black borders)
+  /**
+   * The saved pickup points, drawn once.
+   *
+   * These were built inside the effect below, which tears down every marker it
+   * owns and rebuilds them. That effect re-runs on each driver poll, GPS ping
+   * and route change — several times a second — so thirteen fixed landmarks
+   * were being destroyed and recreated continuously. That was the flicker.
+   */
+  const landmarkMarkersRef = useRef<MarkerStore>({});
+
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    if (!map || !isReady) return;
 
-    // Clear old markers
-    (Object.values(markersRef.current) as L.Marker[]).forEach((m) => m.remove());
-    markersRef.current = {};
+    clearMarkers(landmarkMarkersRef.current);
+    landmarkMarkersRef.current = {};
 
-    if (routePolylineRef.current) {
-      routePolylineRef.current.remove();
-      routePolylineRef.current = null;
-    }
-    if (routePolylineGlowRef.current) {
-      routePolylineGlowRef.current.remove();
-      routePolylineGlowRef.current = null;
-    }
+    const { AdvancedMarkerElement } = google.maps.marker;
 
-    const isInTransit = rideStatus === 'in_transit';
-
-    // 0. Base Landmarks
-    if (!isDriverMode) {
+    if (!isDriverMode && showLandmarks) {
       DUMAGUETE_LOCATIONS.forEach((loc) => {
         // Always render landmarks - keep them visible even when selected as pickup/dropoff
-        
         const styles = getCategoryStyles(loc.category);
-        const icon = L.divIcon({
-          className: 'custom-landmark-pin',
-          html: `
+
+        const marker = new AdvancedMarkerElement({
+          map,
+          position: { lat: loc.lat, lng: loc.lng },
+          zIndex: -200, // behind the actual ride markers
+          gmpClickable: true,
+          content: markerContent(
+            `
             <div class="group flex flex-col items-center justify-start h-full relative cursor-pointer">
               <div class="w-6 h-6 rounded-full ${styles.bg} text-white flex items-center justify-center shadow-md border-[1.5px] border-white shrink-0 transition-transform group-hover:scale-110">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -280,95 +790,89 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
               </div>
             </div>
           `,
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
+            'centre'
+          ),
         });
-        const marker = L.marker([loc.lat, loc.lng], {
-          icon,
-          interactive: true, // required for hover to work
-          zIndexOffset: -200, // behind the actual ride markers
-        }).addTo(map);
 
         // Allow clicking the landmark to select it as the pickup/drop-off point
-        marker.on('click', () => {
-          if (onMapClickLocationRef.current) {
-            onMapClickLocationRef.current(loc.lat, loc.lng);
-          }
+        marker.addListener('click', () => {
+          onMapClickLocationRef.current?.(loc.lat, loc.lng);
         });
 
-        markersRef.current[`landmark_${loc.id}`] = marker;
+        landmarkMarkersRef.current[`landmark_${loc.id}`] = marker;
       });
     }
+
+
+    return () => {
+      clearMarkers(landmarkMarkersRef.current);
+      landmarkMarkersRef.current = {};
+    };
+  }, [isReady, isDriverMode, showLandmarks]);
+
+  // Render Markers and Polyline (Sleek pins, no heavy black borders)
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isReady) return;
+
+    // Keys written this pass; anything else is pruned at the end. Wiping first
+    // meant every marker was destroyed and rebuilt on each run — the flicker.
+    const live = new Set<string>();
+
+    routePolylineRef.current?.setMap(null);
+    routePolylineRef.current = null;
+    routePolylineGlowRef.current?.setMap(null);
+    routePolylineGlowRef.current = null;
+
+    const isInTransit = rideStatus === 'in_transit';
+
+    /** The teardrop both ends of a trip are drawn with. */
+    const teardrop = (colour: string) => `
+      <div class="relative flex flex-col items-center filter drop-shadow-md">
+        <svg class="w-9 h-9 ${colour}" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+        </svg>
+      </div>
+    `;
 
     // 1. Pickup — GREEN pin. Green means "get on here", red means "journey
     //    ends here", and the rider's pooled pins below follow the same rule so
     //    both sides of a trip read the map identically.
     if (pickup && !isInTransit) {
-      const pickupIcon = L.divIcon({
-        className: 'custom-pickup-pin',
-        html: `
-          <div class="relative flex flex-col items-center filter drop-shadow-md">
-            <svg class="w-9 h-9 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-            </svg>
-          </div>
-        `,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-      });
-      const pickupMarker = L.marker([pickup.lat, pickup.lng], { icon: pickupIcon }).addTo(map);
-      markersRef.current['pickup'] = pickupMarker;
+      upsertMarker(markersRef.current, 'pickup', map,
+        { lat: pickup.lat, lng: pickup.lng }, teardrop('text-emerald-600'), 'bottom');
+      live.add('pickup');
     }
 
     // 2. Destination — RED pin.
     if (dropoff) {
-      const dropoffIcon = L.divIcon({
-        className: 'custom-dropoff-pin',
-        html: `
-          <div class="relative flex flex-col items-center filter drop-shadow-md">
-            <svg class="w-9 h-9 text-red-600" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
-            </svg>
-          </div>
-        `,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-      });
-      const dropoffMarker = L.marker([dropoff.lat, dropoff.lng], { icon: dropoffIcon }).addTo(map);
-      markersRef.current['dropoff'] = dropoffMarker;
+      upsertMarker(markersRef.current, 'dropoff', map,
+        { lat: dropoff.lat, lng: dropoff.lng }, teardrop('text-red-600'), 'bottom');
+      live.add('dropoff');
     }
 
     // 3. Searching: pulse rings over the pickup point so the wait reads as
     //    something actively happening rather than a frozen map.
     if (pickup && rideStatus === 'searching_driver') {
-      const radarIcon = L.divIcon({
-        className: 'gt-radar-icon',
-        html: `<div class="gt-radar"><span></span><span></span><span></span></div>`,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
-      });
-      const radarMarker = L.marker([pickup.lat, pickup.lng], {
-        icon: radarIcon,
-        interactive: false,
-        zIndexOffset: -500,
-      }).addTo(map);
-      markersRef.current['searching_radar'] = radarMarker;
+      upsertMarker(markersRef.current, 'searching_radar', map,
+        { lat: pickup.lat, lng: pickup.lng },
+        `<div class="gt-radar"><span></span><span></span><span></span></div>`,
+        'centre', { zIndex: -500 });
+      live.add('searching_radar');
     }
 
     // 4. The rider's own device: a heading arrow, not a trike badge. It turns
     //    with them so they can read it like a navigation cursor.
     if (isDriverMode) {
       if (driverLocation || activeDriver) {
-        const lat = driverLocation ? driverLocation.lat : activeDriver ? activeDriver.currentLat : 9.3082;
-        const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : 123.3075;
+        const lat = driverLocation ? driverLocation.lat : activeDriver ? activeDriver.currentLat : DUMAGUETE_CENTRE.lat;
+        const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : DUMAGUETE_CENTRE.lng;
         const rotation = typeof driverHeading === 'number' ? driverHeading : 0;
 
         // A navigation chevron in the Waze / Google Maps idiom, in solid black.
         // No outline — the light basemap already gives it plenty of contrast,
         // and the drop shadow keeps it from disappearing over dark tiles.
-        const riderIcon = L.divIcon({
-          className: 'custom-rider-pin',
-          html: `
+        const arrowHtml = `
             <div class="gt-heading-arrow" style="transform: rotate(${rotation}deg);">
               <svg viewBox="0 0 40 40" width="40" height="40" fill="none">
                 <circle cx="20" cy="20" r="17" fill="#111827" fill-opacity="0.12"/>
@@ -376,20 +880,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
                       fill="#111827" stroke-linejoin="round"/>
               </svg>
             </div>
-          `,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20],
-        });
+          `;
 
-        const riderMarker = L.marker([lat, lng], { icon: riderIcon }).addTo(map);
-        markersRef.current['my_rider'] = riderMarker;
+        const riderMarker = upsertMarker(markersRef.current, 'my_rider', map,
+          { lat, lng }, arrowHtml, 'centre', { zIndex: 400 });
+        live.add('my_rider');
+        const content = riderMarker.content as HTMLElement;
 
         // This effect recreates the arrow element, so re-grab it and, if the
         // compass is already live, restore the accumulated rotation — otherwise
         // it would snap back to the GPS-based angle baked into the icon HTML.
-        const el = riderMarker.getElement()?.querySelector(
-          '.gt-heading-arrow'
-        ) as HTMLElement | null;
+        const el = content.querySelector('.gt-heading-arrow') as HTMLElement | null;
         arrowElRef.current = el;
         if (el && compassActiveRef.current) {
           el.style.transform = `rotate(${arrowRotationRef.current}deg)`;
@@ -403,24 +904,18 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       // needs to make obvious. Driving order lives in the route line, the
       // panel list, and each pin's tooltip.
       if (pooledRides.length > 0) {
-        const pin = (colour: 'emerald' | 'red', passenger: number) =>
-          L.divIcon({
-            className: colour === 'emerald' ? 'pooled-pickup-pin' : 'pooled-dropoff-pin',
-            html: `
-                <div class="relative filter drop-shadow-md">
-                  <svg class="w-9 h-9 ${
-                    colour === 'emerald' ? 'text-emerald-600' : 'text-red-600'
-                  }" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-                  </svg>
-                  <span class="absolute inset-x-0 top-[6px] text-center text-[11px] font-black text-white">
-                    ${passenger}
-                  </span>
-                </div>
-              `,
-            iconSize: [36, 36],
-            iconAnchor: [18, 36],
-          });
+        const numberedPin = (colour: 'emerald' | 'red', passenger: number) => `
+          <div class="relative filter drop-shadow-md">
+            <svg class="w-9 h-9 ${
+              colour === 'emerald' ? 'text-emerald-600' : 'text-red-600'
+            }" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+            </svg>
+            <span class="absolute inset-x-0 top-[6px] text-center text-[11px] font-black text-white">
+              ${passenger}
+            </span>
+          </div>
+        `;
 
         const ridesById = new Map(pooledRides.map((r) => [r.id, r]));
         const origin = driverLocation
@@ -438,6 +933,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
                 ? null
                 : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
             dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
+            origin: { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
           }))
         );
 
@@ -458,16 +954,18 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           const place = isPickup ? ride.pickupLocation : ride.dropoffLocation;
           const who = passengerNumber.get(stop.rideId) ?? 1;
 
-          const marker = L.marker([stop.at.lat, stop.at.lng], {
-            icon: pin(isPickup ? 'emerald' : 'red', who),
-          })
-            .addTo(map)
-            .bindTooltip(
-              `Stop ${stop.order} · ${isPickup ? 'Pick up' : 'Drop off'} passenger ${who} · ${place.name}`,
-              { direction: 'top' }
-            );
-
-          markersRef.current[`pooled_${stop.kind}_${ride.id}`] = marker;
+          const key = `pooled_${stop.kind}_${ride.id}`;
+          // Advanced markers have no tooltip of their own; the native title
+          // attribute carries the same text on hover and long-press.
+          upsertMarker(markersRef.current, key, map,
+            { lat: stop.at.lat, lng: stop.at.lng },
+            numberedPin(isPickup ? 'emerald' : 'red', who), 'bottom',
+            {
+              title: `Stop ${stop.order} · ${
+                isPickup ? 'Pick up' : 'Drop off'
+              } passenger ${who} · ${place.name}`,
+            });
+          live.add(key);
         });
       }
     } else {
@@ -482,9 +980,9 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         const lat = driverLocation ? driverLocation.lat : activeDriver.currentLat;
         const lng = driverLocation ? driverLocation.lng : activeDriver.currentLng;
 
-        const driverIcon = L.divIcon({
-          className: 'custom-driver-pin',
-          html: `
+        const driverKey = `active_driver_${activeDriver.id}`;
+        upsertMarker(markersRef.current, driverKey, map, { lat, lng },
+          `
             <div class="relative flex flex-col items-center">
               <div class="w-10 h-10 bg-gray-900 text-amber-400 rounded-full shadow-lg border border-amber-400 flex items-center justify-center text-lg">
                 🛺
@@ -493,13 +991,8 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
                 ${isInTransit ? 'ONBOARD' : activeDriver.unitNumber}
               </div>
             </div>
-          `,
-          iconSize: [40, 48],
-          iconAnchor: [20, 20],
-        });
-
-        const driverMarker = L.marker([lat, lng], { icon: driverIcon }).addTo(map);
-        markersRef.current[`active_driver_${activeDriver.id}`] = driverMarker;
+          `, 'centre', { zIndex: 300 });
+        live.add(driverKey);
       }
 
       /**
@@ -513,9 +1006,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       if (passengerLocation && !isInTransit) {
         const rotation = passengerLocation.heading ?? 0;
 
-        const meIcon = L.divIcon({
-          className: 'custom-me-pin',
-          html: `
+        const meHtml = `
             <div class="gt-me-arrow" style="transform: rotate(${rotation}deg);">
               <svg viewBox="0 0 40 40" width="34" height="34" fill="none">
                 <circle cx="20" cy="20" r="18" fill="#3b82f6" fill-opacity="0.15"/>
@@ -523,20 +1014,13 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
                 <circle cx="20" cy="21" r="8" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
               </svg>
             </div>
-          `,
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
-        });
+          `;
 
-        const meMarker = L.marker([passengerLocation.lat, passengerLocation.lng], {
-          icon: meIcon,
-          // Below the pickup and rider pins — useful context, not the subject.
-          zIndexOffset: -100,
-        })
-          .addTo(map)
-          .bindTooltip('You are here', { direction: 'top' });
-
-        markersRef.current['my_passenger'] = meMarker;
+        // Below the pickup and rider pins — useful context, not the subject.
+        upsertMarker(markersRef.current, 'my_passenger', map,
+          { lat: passengerLocation.lat, lng: passengerLocation.lng },
+          meHtml, 'centre', { zIndex: -100, title: 'You are here' });
+        live.add('my_passenger');
       }
     }
 
@@ -546,32 +1030,38 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     );
 
     if (validCoords.length >= 2) {
-      const latLngTuples: [number, number][] = validCoords.map((c) => [c.lat, c.lng]);
+      const path = validCoords.map((c) => ({ lat: c.lat, lng: c.lng }));
 
-      const polylineOuter = L.polyline(latLngTuples, {
-        color: '#1F2937',
-        weight: 5,
-        opacity: 0.8,
-      }).addTo(map);
+      routePolylineRef.current = new google.maps.Polyline({
+        map,
+        path,
+        strokeColor: '#1F2937',
+        strokeWeight: 7,
+        strokeOpacity: 0.85,
+        zIndex: 1,
+      });
 
-      const polylineInner = L.polyline(latLngTuples, {
-        color: '#F59E0B',
-        weight: 3,
-        opacity: 1,
-      }).addTo(map);
-
-      routePolylineRef.current = polylineOuter;
-      routePolylineGlowRef.current = polylineInner;
+      routePolylineGlowRef.current = new google.maps.Polyline({
+        map,
+        path,
+        strokeColor: '#F59E0B',
+        strokeWeight: 4,
+        strokeOpacity: 1,
+        zIndex: 2,
+      });
     }
+    // Anything not written this pass belonged to a previous state.
+    pruneMarkers(markersRef.current, live);
+
     // Framing the view is deliberately NOT done here. This effect re-runs on
     // every driver GPS ping and fleet poll, so recentring from it is what threw
     // the map back to Dumaguete centre while the passenger was zoomed in.
   }, [
+    isReady,
     pickup,
     dropoff,
     activeDriver,
     driverLocation,
-    driverHeading,
     rideStatus,
     routeStreetCoords,
     isDriverMode,
@@ -581,6 +1071,98 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     passengerLocation?.lng,
     passengerLocation?.heading,
   ]);
+
+  /**
+   * Tilt the camera, which is also what raises the buildings.
+   *
+   * There is no "show buildings" switch in the Maps JavaScript API. Extruded
+   * buildings are a property of the *vector* basemap, and they only appear once
+   * the camera is tilted off vertical and zoomed in far enough — a flat map is
+   * drawn as a plan, so there is nothing to raise.
+   *
+   * Applied while following a route, for either role: at that point the map is
+   * being read like a windscreen, and the buildings are what make a junction
+   * recognisable from inside a moving trike. A stationary map stays flat, where
+   * tilt costs legibility and buys nothing.
+   */
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isReady) return;
+
+    const navigating = followHeading || (isDriverMode && pooledRides.length > 0);
+    map.setTilt(navigating ? NAVIGATION_TILT : 0);
+
+    /*
+     * Buildings only render above roughly this zoom, so a tilted camera looking
+     * at the whole city would be tilted at nothing.
+     *
+     * Riders only. A rider is steering and wants the next two corners in
+     * detail; a passenger aboard wants to watch their trip go by, and forcing
+     * them to street level here immediately undid the framing that had just
+     * zoomed out to show them the whole run to their destination. They keep
+     * the tilt — which is the part that reads as "moving" — without the floor.
+     */
+    if (navigating && isDriverMode && (map.getZoom() ?? 0) < BUILDINGS_MIN_ZOOM) {
+      map.setZoom(BUILDINGS_MIN_ZOOM);
+    }
+  }, [isReady, isDriverMode, followHeading, pooledRides.length]);
+
+  const appliedHeadingRef = useRef<number | null>(null);
+
+  /**
+   * Follow the route: keep the traveller centred, facing the way they are going.
+   *
+   * Not the device compass. A compass turns when the *phone* turns, so a rider
+   * glancing down spun the whole map.
+   *
+   * Nor a fixed number of vertices ahead, which is what made the last version
+   * lurch: the router emits points at wildly different spacing, so "eight
+   * points" is thirty metres on a straight and four around a corner, and the
+   * bearing between them swings accordingly. The look-ahead is measured in
+   * metres instead, then eased toward rather than snapped to — a turn arrives
+   * as a turn, not as a jump.
+   */
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !isReady) return;
+
+    if (!followHeading) {
+      if (appliedHeadingRef.current !== null) {
+        appliedHeadingRef.current = null;
+        map.setHeading(0);
+      }
+      return;
+    }
+
+    const path = routeStreetCoords;
+    if (path.length < 2) return;
+
+    const target = courseAhead(path, LOOK_AHEAD_KM);
+    if (target === null) return;
+
+    const previous = appliedHeadingRef.current;
+
+    if (previous === null) {
+      // First lock-on: adopt the course outright rather than sweeping to it
+      // from north.
+      appliedHeadingRef.current = target;
+      map.setHeading(target);
+    } else {
+      // Shortest signed turn, so 350° to 10° is +20° and not -340°.
+      const delta = (((target - previous) % 360) + 540) % 360 - 180;
+
+      // Below this the road is straight and the wobble is GPS noise.
+      if (Math.abs(delta) < 4) return;
+
+      const eased = previous + delta * HEADING_EASING;
+      appliedHeadingRef.current = eased;
+      map.setHeading(((eased % 360) + 360) % 360);
+    }
+
+  }, [isReady, followHeading, routeStreetCoords]);
+
+
+
 
   // Rotate the rider's arrow from the phone's compass, in real time, so it
   // points where the device faces even while standing still — like Waze.
@@ -639,163 +1221,232 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   }, [isDriverMode]);
 
   /**
-   * Frame the trip exactly once, when it is genuinely new.
+   * Follow the user.
    *
-   * Skipped entirely if the passenger has taken over the view, or if either end
-   * was just dropped by hand on the map — pinning means they were already
-   * looking exactly where they wanted to be.
+   * A map that stays where it was put is a picture; a rider driving a route
+   * needs the map to come with them. It moves on every fix unless the user has
+   * dragged the map themselves, which latches until they press Center.
+   *
+   * A whole trip on screen outranks this. Framing the route and then following
+   * the user are contradictory instructions, and following was winning: the fit
+   * ran, then the very next GPS fix — a second later — panned straight back to
+   * the passenger and left the far end of the route off screen. Someone reading
+   * a route wants the route; only a driver actually navigating it (which is
+   * what `followHeading` means) wants the camera pinned to themselves.
    */
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    if (fittedRouteRef.current === routeSignature) return;
+    const map = mapInstanceRef.current;
+    if (!map || !isReady || !selfLocation) return;
+    if (userAdjustedViewRef.current) return;
+    if (!followHeading && hasWholeTrip) return;
+    // A framing move already under way is a deliberate answer to a leg of the
+    // journey having just changed. Panning mid-flight would fight it and land
+    // somewhere neither wanted; the next fix picks following back up.
+    if (frameAnimationRef.current !== null) return;
+
+    moveMap((m) => m.panTo(selfLocation));
+  }, [
+    isReady,
+    selfLocation?.lat,
+    selfLocation?.lng,
+    followHeading,
+    hasWholeTrip,
+  ]);
+
+  /** Build bounds from a list of points; null when there is nothing to frame. */
+  const boundsOf = (points: LatLng[]): google.maps.LatLngBounds | null => {
+    const valid = points.filter((c) => c && Number.isFinite(c.lat) && Number.isFinite(c.lng));
+    if (valid.length < 2) return null;
+    const bounds = new google.maps.LatLngBounds();
+    valid.forEach((c) => bounds.extend({ lat: c.lat, lng: c.lng }));
+    return bounds.isEmpty() ? null : bounds;
+  };
+
+  /**
+   * Frame whatever leg of the journey is current, once per leg.
+   *
+   * Once both ends are known this happens unconditionally. The exemptions that
+   * used to sit here — the passenger had dragged the view, or an end had been
+   * dropped by hand — are about a single point, and a second point changes the
+   * question being asked. Nobody who has just named both ends of a trip wants
+   * to keep staring at one of them.
+   *
+   * `followHeading` used to bail out here too, on the grounds that a followed
+   * camera belongs to the traveller. That is right between legs and wrong at
+   * the boundary: the moment a passenger climbs aboard is exactly when they
+   * want to see the whole run to their destination. The `frameKey` guard is
+   * what makes both true at once — it fires once per leg per visible area, so
+   * the transition gets its framing and the following that comes after it is
+   * never interrupted again.
+   *
+   * Riders are untouched by all of this: driver mode passes no pickup or
+   * drop-off, so the guard below returns before anything moves.
+   */
+  useEffect(() => {
+    if (!mapInstanceRef.current || !isReady) return;
+    if (fittedRouteRef.current === frameKey) return;
     if (!pickup && !dropoff) return;
 
-    const pinnedByHand = pickup?.isCustomPinned || dropoff?.isCustomPinned;
-    if (userAdjustedViewRef.current || pinnedByHand) {
-      // Treat it as framed so it will not snap later when the route resolves.
-      fittedRouteRef.current = routeSignature;
+    const bounds = hasWholeTrip ? boundsOf(routeStreetCoords) : null;
+    if (bounds) {
+      frameBounds(bounds);
+      fittedRouteRef.current = frameKey;
       return;
     }
 
-    const validCoords = routeStreetCoords.filter(
-      (c) => c && Number.isFinite(c.lat) && Number.isFinite(c.lng)
-    );
-
-    if (validCoords.length >= 2) {
-      const bounds = L.latLngBounds(
-        validCoords.map((c) => [c.lat, c.lng] as [number, number])
-      );
-      if (bounds.isValid()) {
-        moveMap((map) => map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 }));
-        fittedRouteRef.current = routeSignature;
-      }
+    // Only one end so far. Here the old exemptions still hold: a point the
+    // passenger placed on the map, or a view they dragged there themselves, is
+    // already the view they asked for.
+    if (userAdjustedViewRef.current || pickup?.pickedOnMap || dropoff?.pickedOnMap) {
+      // Deliberately not marked as framed — when the second end arrives and the
+      // road geometry lands, the trip above still gets its one fit.
       return;
     }
 
-    // Only one end chosen so far: centre on it, but wait for the road geometry
-    // before declaring this route framed.
+    // Centre on the one end there is, without declaring the trip framed — the
+    // road geometry for the full route may still be on its way.
     const single = pickup ?? dropoff;
     if (single && Number.isFinite(single.lat) && Number.isFinite(single.lng)) {
-      moveMap((map) => map.setView([single.lat, single.lng], 16));
+      moveMap((map) => {
+        map.setCenter({ lat: single.lat, lng: single.lng });
+        map.setZoom(16);
+      });
     }
-  }, [routeSignature, routeStreetCoords, pickup, dropoff]);
+  }, [isReady, followHeading, frameKey, hasWholeTrip, routeStreetCoords, pickup, dropoff]);
 
   /** Explicit "give me the overview back" — the one thing that resets the view. */
+  /**
+   * Centre on the user.
+   *
+   * It used to fall through to the city centre whenever there was no route,
+   * which is why pressing it on an idle map threw the view across town. The
+   * question this button answers is "where am I", so the user's own position is
+   * the first answer, not the last.
+   */
   const handleCenterDumaguete = () => {
     userAdjustedViewRef.current = false;
-    fittedRouteRef.current = routeSignature;
 
-    const validCoords = routeStreetCoords.filter(
-      (c) => c && Number.isFinite(c.lat) && Number.isFinite(c.lng)
-    );
-
-    if (validCoords.length >= 2) {
-      const bounds = L.latLngBounds(
-        validCoords.map((c) => [c.lat, c.lng] as [number, number])
-      );
-      if (bounds.isValid()) {
-        moveMap((map) => map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 }));
-        return;
+    if (selfLocation) {
+      // Facing is left alone while navigating: snapping back to north here undid
+      // the orientation the rider was steering by.
+      if (!followHeading) {
+        appliedHeadingRef.current = null;
+        mapInstanceRef.current?.setHeading(0);
       }
+      moveMap((map) => {
+        map.panTo(selfLocation);
+        map.setZoom(Math.max(map.getZoom() ?? 0, 17));
+      });
+      return;
     }
 
-    if (pickup && dropoff) {
-      moveMap((map) =>
-        map.fitBounds(
-          L.latLngBounds([
-            [pickup.lat, pickup.lng],
-            [dropoff.lat, dropoff.lng],
-          ]),
-          { padding: [50, 50] }
-        )
-      );
-    } else if (pickup) {
-      moveMap((map) => map.setView([pickup.lat, pickup.lng], 16));
-    } else if (dropoff) {
-      moveMap((map) => map.setView([dropoff.lat, dropoff.lng], 16));
-    } else {
-      moveMap((map) => map.setView([9.3082, 123.3075], 15));
+    // No fix yet — permission not granted, or indoors. Fall back to the trip,
+    // then to the city.
+    appliedHeadingRef.current = null;
+    mapInstanceRef.current?.setHeading(0);
+    fittedRouteRef.current = frameKey;
+
+    const routeBounds = boundsOf(routeStreetCoords);
+    if (routeBounds) {
+      frameBounds(routeBounds);
+      return;
     }
+
+    const single = pickup ?? dropoff;
+    moveMap((map) => {
+      map.setCenter(single ? { lat: single.lat, lng: single.lng } : DUMAGUETE_CENTRE);
+      map.setZoom(single ? 16 : 15);
+    });
   };
 
   return (
     <div
-      className={`relative w-full h-full min-h-[420px] bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-md ${
-        nextPinTarget ? 'cursor-crosshair' : ''
-      }`}
+      className={`relative w-full h-full bg-white overflow-hidden ${
+        fullBleed ? '' : 'min-h-[420px] rounded-2xl border border-gray-200 shadow-md'
+      } ${nextPinTarget ? 'cursor-crosshair' : ''}`}
     >
-      {/*
-        Leaflet's container. Its className MUST stay a constant string.
-        Leaflet adds its own classes (leaflet-container, leaflet-grab, …) to
-        this element at runtime, and almost all of Leaflet's CSS is scoped
-        under .leaflet-container. If React ever re-renders with a different
-        className it overwrites the attribute wholesale, silently stripping
-        those classes and leaving a blank map. The cursor therefore lives on
-        the wrapper above, which React is free to control.
-      */}
-      <div ref={mapContainerRef} className="w-full h-full z-0 bg-white" />
+      <div ref={mapContainerRef} className="w-full h-full bg-gray-100" />
 
-      {/* Tapping the map always pins, so say plainly what the next tap will do.
-          Sized and styled to match the Center button, and kept narrow enough
-          that the two never overlap. */}
-      {nextPinTarget && (
-        <div className="absolute top-4 left-4 z-20 max-w-[calc(100%-8rem)] bg-amber-50/95 backdrop-blur-sm text-amber-900 px-3.5 py-2.5 rounded-xl shadow-md border border-amber-200 text-xs font-bold truncate">
-          {nextPinTarget === 'pickup'
-            ? 'Tap the map to set your pickup'
-            : 'Tap the map to set your drop-off'}
+      {/* A missing browser key or Map ID fails silently otherwise: the container
+          renders, stays grey, and looks like a layout bug rather than config. */}
+      {loadError && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-gray-50 px-6 text-center">
+          <MapPinOff className="h-7 w-7 text-gray-400" />
+          <p className="text-sm font-bold text-gray-900">Map unavailable</p>
+          <p className="max-w-xs text-xs font-medium text-gray-500">{loadError}</p>
         </div>
       )}
 
-      {/* Sized to match the "Tap the map…" pill opposite it, so the two read as
-          a pair rather than one shouting over the other. */}
-      <div className="absolute top-4 right-4 z-10">
+      {!loadError && !isReady && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-50">
+          <span className="h-6 w-6 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+        </div>
+      )}
+
+      {!MAP_ID && isReady && (
+        <div className="absolute inset-x-3 top-3 z-30 rounded-xl border border-amber-200 bg-amber-50/95 px-3 py-2 text-[11px] font-bold text-amber-900 shadow-md backdrop-blur-sm">
+          VITE_GOOGLE_MAPS_MAP_ID is not set — pins cannot render without a Map ID.
+        </div>
+      )}
+
+      {/* No "tap the map to set…" banner: the crosshair cursor and the empty
+          field in the sheet already say it, and on a phone the banner was one
+          more thing covering the map. */}
+
+      {/* Messages, over the map. A badge inside a sheet the passenger has
+          collapsed to watch the road is a badge nobody sees. */}
+      {onOpenMessages && (
+        <button
+          onClick={onOpenMessages}
+          aria-label={unreadMessages > 0 ? `${unreadMessages} unread messages` : 'Messages'}
+          className="absolute right-4 top-32 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md backdrop-blur-sm transition active:scale-95 hover:bg-gray-50"
+        >
+          <MessageSquare className="h-4 w-4" />
+          {unreadMessages > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white shadow">
+              {unreadMessages > 9 ? '9+' : unreadMessages}
+            </span>
+          )}
+        </button>
+      )}
+
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         <button
           onClick={handleCenterDumaguete}
+          title="Centre the map on my location"
+          aria-label="Centre the map on my location"
           className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white/95 px-3.5 py-2.5 text-xs font-bold text-gray-900 shadow-md backdrop-blur-sm transition active:scale-95 hover:bg-gray-50"
         >
           <Crosshair className="h-3.5 w-3.5 text-amber-600" />
-          <span className="hidden sm:inline">Center</span>
+          <span className="hidden sm:inline">My location</span>
         </button>
       </div>
 
-      {/* Street Route Active Status Badge. Driver mode is checked first — the
-          passenger's "searching" message must never leak onto the rider's own
-          map, even when this same device also has a booking in flight. */}
-      <div className="absolute bottom-4 left-4 z-10 bg-gray-900/90 backdrop-blur-sm text-white px-3.5 py-2 rounded-xl border border-gray-800 shadow-lg text-[11px] font-medium flex items-center gap-2 max-w-[calc(100%-2rem)]">
-        {isDriverMode ? (
-          pooledRides.length === 0 ? (
+      {/* The passenger's trip status used to be repeated here, on the sheet's
+          pinned row, and inside the black card — three copies of one sentence.
+          The card is the one with the ETA and the controls, so it is the one
+          that survives. Only the rider's own queue state is left, because a
+          rider has no such card. */}
+      {isDriverMode && (
+        <div
+          className="absolute left-4 z-10 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-xl border border-gray-800 bg-gray-900/90 px-3.5 py-2 text-[11px] font-medium text-white shadow-lg backdrop-blur-sm transition-all duration-200"
+          style={{ bottom: bottomInset + 16 }}
+        >
+          {pooledRides.length === 0 ? (
             <>
-              {/* Idle and on duty — waiting for a booking to come in. */}
-              <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
+              <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
               <span className="truncate">Searching for passengers…</span>
             </>
           ) : (
             <>
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
               <span className="truncate">
                 {pooledRides.length} passenger{pooledRides.length > 1 ? 's' : ''} on your route
               </span>
             </>
-          )
-        ) : rideStatus === 'searching_driver' ? (
-          <>
-            {/* A spinner, not a pulse — the wait needs to look like work in progress. */}
-            <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin shrink-0" />
-            <span className="truncate">Looking for a nearby rider in Dumaguete…</span>
-          </>
-        ) : (
-          <>
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
-            <span className="truncate">
-              {rideStatus === 'driver_assigned' || rideStatus === 'driver_arriving'
-                ? 'Rider on the way to your pickup point'
-                : rideStatus === 'in_transit'
-                ? 'On board — heading to your destination'
-                : 'Dumaguete Street Route'}
-            </span>
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

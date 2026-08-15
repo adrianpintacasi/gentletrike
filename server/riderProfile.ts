@@ -31,11 +31,9 @@ export function isSeedDriverId(id: string): boolean {
   return SEED_DRIVER_IDS.has(id);
 }
 
-export const VALID_VEHICLE_TYPES = new Set([
-  "pedicab_standard",
-  "habal_habal",
-  "multicab",
-]);
+// Anything not in here is coerced to a pedicab by normalizeVehicleType below,
+// so a stale client or a crafted request cannot write a retired vehicle type.
+export const VALID_VEHICLE_TYPES = new Set(["pedicab_standard"]);
 
 export function normalizeVehicleType(raw?: string): string {
   return raw && VALID_VEHICLE_TYPES.has(raw) ? raw : "pedicab_standard";

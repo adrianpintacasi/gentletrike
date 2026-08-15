@@ -14,6 +14,7 @@ export interface UserRow {
   password_hash: string;
   name: string;
   role: UserRole;
+  contact_number?: string | null;
   employee_id?: string | null;
   department?: string | null;
   sub_role?: AdminSubRole | null;
@@ -27,6 +28,7 @@ export interface AuthUser {
   email: string;
   name: string;
   role: UserRole;
+  contact_number?: string;
   employee_id?: string;
   department?: string;
   sub_role?: AdminSubRole;
@@ -47,6 +49,9 @@ export function toAuthUser(row: UserRow): AuthUser {
     email: row.email,
     name: row.name,
     role: row.role,
+    // Collected at signup and, until now, dropped here — which is why the
+    // Menu had a number to show and never showed one.
+    contact_number: row.contact_number ?? undefined,
     employee_id: row.employee_id ?? undefined,
     department: row.department ?? undefined,
     sub_role: row.role === "admin" ? (row.sub_role ?? "super_admin") : undefined,

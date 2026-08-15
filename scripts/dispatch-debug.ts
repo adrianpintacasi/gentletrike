@@ -77,6 +77,9 @@ async function main() {
             rideId: r.id,
             pickup: r.status === 'in_transit' ? null : { lat: p.lat, lng: p.lng },
             dropoff: { lat: d.lat, lng: d.lng },
+            // What an aboard passenger's journey is measured against, so this
+            // prints the order the app really drives rather than a shorter one.
+            origin: { lat: p.lat, lng: p.lng },
           };
         })
       );
@@ -107,7 +110,12 @@ async function main() {
         ...(r.status === 'in_transit'
           ? []
           : [{ at: { lat: p.lat, lng: p.lng }, kind: 'pickup' as const, rideId: r.id }]),
-        { at: { lat: d.lat, lng: d.lng }, kind: 'dropoff' as const, rideId: r.id },
+        {
+          at: { lat: d.lat, lng: d.lng },
+          kind: 'dropoff' as const,
+          rideId: r.id,
+          origin: { lat: p.lat, lng: p.lng },
+        },
       ];
     });
 

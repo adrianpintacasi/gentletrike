@@ -10,6 +10,14 @@
       "DOM.Iterable"
     ],
     "skipLibCheck": true,
+    // `vite/client` supplies import.meta.env; `google.maps` supplies the global
+    // `google` namespace the map component builds its markers from. Neither is
+    // imported by any file, so without naming them here they are never loaded.
+    "types": [
+      "node",
+      "vite/client",
+      "google.maps"
+    ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",

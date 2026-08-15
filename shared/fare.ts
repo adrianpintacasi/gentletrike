@@ -1,4 +1,4 @@
-import { TransportMode, VEHICLE_DETAILS } from './transport';
+import { TransportMode, VEHICLE_DETAILS , vehicleDetail } from './transport';
 
 /** Distance covered by the base fare. Anything past this starts charging. */
 export const BASE_DISTANCE_KM = 1;
@@ -31,7 +31,7 @@ const EPSILON = 1e-9;
  *   2.01 km -> ₱19      2.90 km -> ₱19      3.00 km -> ₱19
  */
 export function farePerPassenger(mode: TransportMode, distanceKm: number): number {
-  const { baseFare, perKm } = VEHICLE_DETAILS[mode];
+  const { baseFare, perKm } = vehicleDetail(mode);
   if (!Number.isFinite(distanceKm) || distanceKm <= BASE_DISTANCE_KM) return baseFare;
 
   const succeedingKm = Math.ceil(distanceKm - BASE_DISTANCE_KM - EPSILON);
@@ -77,7 +77,7 @@ export function fareBreakdown(
   distanceKm: number,
   passengers = 1
 ): FareBreakdown {
-  const { baseFare, perKm } = VEHICLE_DETAILS[mode];
+  const { baseFare, perKm } = vehicleDetail(mode);
   const heads = Math.max(1, Math.floor(passengers) || 1);
   const km = Number.isFinite(distanceKm) && distanceKm > 0 ? distanceKm : 0;
 

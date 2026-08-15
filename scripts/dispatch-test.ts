@@ -7,6 +7,8 @@ import {
   detourKmFor,
   ALONG_THE_WAY_KM,
   HIDE_BEYOND_KM,
+  MAX_ONBOARD_STRETCH,
+  MIN_ONBOARD_ALLOWANCE_KM,
   type Stop,
   type Candidate,
 } from '../shared/dispatch';
@@ -203,10 +205,15 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-console.log('\n=== 7. The chosen order really is the shortest legal one ===');
+console.log('\n=== 7. The chosen order is the fairest legal one, then the shortest ===');
 
 // Brute-forced here independently of the implementation, so this catches a
 // sequencer that quietly degrades rather than just agreeing with itself.
+//
+// Two contracts, since the fairness rule applies to passengers still waiting as
+// well as those aboard: nobody may be carried far past their own booking, and the
+// shortest ordering that manages it wins. With the cap lifted this must still
+// find the true optimum — that is what proves the search itself is sound.
 {
   const trips = [
     { rideId: 'a', pickup: P.silliman, dropoff: P.robinsons },
@@ -243,21 +250,80 @@ console.log('\n=== 7. The chosen order really is the shortest legal one ===');
       for (const rest of perms([...a.slice(0, i), ...a.slice(i + 1)])) yield [a[i], ...rest];
   }
 
+  /** How far this ordering carries people beyond what they booked, in km. */
+  const excess = (order: typeof flat) => {
+    let total = 0;
+    for (const t of trips) {
+      const from = order.findIndex((s) => s.ride === t.rideId && s.kind === 'p');
+      const to = order.findIndex((s) => s.ride === t.rideId && s.kind === 'd');
+      const booked = haversineKm(t.pickup, t.dropoff) * 1.32;
+      let planned = 0;
+      for (let i = from + 1; i <= to; i++) {
+        planned += haversineKm(order[i - 1].at, order[i].at) * 1.32;
+      }
+      const allowed = Math.max(booked * MAX_ONBOARD_STRETCH, MIN_ONBOARD_ALLOWANCE_KM);
+      if (planned > allowed) total += planned - allowed;
+    }
+    return total;
+  };
+
   let bestKm = Infinity;
+  let bestExcess = Infinity;
+  let bestFairKm = Infinity;
   let checked = 0;
   for (const p of perms(flat)) {
     if (!legal(p)) continue;
     checked++;
     bestKm = Math.min(bestKm, length(p));
+    const e = excess(p);
+    if (e < bestExcess - 1e-9) {
+      bestExcess = e;
+      bestFairKm = length(p);
+    } else if (Math.abs(e - bestExcess) <= 1e-9) {
+      bestFairKm = Math.min(bestFairKm, length(p));
+    }
   }
 
-  const chosen = sequenceStops(riderAt, trips);
-  const chosenKm = length(
-    chosen.map((s) => flat.find((f) => f.at.lat === s.at.lat && f.at.lng === s.at.lng)!)
+  const measure = (seq: ReturnType<typeof sequenceStops>) =>
+    seq.map((s) => flat.find((f) => f.at.lat === s.at.lat && f.at.lng === s.at.lng)!);
+
+  const chosen = measure(sequenceStops(riderAt, trips));
+  const chosenKm = length(chosen);
+
+  console.log(
+    `    ${checked} legal orderings · shortest ${m(bestKm)} · fairest-then-shortest ${m(bestFairKm)} · chosen ${m(chosenKm)}`
   );
 
-  console.log(`    ${checked} legal orderings · optimal ${m(bestKm)} · chosen ${m(chosenKm)}`);
-  check('matches the brute-forced optimum', chosenKm <= bestKm + 1e-9, m(chosenKm - bestKm) + ' worse');
+  check(
+    'the chosen ordering is as fair as any legal ordering gets',
+    excess(chosen) <= bestExcess + 1e-9,
+    `${m(excess(chosen))} over vs best possible ${m(bestExcess)}`
+  );
+  check(
+    'and the shortest among those',
+    chosenKm <= bestFairKm + 1e-9,
+    m(chosenKm - bestFairKm) + ' worse'
+  );
+
+  // With fairness switched off the sequencer must still find the true optimum,
+  // which is what proves the ordering search has not degraded.
+  const rawKm = length(
+    measure(sequenceStops(riderAt, trips, { maxStretch: Infinity, minAllowedKm: Infinity }))
+  );
+  console.log(`    with the cap lifted: ${m(rawKm)} (optimum ${m(bestKm)})`);
+  check(
+    'with the cap lifted it still matches the brute-forced optimum',
+    rawKm <= bestKm + 1e-9,
+    m(rawKm - bestKm) + ' worse'
+  );
+
+  // Protecting people costs the rider distance; that trade must be visible, not
+  // hidden, so it is asserted rather than assumed.
+  check(
+    'fairness costs the rider some distance here',
+    chosenKm > rawKm,
+    `${m(chosenKm)} fair vs ${m(rawKm)} shortest`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +347,144 @@ check(
 
 check('pakyaw is flagged exclusive', isExclusiveTrip('pakyaw_charter'));
 check('an ordinary trip is not', !isExclusiveTrip('pedicab_standard'));
+
+// ---------------------------------------------------------------------------
+// Individually cheap detours used to accumulate without limit: the passenger
+// already aboard could be carried a long way round and set down last, having
+// agreed to none of it. The fix is an ordering rule, not a refusal — a fair
+// ordering always exists, because serving each trip in turn stretches nobody.
+console.log('\n=== 9. The passenger already aboard is not set down last ===');
+
+// The exact regression: A is aboard from Silliman to Robinsons, and the rider
+// then accepts two more short trips. Every detour was individually small, and
+// ordering on distance alone still set A down last — 2.6 km for a 1.9 km booking.
+const aBookedKm = haversineKm(P.silliman, P.robinsons) * 1.32;
+const pastRobinsons = { lat: 9.2945, lng: 123.301 };
+
+const pooled = [
+  { rideId: 'A', pickup: null, dropoff: P.robinsons, origin: P.silliman },
+  { rideId: 'B', pickup: P.leePlaza, dropoff: P.cathedral },
+  { rideId: 'C', pickup: P.boulevard, dropoff: P.market },
+];
+
+console.log(`    A booked Silliman -> Robinsons = ${m(aBookedKm)}`);
+console.log(
+  `    cap ${MAX_ONBOARD_STRETCH}x, or ${m(MIN_ONBOARD_ALLOWANCE_KM)} whichever is greater` +
+    ` -> A may ride ${m(Math.max(aBookedKm * MAX_ONBOARD_STRETCH, MIN_ONBOARD_ALLOWANCE_KM))}\n`
+);
+
+const withStretchCap = sequenceStops(P.silliman, pooled);
+// The same stops with the cap lifted: distance alone decides, as it used to.
+const distanceOnly = sequenceStops(P.silliman, pooled, {
+  maxStretch: Infinity,
+  minAllowedKm: Infinity,
+});
+
+const describe = (seq: { rideId: string; kind: string }[]) =>
+  seq.map((s) => `${s.kind === 'pickup' ? '+' : '-'}${s.rideId}`).join(' ');
+console.log(`    distance only : ${describe(distanceOnly)}`);
+console.log(`    with the cap  : ${describe(withStretchCap)}`);
+
+/** Where in the driven order this trip's passenger is finally set down. */
+const dropIndex = (seq: { rideId: string; kind: string }[], rideId: string) =>
+  seq.findIndex((s) => s.rideId === rideId && s.kind === 'dropoff');
+
+check(
+  'ordering on distance alone sets A down last (the bug)',
+  dropIndex(distanceOnly, 'A') === distanceOnly.length - 1,
+  describe(distanceOnly)
+);
+check(
+  'the cap moves A off the back of the queue (the fix)',
+  dropIndex(withStretchCap, 'A') < dropIndex(distanceOnly, 'A'),
+  `${describe(distanceOnly)}  ->  ${describe(withStretchCap)}`
+);
+check(
+  'pooling still happens — someone else is collected before A is dropped',
+  withStretchCap.some((s) => s.kind === 'pickup') &&
+    withStretchCap.findIndex((s) => s.kind === 'pickup') < dropIndex(withStretchCap, 'A'),
+  describe(withStretchCap)
+);
+
+// The distances that make the rule worth having: how far A actually rides.
+const ridesUntilDropped = (seq: { at: typeof P.silliman; rideId: string; kind: string }[]) => {
+  let km = 0;
+  let at = P.silliman;
+  for (const s of seq) {
+    km += haversineKm(at, s.at) * 1.32;
+    at = s.at;
+    if (s.rideId === 'A' && s.kind === 'dropoff') break;
+  }
+  return km;
+};
+const cappedKm = ridesUntilDropped(withStretchCap);
+const uncappedKm = ridesUntilDropped(distanceOnly);
+console.log(
+  `\n    A rides ${m(cappedKm)} with the cap vs ${m(uncappedKm)} on distance alone (booked ${m(aBookedKm)})`
+);
+check(
+  "A's own journey stays within the cap",
+  cappedKm <= Math.max(aBookedKm * MAX_ONBOARD_STRETCH, MIN_ONBOARD_ALLOWANCE_KM) + 1e-9,
+  m(cappedKm)
+);
+check('and is shorter than it was before the cap', cappedKm < uncappedKm, `${m(cappedKm)} < ${m(uncappedKm)}`);
+
+// A genuinely on-route trip must still be offered, and still badged: the cap
+// protects passengers, it must not quietly switch pooling off.
+const aAboard: Stop[] = [
+  { at: P.robinsons, kind: 'dropoff', rideId: 'A', origin: P.silliman },
+];
+const gentle = scoreCandidate(P.silliman, aAboard, {
+  rideId: 'gentle',
+  pickup: P.leePlaza,
+  dropoff: P.cathedral,
+  passengers: 1,
+});
+console.log(`\n    gentle jog (Lee -> Cathedral)  ${m(gentle.detourKm).padStart(8)}  ${gentle.reason}`);
+check('a genuinely on-route trip is still offered', gentle.eligible, gentle.reason);
+check('and still badged on-route', gentle.alongTheWay, m(gentle.detourKm));
+check('its detour is still reported honestly', gentle.detourKm > 0 && gentle.detourKm < ALONG_THE_WAY_KM);
+
+// Short trips must not be over-protected: 1.5x of a 456 m hop is only 684 m, so
+// the flat allowance is what keeps pooling possible on short journeys at all.
+const shortBooked = haversineKm(P.leePlaza, P.cathedral) * 1.32;
+const shortPool = scoreCandidate(
+  P.leePlaza,
+  [{ at: P.cathedral, kind: 'dropoff', rideId: 'S', origin: P.leePlaza }],
+  { rideId: 'alsoShort', pickup: P.market, dropoff: P.boulevard, passengers: 1 }
+);
+console.log(
+  `    a ${m(shortBooked)} trip pooling with another  ${m(shortPool.detourKm).padStart(8)}  ${shortPool.reason}`
+);
+check('the flat allowance keeps short trips poolable', shortPool.eligible, shortPool.reason);
+
+// A trip that can only be served the unfair way must cost more, not vanish: the
+// rider sees the price of the fair ordering and the usual thresholds judge it.
+const fairCost = scoreCandidate(P.silliman, aAboard, {
+  rideId: 'far',
+  pickup: P.leePlaza,
+  dropoff: pastRobinsons,
+  passengers: 1,
+});
+const rawCost = detourKmFor(P.silliman, aAboard, {
+  rideId: 'far',
+  pickup: P.leePlaza,
+  dropoff: pastRobinsons,
+  passengers: 1,
+});
+console.log(`\n    Lee -> past Robinsons: fair ordering ${m(fairCost.detourKm)}, raw shortest ${m(rawCost)}`);
+check('the fair ordering is never cheaper than the raw shortest', fairCost.detourKm >= rawCost - 1e-9);
+check('and the trip is still offered rather than hidden', fairCost.eligible, fairCost.reason);
+
+// Sequencing must not regress: a passenger is still never set down before being
+// collected, however the fairness rule reorders things.
+const legal = withStretchCap.every((s, i) =>
+  s.kind !== 'dropoff'
+    ? true
+    : withStretchCap.findIndex((p) => p.rideId === s.rideId && p.kind === 'pickup') < i ||
+      !withStretchCap.some((p) => p.rideId === s.rideId && p.kind === 'pickup')
+);
+check('nobody is set down before being collected', legal, describe(withStretchCap));
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} CHECK(S) FAILED.`}\n`);
 process.exit(failures === 0 ? 0 : 1);

@@ -72,6 +72,13 @@ interface GentleAiAssistantProps {
   bookBlockedReason?: string;
   /** Hands the created ride back to the app so it can track it like any other. */
   onRideBooked?: (ride: RideBooking) => void;
+  /**
+   * Where the passenger is standing.
+   *
+   * Gently resolves place names near this point, which is what makes "the mall"
+   * mean the one down the road rather than whichever mall matched the word best.
+   */
+  position?: { lat: number; lng: number } | null;
 }
 
 export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
@@ -82,12 +89,13 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
   canBook = false,
   bookBlockedReason,
   onRideBooked,
+  position,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      text: 'Maayong adlaw! I am Gently, your local Dumaguete guide. Ask me about pedicab fares, tourist spots like Rizal Boulevard or Casaroro Falls, local food like Silvanas & Budbud Kabog — or ask me to book you a ride.',
+      text: 'Maayong adlaw! I am Gently. Ask me what a trip should cost, how to reach somewhere, or what is worth seeing nearby — or ask me to book you a ride.',
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -149,6 +157,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
         pickup: pickupName,
         dropoff: dropoffName,
         history,
+        ...(position && { lat: position.lat, lng: position.lng }),
       });
 
       const draft = api.findBookingDraft(res.data);
@@ -289,24 +298,31 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-      <div className="bg-white rounded-2xl max-w-lg w-full h-[85vh] max-h-[620px] shadow-2xl border border-gray-200 flex flex-col text-gray-900 overflow-hidden">
+      <div className="flex h-[85vh] max-h-[620px] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
         {/* Header */}
-        <div className="bg-gray-900 text-amber-400 p-4 flex items-center justify-between">
+        <div className="gt-gently-header relative flex items-center justify-between overflow-hidden p-4 text-amber-400">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-400 text-gray-900 rounded-xl">
-              <Sparkles className="w-5 h-5" />
+            {/* Pulses only while a reply is being composed, so the motion
+                means something rather than decorating idle time. */}
+            <div
+              className={`rounded-xl bg-amber-400 p-2 text-gray-900 shadow-lg shadow-amber-400/30 ${
+                loading ? 'gt-thinking' : ''
+              }`}
+            >
+              <Sparkles className="h-5 w-5" />
             </div>
             <div>
               <h3 className="font-bold text-base leading-tight text-white">Gently</h3>
-              <p className="text-xs text-gray-400 font-medium">Dumaguete Route & City Knowledge</p>
+              <p className="text-[11px] font-medium text-white/60">Routes, fares and local knowledge</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-800 rounded-full transition text-gray-400 hover:text-white"
+            className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white"
+            aria-label="Close Gently"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -365,7 +381,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Ask Gently about Dumaguete pedicabs, fares, places..."
+            placeholder="Ask about fares, routes or places..."
             className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 font-medium focus:outline-none focus:bg-white focus:border-amber-400"
           />
           <button

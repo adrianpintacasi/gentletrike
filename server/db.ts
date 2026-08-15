@@ -2,6 +2,7 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import type { PoolClient } from "@neondatabase/serverless";
 import ws from "ws";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { SEARCH_STALL_MINUTES } from "../shared/dispatch";
 
 // GentleTrike stores its data in a cloud Postgres database (Neon). We use Neon's
 // serverless driver, which connects over WebSocket/HTTPS (port 443) — the SAME
@@ -388,7 +389,26 @@ export function toDriver(row: DriverRow) {
   };
 }
 
+/**
+ * How long this trip has been waiting for a rider to accept it, in seconds.
+ *
+ * Computed on the server so it does not depend on the passenger's phone clock
+ * being right. Null once a rider has it — the wait is over, whatever the clock
+ * says. Timestamps are stored as UTC text, so they are read as UTC.
+ */
+function searchingSeconds(row: RideRow): number | null {
+  if (row.status !== 'searching_driver' || row.driver_id) return null;
+
+  const raw = row.created_at;
+  const started = new Date(raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`).getTime();
+  if (Number.isNaN(started)) return null;
+
+  return Math.max(0, Math.round((Date.now() - started) / 1000));
+}
+
 export function toRide(row: RideRow, driver?: DriverRow | null) {
+  const searching = searchingSeconds(row);
+
   return {
     id: row.id,
     passengerId: row.passenger_id,
@@ -406,5 +426,12 @@ export function toRide(row: RideRow, driver?: DriverRow | null) {
     assignedDriver: driver ? toDriver(driver) : undefined,
     status: row.status,
     createdAt: row.created_at,
+    searchingSeconds: searching,
+    /**
+     * Long enough unaccepted that the passenger deserves to be told, rather than
+     * left watching "waiting for a rider" with no end in sight. Never cancels
+     * anything on its own — it only changes what the screen says.
+     */
+    searchStalled: searching !== null && searching >= SEARCH_STALL_MINUTES * 60,
   };
 }

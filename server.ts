@@ -4,6 +4,7 @@ import * as path from "path";
 import { createServer as createViteServer } from "vite";
 import { api } from "./server/routes";
 import { initDb } from "./server/db";
+import { placeAtPoint } from "./server/geocode";
 import { runAgent } from "./server/ai/agent";
 import { createProvider, type LlmProvider } from "./server/ai/provider";
 
@@ -55,6 +56,30 @@ app.post("/api/dumaguete/ai-assistant", async (req, res) => {
     const { prompt, pickup, dropoff, vehicleType } = req.body;
     const history = sanitizeHistory(req.body?.history);
 
+    // Where the passenger is standing. Gently resolves place names through the
+    // same search the booking panel uses, and that search is biased by position
+    // — so without this, "the university" is answered from the words alone and
+    // can land in a different province from the person asking.
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    const near =
+      Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : undefined;
+
+    /*
+     * Where the passenger is, in words.
+     *
+     * Coordinates alone let Gently *search* correctly but not *speak* — asked
+     * "where am I?" it could only read six decimal places back. One reverse
+     * lookup turns that into "you are near Cebu Institute of Technology", which
+     * is also what makes "how far is the mall from here" answerable. Cached
+     * server-side, so a whole conversation costs one call.
+     */
+    const nearName = near
+      ? await placeAtPoint(near.lat, near.lng)
+          .then((p) => p?.name ?? null)
+          .catch(() => null)
+      : null;
+
     const userMessage = String(prompt ?? "").trim()
       ? String(prompt).slice(0, MAX_TURN_CHARS)
       : `What is the fare and best way to get from "${pickup || "Rizal Boulevard"}" to "${
@@ -64,6 +89,8 @@ app.post("/api/dumaguete/ai-assistant", async (req, res) => {
     const result = await runAgent(gently, userMessage, history, {
       pickup,
       dropoff,
+      near,
+      nearName,
       // Only wired when the provider can embed; retrieval falls back to keyword
       // search otherwise, which keeps the mock path free.
       embed: gently.embed

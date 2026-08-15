@@ -1,7 +1,8 @@
 import React from 'react';
 import { Driver, RideBooking } from '../types';
 import type { OpenRide } from '../api';
-import { sequenceStops, isExclusiveTrip } from '../../shared/dispatch';
+import { isExclusiveTrip } from '../../shared/dispatch';
+import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
 import { VEHICLE_DETAILS } from '../../shared/transport';
 import {
   Power,
@@ -30,8 +31,13 @@ interface DriverModePanelProps {
   onToggleOnline: (isOnline: boolean) => void;
 }
 
-/** The next stage a rider moves a trip into, and the button that does it. */
-const NEXT_STAGE: Record<
+/**
+ * The next stage a rider moves a trip into, and the button that does it.
+ *
+ * Exported because the bottom sheet pins this same action above the fold, and a
+ * second copy would drift the moment a stage is added.
+ */
+export const NEXT_STAGE: Record<
   string,
   { status: RideBooking['status']; label: string } | undefined
 > = {
@@ -86,35 +92,10 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
 
   /**
    * Passengers listed in the order the rider will next deal with them, so the
-   * numbers here match the numbered pins on the map. Listing by booking time
-   * put a passenger who is minutes away at the top simply because they tapped
-   * first, which is not the order anyone drives in.
+   * numbers here match the numbered pins on the map and the action pinned to
+   * the top of the sheet.
    */
-  const routeOrderedRides = React.useMemo(() => {
-    if (acceptedPooledRides.length < 2) return acceptedPooledRides;
-
-    const origin = { lat: currentDriver.currentLat, lng: currentDriver.currentLng };
-    const nextStopOrder = new Map<string, number>();
-
-    for (const stop of sequenceStops(
-      origin,
-      acceptedPooledRides.map((r) => ({
-        rideId: r.id,
-        pickup:
-          r.status === 'in_transit'
-            ? null
-            : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
-        dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
-      }))
-    )) {
-      // First time this trip appears is the next thing the rider does for it.
-      if (!nextStopOrder.has(stop.rideId)) nextStopOrder.set(stop.rideId, stop.order);
-    }
-
-    return [...acceptedPooledRides].sort(
-      (a, b) => (nextStopOrder.get(a.id) ?? 0) - (nextStopOrder.get(b.id) ?? 0)
-    );
-  }, [acceptedPooledRides, currentDriver.currentLat, currentDriver.currentLng]);
+  const routeOrderedRides = useRouteOrderedRides(currentDriver, acceptedPooledRides);
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-md md:p-5">

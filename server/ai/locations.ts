@@ -310,12 +310,36 @@ export type PlaceResolution =
   | { kind: 'ambiguous'; options: LocationPoint[] }
   | { kind: 'not-found' };
 
-export async function resolvePlace(input: string): Promise<PlaceResolution> {
+/** Beyond this from Dumaguete, the app's saved points are somebody else's city. */
+const CURATED_RELEVANCE_KM = 40;
+const DUMAGUETE_CENTRE = { lat: 9.3068, lng: 123.3054 };
+
+export async function resolvePlace(
+  input: string,
+  /** Where the passenger is, so results are places they can actually reach. */
+  near?: { lat: number; lng: number }
+): Promise<PlaceResolution> {
   if (!input?.trim()) return { kind: 'not-found' };
 
-  const curated = rankLocations(input).filter(
-    (c) => c.confidence >= MIN_CONFIDENCE && c.coverage >= MIN_COVERAGE
-  );
+  /*
+   * The curated list is Dumaguete's, and only Dumaguete's.
+   *
+   * Matching it for a passenger standing in Cebu is actively harmful, not
+   * merely useless: ask for "Robinsons" there and fuzzy matching happily
+   * returns Robinsons Place Dumaguete, 300 km across the sea, with enough
+   * confidence to skip the geocoder entirely. Out of range, we go straight to
+   * search, which resolves near the passenger.
+   */
+  const curatedApplies =
+    !near ||
+    haversineKm(near, { lat: DUMAGUETE_CENTRE.lat, lng: DUMAGUETE_CENTRE.lng }) <=
+      CURATED_RELEVANCE_KM;
+
+  const curated = curatedApplies
+    ? rankLocations(input).filter(
+        (c) => c.confidence >= MIN_CONFIDENCE && c.coverage >= MIN_COVERAGE
+      )
+    : [];
 
   if (curated.length) {
     const rivals = curated
@@ -339,7 +363,7 @@ export async function resolvePlace(input: string): Promise<PlaceResolution> {
   const queryTokens = tokens(input);
   if (!queryTokens.length) return { kind: 'not-found' };
 
-  const { results } = await searchPlaces(input);
+  const { results } = await searchPlaces(input, near);
   if (!results.length) return { kind: 'not-found' };
 
   const ranked = results

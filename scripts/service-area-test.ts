@@ -1,12 +1,20 @@
-import { checkServiceArea, DUMAGUETE_BBOX } from '../shared/serviceArea';
+import { checkServiceArea, hasFareAuthority, DUMAGUETE_BBOX } from '../shared/serviceArea';
 import { DUMAGUETE_LOCATIONS } from '../src/data/dumagueteData';
 
 /**
- * Guards what a passenger is allowed to book.
+ * What the service-area check now answers.
  *
- * Free-text search can surface anywhere on earth. The fare table and the rider
- * network are Dumaguete-only, so this boundary is what stops the app quoting a
- * pedicab to Cebu.
+ * It used to guard what a passenger was allowed to book, and rejected anything
+ * outside the Dumaguete polygon. That conflated two questions, and the second
+ * one was the only jurisdictional one:
+ *
+ *   1. Can a rider and a passenger find each other here?   — always yes
+ *   2. Do we know what the local council says this costs?  — sometimes
+ *
+ * So nothing is refused any more. These checks assert the new contract: the app
+ * works everywhere, and the *official fare* is claimed only where an ordinance
+ * is genuinely on file. Getting that second half wrong is the serious failure —
+ * it means quoting a price no council ever passed.
  *
  *   npm run area:test
  */
@@ -17,67 +25,81 @@ const check = (label: string, ok: boolean, detail = '') => {
 };
 
 console.log(
-  `\nBoundary bbox: lat ${DUMAGUETE_BBOX.minLat}..${DUMAGUETE_BBOX.maxLat}, ` +
-    `lng ${DUMAGUETE_BBOX.minLng}..${DUMAGUETE_BBOX.maxLng}\n`
+  `\nDumaguete bbox: lat ${DUMAGUETE_BBOX.minLat.toFixed(4)}..${DUMAGUETE_BBOX.maxLat.toFixed(4)}, ` +
+    `lng ${DUMAGUETE_BBOX.minLng.toFixed(4)}..${DUMAGUETE_BBOX.maxLng.toFixed(4)}\n`
 );
 
-console.log('=== 1. Every bookable pickup point must be inside ===');
-// If one of the app's own points were rejected, passengers would lose a
-// destination the booking panel still offers them.
-for (const loc of DUMAGUETE_LOCATIONS) {
-  const r = checkServiceArea(loc.lat, loc.lng);
-  check(loc.name, r.inside, r.reason);
-}
-
-console.log('\n=== 2. Neighbouring towns are outside ===');
-const outside: [string, number, number][] = [
+console.log('=== 1. Nowhere is refused ===');
+// The demo is in Cebu; the pitch is about a barangay in Zamboanga del Sur.
+// Every one of these must be bookable.
+const anywhere: [string, number, number][] = [
+  ['CIT-U, Cebu City', 10.2949, 123.8811],
+  ['Cebu City centre', 10.3157, 123.8854],
+  ['Pagadian City', 7.8257, 123.437],
+  ['Manila', 14.5995, 120.9842],
   ['Valencia town', 9.2745, 123.2419],
   ['Bacong', 9.2456, 123.2933],
-  ['Dauin', 9.1928, 123.2661],
-  ['Zamboanguita', 9.1017, 123.1944],
-  ['Siquijor town', 9.2144, 123.5153],
-  ['Cebu City', 10.3157, 123.8854],
-  ['Manila', 14.5995, 120.9842],
+  ['Sibulan town centre', 9.3611, 123.2919],
+  ['Quezon Park, Dumaguete', 9.3072, 123.3068],
 ];
-for (const [name, lat, lng] of outside) {
-  const r = checkServiceArea(lat, lng);
-  check(`${name} rejected`, !r.inside, r.reason);
+for (const [name, lat, lng] of anywhere) {
+  check(`${name} is bookable`, checkServiceArea(lat, lng).inside);
 }
 
-console.log('\n=== 3. Well-known spots inside the city ===');
-const inside: [string, number, number][] = [
+console.log('\n=== 2. Official fares are claimed only where an ordinance is on file ===');
+const dumaguete: [string, number, number][] = [
   ['Quezon Park', 9.3072, 123.3068],
   ['Dumaguete Cathedral', 9.3049, 123.3078],
   ['Silliman Beach', 9.3315, 123.3097],
   ['Daro', 9.3237, 123.2987],
-  ['Bantayan', 9.328, 123.3076],
   ['Piapi', 9.3182, 123.3096],
 ];
-for (const [name, lat, lng] of inside) {
+for (const [name, lat, lng] of dumaguete) {
   const r = checkServiceArea(lat, lng);
-  check(`${name} accepted`, r.inside, r.reason);
+  check(`${name} → official rate`, r.faresKnown && r.authority === 'Dumaguete City', r.authority ?? 'none');
 }
 
-console.log('\n=== 4. Sibulan Airport is served despite sitting outside the polygon ===');
-const airport = checkServiceArea(9.3326, 123.296);
-check('airport accepted', airport.inside, airport.reason);
-check(
-  'accepted as a known pickup point, not as city territory',
-  airport.reason === 'known-pickup-point',
-  airport.reason
-);
-// The allowance must not quietly swallow the neighbouring town.
-const sibulanTown = checkServiceArea(9.3611, 123.2919);
-check('but Sibulan town centre is still rejected', !sibulanTown.inside, sibulanTown.reason);
+console.log('\n=== 3. Everywhere else gets an honest estimate, never a fabricated rate ===');
+// This is the check that matters. Claiming Dumaguete's ordinance in Cebu would
+// print a confident number no council passed — the exact failure the fare
+// screen exists to prevent.
+const noOrdinance: [string, number, number][] = [
+  ['CIT-U, Cebu City', 10.2949, 123.8811],
+  ['Pagadian City', 7.8257, 123.437],
+  ['Sibulan town centre', 9.3611, 123.2919],
+  ['Valencia town', 9.2745, 123.2419],
+  ['Manila', 14.5995, 120.9842],
+];
+for (const [name, lat, lng] of noOrdinance) {
+  const r = checkServiceArea(lat, lng);
+  check(`${name} → estimate, no authority claimed`, !r.faresKnown && r.authority === null, r.reason);
+}
 
-console.log('\n=== 5. Rubbish input is rejected, not crashed on ===');
+console.log('\n=== 4. The app’s own saved points still resolve to Dumaguete’s ordinance ===');
+for (const loc of DUMAGUETE_LOCATIONS) {
+  const r = checkServiceArea(loc.lat, loc.lng);
+  // A couple sit just outside the administrative polygon (the airport is in
+  // Sibulan). Those are legitimately estimate-only now, so only report.
+  console.log(`  ${r.faresKnown ? 'ordinance' : 'estimate '}  ${loc.name}`);
+}
+
+console.log('\n=== 5. Rubbish input degrades to an estimate, and does not crash ===');
 for (const [lat, lng] of [
   [NaN, 123.3],
   [9.3, NaN],
   [0, 0],
   [999, 999],
 ] as [number, number][]) {
-  check(`(${lat}, ${lng}) rejected`, !checkServiceArea(lat, lng).inside);
+  const r = checkServiceArea(lat, lng);
+  check(`(${lat}, ${lng}) → no authority claimed`, r.inside && !r.faresKnown);
+}
+
+console.log('\n=== 6. hasFareAuthority agrees with checkServiceArea ===');
+for (const [name, lat, lng] of [...anywhere, ...noOrdinance]) {
+  check(
+    `${name}`,
+    hasFareAuthority(lat, lng) === checkServiceArea(lat, lng).faresKnown
+  );
 }
 
 console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} CHECK(S) FAILED.`}\n`);

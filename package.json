@@ -23,9 +23,12 @@
     "kb:search": "tsx scripts/kb-search.ts",
     "test:cancel": "tsx scripts/cancel-race-test.ts",
     "dispatch:test": "tsx scripts/dispatch-test.ts",
+    "pool:test": "tsx scripts/pool-path-test.ts",
+    "seed:riders": "tsx scripts/seed-riders.ts",
     "dispatch:debug": "tsx scripts/dispatch-debug.ts",
     "area:test": "tsx scripts/service-area-test.ts",
-    "chat:test": "tsx scripts/chat-test.ts"
+    "chat:test": "tsx scripts/chat-test.ts",
+    "maps:test": "tsx scripts/maps-test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -37,7 +40,6 @@
     "express": "^4.21.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
     "openai": "^6.49.0",
     "pg": "^8.22.0",
     "react": "^19.0.1",
@@ -48,10 +50,10 @@
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/google.maps": "^3.65.5",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.20.0",
     "@types/ws": "^8.18.1",
-    "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",

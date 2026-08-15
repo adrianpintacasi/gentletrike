@@ -5,9 +5,19 @@
  * the fare maths, and Gently's `estimate_fare` tool. A second copy of these
  * rates would eventually drift from the ordinance and quote passengers a fare
  * the driver does not recognise.
+ *
+ * GentleTrike carries one vehicle: the pedicab. Habal-habal and multicab were
+ * removed deliberately — a multicab runs a fixed route, which is a scheduled
+ * service rather than something you hail, and modelling it as bookable would
+ * have been a lie about how it works. They belong on the roadmap, not in the
+ * booking panel.
+ *
+ * `pakyaw_charter` stays, because it is not a vehicle. It is an arrangement:
+ * the same pedicab hired whole at a flat price agreed with the rider, which is
+ * how out-of-town trips are actually done. One vehicle, two rate cards.
  */
 
-export type TransportMode = 'pedicab_standard' | 'habal_habal' | 'multicab' | 'pakyaw_charter';
+export type TransportMode = 'pedicab_standard' | 'pakyaw_charter';
 
 export interface VehicleDetail {
   title: string;
@@ -30,37 +40,19 @@ export interface VehicleDetail {
 
 export const VEHICLE_DETAILS: Record<TransportMode, VehicleDetail> = {
   pedicab_standard: {
-    title: 'Pedicab Standard',
-    subtitle: 'Classic Dumaguete Motorcab',
+    title: 'Pedicab',
+    subtitle: 'Shared ride · pay per seat',
     capacity: '4-6 passengers',
     maxPassengers: 6,
     baseFare: 15,
     perKm: 2,
     eta: '3 mins',
   },
-  habal_habal: {
-    title: 'Habal-Habal Express',
-    subtitle: 'Fast Solo Motorcycle Taxi',
-    capacity: '1 passenger',
-    maxPassengers: 1,
-    baseFare: 25,
-    perKm: 3,
-    eta: '2 mins',
-  },
-  multicab: {
-    title: 'EasyRide',
-    subtitle: 'Group / Suburb Route',
-    capacity: '12 passengers',
-    maxPassengers: 12,
-    baseFare: 15,
-    perKm: 2,
-    eta: '6 mins',
-  },
   pakyaw_charter: {
     title: 'Pakyaw Charter',
-    subtitle: 'Out-of-City Charter Rate',
+    subtitle: 'Hire the whole trike · price agreed with the rider',
     capacity: 'Up to vehicle capacity',
-    maxPassengers: 12,
+    maxPassengers: 6,
     baseFare: 70,
     perKm: 5,
     eta: 'On demand',
@@ -73,3 +65,20 @@ export const TRANSPORT_MODES = Object.keys(VEHICLE_DETAILS) as TransportMode[];
 export function isTransportMode(value: unknown): value is TransportMode {
   return typeof value === 'string' && value in VEHICLE_DETAILS;
 }
+
+/**
+ * Read a mode from data that may predate the vehicle list being narrowed.
+ *
+ * Rows written before habal-habal and multicab were removed still carry those
+ * strings, and looking them up in VEHICLE_DETAILS returns undefined — which
+ * crashes Trip History and the admin directory on a passenger's own past trips.
+ * Anything unrecognised is read as a pedicab, which is what those trips were
+ * carried by in practice.
+ */
+export function asTransportMode(value: unknown): TransportMode {
+  return isTransportMode(value) ? value : 'pedicab_standard';
+}
+
+/** Details for a stored mode, tolerant of retired ones. See {@link asTransportMode}. */
+export const vehicleDetail = (value: unknown): VehicleDetail =>
+  VEHICLE_DETAILS[asTransportMode(value)];
