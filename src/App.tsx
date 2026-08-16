@@ -946,6 +946,28 @@ function MainApp({
     void loadAccountData();
   }, [loadAccountData]);
 
+  /**
+   * This device's own fix, whichever role it is signed in as.
+   *
+   * `passengerPosition` is only watched outside rider mode — the rider's fix is
+   * `myPosition`, on a separate watcher that also publishes it to the server.
+   * Anything that means "where is the person holding this phone" has to read
+   * both, and the things that did not simply went blind in rider mode: Gently
+   * could not answer where they were, its place search lost its bias, and the
+   * fare table fell back to a default town.
+   */
+  const myFix = React.useMemo(
+    () =>
+      isDriverMode
+        ? myPosition
+          ? { lat: myPosition.lat, lng: myPosition.lng }
+          : null
+        : passengerPosition
+          ? { lat: passengerPosition.lat, lng: passengerPosition.lng }
+          : null,
+    [isDriverMode, myPosition?.lat, myPosition?.lng, passengerPosition?.lat, passengerPosition?.lng]
+  );
+
   const hasLiveTrip = isDriverMode ? acceptedPooledRides.length > 0 : !!activeRide;
   const previousLiveTrip = useRef(hasLiveTrip);
 
@@ -1545,7 +1567,7 @@ function MainApp({
         />
       )
     ) : effectiveTab === 'fares' ? (
-      <FareMatrixPage position={passengerPosition} />
+      <FareMatrixPage position={myFix} />
     ) : effectiveTab === 'menu' ? (
       <MenuPage
         onSeatCapacityChange={isDriverMode && myDriver ? handleSetSeatCapacity : undefined}
@@ -1825,8 +1847,9 @@ function MainApp({
         pickupName={pickup?.name}
         dropoffName={dropoff?.name}
         // So Gently resolves "the mall" as the one they can reach, not the one
-        // whose name matched best somewhere else in the country.
-        position={passengerPosition}
+        // whose name matched best somewhere else in the country — and so it can
+        // answer "where am I" for a rider as well as a passenger.
+        position={myFix}
         canBook={isPassenger && !activeRide}
         bookBlockedReason={
           !isPassenger

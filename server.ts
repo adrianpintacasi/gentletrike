@@ -4,7 +4,7 @@ import * as path from "path";
 import { createServer as createViteServer } from "vite";
 import { api } from "./server/routes";
 import { initDb } from "./server/db";
-import { placeAtPoint } from "./server/geocode";
+import { describePosition } from "./server/geocode";
 import { runAgent } from "./server/ai/agent";
 import { createProvider, type LlmProvider } from "./server/ai/provider";
 
@@ -87,7 +87,7 @@ app.post("/api/dumaguete/ai-assistant", async (req, res) => {
     const nearName =
       near && needsPlaceName
         ? await Promise.race([
-            placeAtPoint(near.lat, near.lng).then((p) => p?.name ?? null),
+            describePosition(near.lat, near.lng),
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
           ]).catch(() => null)
         : null;

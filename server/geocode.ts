@@ -364,6 +364,90 @@ export async function placeAtPoint(lat: number, lng: number): Promise<GeocodeRes
   }
 }
 
+/** Street-level address for a coordinate, or null. The fallback for "where am I". */
+async function reverseGeocodeAddress(lat: number, lng: number): Promise<string | null> {
+  const googleKey = apiKey();
+  if (!googleKey) return null;
+  try {
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}` +
+        `&language=en&key=${googleKey}`
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const first = (data?.results ?? []).find(
+      (r: any) => !(r?.types?.length === 1 && r.types[0] === "plus_code")
+    );
+    const address = stripPlusCode(first?.formatted_address ?? "");
+    return address || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where someone is, in words they would use themselves.
+ *
+ * Distinct from {@link placeAtPoint}, and deliberately so. That answers "what is
+ * at this exact coordinate", which is right for a dropped pin — the passenger
+ * chose the spot, so the nearest thing to it is what they meant.
+ *
+ * "Where am I" is a different question and the nearest thing is usually the
+ * wrong answer to it. Ranked by distance inside forty metres, the Ayala Center
+ * comes back as "Lounge area", a main road comes back as the petrol station on
+ * it, and a university gate comes back as the student council office. All
+ * true, none of them what anybody would say.
+ *
+ * So this ranks by prominence over a wider circle, and falls back to the
+ * street-level address when nothing prominent is near — which is what a map app
+ * shows under its own blue dot.
+ */
+export async function describePosition(lat: number, lng: number): Promise<string | null> {
+  const googleKey = apiKey();
+  if (!googleKey) return null;
+
+  const key = `d:${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const hit = cached<{ name: string }>(key);
+  if (hit) return hit.name;
+
+  try {
+    const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": googleKey,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
+      },
+      body: JSON.stringify({
+        locationRestriction: {
+          circle: { center: { latitude: lat, longitude: lng }, radius: 220 },
+        },
+        // Prominence, not proximity. The landmark somebody would name is rarely
+        // the nearest doorway to them.
+        rankPreference: "POPULARITY",
+        maxResultCount: 1,
+        languageCode: "en",
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const place = (data?.places ?? []).map(fromPlace).find((p: GeocodeResult | null) => !!p);
+      if (place) {
+        remember(key, { name: place.name });
+        return place.name;
+      }
+    }
+  } catch (err) {
+    console.error("describe-position lookup failed:", (err as Error).message);
+  }
+
+  // Nothing prominent nearby — a street is still a better answer than silence.
+  const fallback = await reverseGeocodeAddress(lat, lng);
+  if (fallback) remember(key, { name: fallback });
+  return fallback;
+}
+
 geocodeRoutes.get("/reverse", async (req, res) => {
   const lat = Number(req.query.lat);
   const lng = Number(req.query.lng);
