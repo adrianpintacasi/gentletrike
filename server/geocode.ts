@@ -388,19 +388,22 @@ async function reverseGeocodeAddress(lat: number, lng: number): Promise<string |
 /**
  * Where someone is, in words they would use themselves.
  *
- * Distinct from {@link placeAtPoint}, and deliberately so. That answers "what is
- * at this exact coordinate", which is right for a dropped pin — the passenger
- * chose the spot, so the nearest thing to it is what they meant.
+ * Three attempts, exact first.
  *
- * "Where am I" is a different question and the nearest thing is usually the
- * wrong answer to it. Ranked by distance inside forty metres, the Ayala Center
- * comes back as "Lounge area", a main road comes back as the petrol station on
- * it, and a university gate comes back as the student council office. All
- * true, none of them what anybody would say.
+ * 1. The nearest named place within forty metres. If you are standing in RCEE
+ *    Place, this says RCEE Place — the building you are in, not the landmark
+ *    down the road, and that precision is the whole reason to ask.
+ * 2. Failing that, the most prominent place within a wider circle. Somewhere
+ *    with nothing at arm's length — a roadside, a junction — is better served
+ *    by the landmark people would name than by silence.
+ * 3. Failing that, the street address, which is what a map app puts under its
+ *    own blue dot.
  *
- * So this ranks by prominence over a wider circle, and falls back to the
- * street-level address when nothing prominent is near — which is what a map app
- * shows under its own blue dot.
+ * The order was the other way round for a while, on the reasoning that
+ * prominence reads better. It does, in the one case where the nearest thing is
+ * a shop unit inside a mall — and it is wrong everywhere else, because it
+ * answers "what is the biggest thing near you" when the question was "where are
+ * you".
  */
 export async function describePosition(lat: number, lng: number): Promise<string | null> {
   const googleKey = apiKey();
@@ -410,42 +413,39 @@ export async function describePosition(lat: number, lng: number): Promise<string
   const hit = cached<{ name: string }>(key);
   if (hit) return hit.name;
 
-  try {
-    const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": googleKey,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
-      },
-      body: JSON.stringify({
-        locationRestriction: {
-          circle: { center: { latitude: lat, longitude: lng }, radius: 220 },
+  const nearby = async (radius: number, rank: "DISTANCE" | "POPULARITY") => {
+    try {
+      const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": googleKey,
+          "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
         },
-        // Prominence, not proximity. The landmark somebody would name is rarely
-        // the nearest doorway to them.
-        rankPreference: "POPULARITY",
-        maxResultCount: 1,
-        languageCode: "en",
-      }),
-    });
-
-    if (response.ok) {
+        body: JSON.stringify({
+          locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius } },
+          rankPreference: rank,
+          maxResultCount: 1,
+          languageCode: "en",
+        }),
+      });
+      if (!response.ok) return null;
       const data = await response.json();
       const place = (data?.places ?? []).map(fromPlace).find((p: GeocodeResult | null) => !!p);
-      if (place) {
-        remember(key, { name: place.name });
-        return place.name;
-      }
+      return place ? place.name : null;
+    } catch (err) {
+      console.error("describe-position lookup failed:", (err as Error).message);
+      return null;
     }
-  } catch (err) {
-    console.error("describe-position lookup failed:", (err as Error).message);
-  }
+  };
 
-  // Nothing prominent nearby — a street is still a better answer than silence.
-  const fallback = await reverseGeocodeAddress(lat, lng);
-  if (fallback) remember(key, { name: fallback });
-  return fallback;
+  const answer =
+    (await nearby(45, "DISTANCE")) ??
+    (await nearby(220, "POPULARITY")) ??
+    (await reverseGeocodeAddress(lat, lng));
+
+  if (answer) remember(key, { name: answer });
+  return answer;
 }
 
 geocodeRoutes.get("/reverse", async (req, res) => {
