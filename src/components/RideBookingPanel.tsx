@@ -59,9 +59,9 @@ const SearchDropdown: React.FC<{
   const results = typed ? [...state.curated, ...state.found] : [];
 
   return (
-    <div className="gt-scroll absolute left-0 right-0 top-full z-30 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl">
+    <div className="gt-scroll absolute left-0 right-0 top-full z-30 mt-2 max-h-64 overflow-y-auto rounded-card border border-cream-300 bg-cream-50 p-1.5 shadow-xl">
       {!typed && (
-        <p className="px-3 py-6 text-center text-xs font-semibold text-gray-400">
+        <p className="px-3 py-6 text-center text-xs font-sans font-semibold text-cream-600">
           Start typing, or use the map button to pin a spot.
         </p>
       )}
@@ -70,29 +70,29 @@ const SearchDropdown: React.FC<{
         <button
           key={loc.id}
           onClick={() => onPick(loc)}
-          className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-gray-50"
+          className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition hover:bg-cream-200"
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-            <MapPin className="h-3.5 w-3.5 text-gray-500" />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cream-200">
+            <MapPin className="h-3.5 w-3.5 text-trust-slate" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold text-gray-900">{loc.name}</span>
+            <span className="block truncate text-sm font-sans font-semibold text-trust-slate">{loc.name}</span>
             {loc.address && (
-              <span className="block truncate text-[11px] text-gray-400">{loc.address}</span>
+              <span className="block truncate text-[11px] font-sans text-cream-600">{loc.address}</span>
             )}
           </span>
         </button>
       ))}
 
       {typed && state.searching && (
-        <div className="flex items-center justify-center gap-2 px-3 py-3 text-[11px] font-semibold text-gray-400">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <div className="flex items-center justify-center gap-2 px-3 py-3 text-[11px] font-sans font-semibold text-cream-600">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-trike-gold" />
           Searching...
         </div>
       )}
 
       {typed && !state.searching && results.length === 0 && (
-        <p className="px-3 py-6 text-center text-xs font-semibold text-gray-400">
+        <p className="px-3 py-6 text-center text-xs font-sans font-semibold text-cream-600">
           Nothing found for "{trimmed}". Try a landmark, or pin it on the map.
         </p>
       )}
@@ -258,13 +258,13 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
    */
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-4 flex flex-col gap-4 text-gray-900">
+    <div className="bg-cream-50 rounded-card border border-cream-300 shadow-xs p-4 flex flex-col gap-4 text-trust-slate">
       {/* A way out. A passenger who changes their mind should not have to book
           a trip and cancel it to escape the form. */}
       {onCancelBooking && (
         <button
           onClick={onCancelBooking}
-          className="-mb-1 flex items-center gap-1.5 self-start text-xs font-bold text-gray-500 transition hover:text-gray-900"
+          className="-mb-1 flex items-center gap-1.5 self-start text-xs font-display font-bold text-cream-600 transition hover:text-trust-slate"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
@@ -273,31 +273,21 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
       {/*
         Pickup and drop-off as one object, not two.
-
-        They were two bordered fields, each with its own bordered map button
-        parked beside it — four boxes and three border colours to state one
-        thing. A trip is a single line from A to B, so it is drawn as one: one
-        card, two rows, a dotted rail joining the marker that opens the trip to
-        the one that closes it. Every field and button survives; only the
-        chrome around them is gone.
       */}
-      <div className="relative rounded-2xl border border-gray-200 bg-white transition focus-within:border-gray-400">
+      <div className="relative rounded-card border border-cream-300 bg-cream-50 transition focus-within:border-trike-gold">
         {/* The rail runs the height of the card and the two markers sit over
-            it on a white backing, so it reads as one line interrupted by two
-            stops rather than as two unrelated ornaments. `inset-y-7` starts it
-            at the first marker's centre, where the backing hides it. */}
+            it on a white backing */}
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-y-7 left-[25px] border-l-2 border-dotted border-gray-300"
+          className="pointer-events-none absolute inset-y-7 left-[25px] border-l-2 border-dotted border-cream-300"
         />
 
         {/* Pickup ------------------------------------------------------- */}
         <div className="relative">
           <div className="flex items-center gap-3 px-3.5 py-3">
-            {/* Hollow ring for the start, filled pin for the end — the same
-                pair every map app uses, and readable without colour. */}
-            <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center bg-white">
-              <span className="h-3 w-3 rounded-full border-2 border-emerald-600" />
+            {/* Hollow ring for the start, filled pin for the end */}
+            <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center bg-cream-50">
+              <span className="h-3 w-3 rounded-full border-2 border-sampaguita-green" />
             </span>
 
             <input
@@ -313,13 +303,9 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                 setTimeout(() => setIsSearchingPickup(false), 200);
               }}
               placeholder="Pickup location"
-              className="min-w-0 flex-1 truncate bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:font-medium placeholder:text-gray-400"
+              className="min-w-0 flex-1 truncate bg-transparent text-sm font-sans font-bold text-trust-slate outline-none placeholder:font-medium placeholder:text-cream-500"
             />
 
-            {/* All three actions are icon-only and unboxed. "Use Current" was
-                a labelled pill wide enough to squeeze the address it sat next
-                to; a bare crosshair on a pickup field is the convention and
-                costs a third of the width. */}
             <div className="flex shrink-0 items-center gap-0.5">
               {onUseCurrentLocation && (
                 <button
@@ -333,7 +319,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     }
                   }}
                   disabled={locating}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 active:scale-95 disabled:opacity-60"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-sampaguita-green transition hover:bg-sampaguita-green/10 active:scale-95 disabled:opacity-60"
                   title="Use your current GPS location"
                   aria-label="Use your current GPS location"
                 >
@@ -352,7 +338,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     onClearPickup();
                     setPickupSearch('');
                   }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition hover:bg-rose-50 hover:text-rose-600"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-cream-400 transition hover:bg-sunset-coral/10 hover:text-sunset-coral"
                   title="Clear pickup"
                   aria-label="Clear pickup"
                 >
@@ -365,7 +351,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   onClick={onPinPickup}
                   aria-label="Choose pickup on the map"
                   title="Choose pickup on the map"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 active:scale-95"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-cream-500 transition hover:bg-cream-200 hover:text-trust-slate active:scale-95"
                 >
                   <MapIcon className="h-4 w-4" />
                 </button>
@@ -373,9 +359,6 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
             </div>
           </div>
 
-          {/* No "use my current location" row in here — the field itself
-              already carries that button, and repeating it made one action
-              appear twice on one screen. */}
           {isSearchingPickup && (
             <SearchDropdown
               state={pickupResults}
@@ -388,16 +371,14 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
           )}
         </div>
 
-
-        {/* A hairline, inset past the gutter so the rail crosses it unbroken —
-            the two rows are one journey, not two list items. */}
-        <div className="ml-[50px] mr-4 h-px bg-gray-100" />
+        {/* A hairline divider */}
+        <div className="ml-[50px] mr-4 h-px bg-cream-300" />
 
         {/* Drop-off ----------------------------------------------------- */}
         <div className="relative">
           <div className="flex items-center gap-3 px-3.5 py-3">
-            <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center bg-white">
-              <MapPin className="h-4 w-4 fill-red-600 text-red-600" />
+            <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center bg-cream-50">
+              <MapPin className="h-4 w-4 fill-sunset-coral text-sunset-coral" />
             </span>
 
             <input
@@ -413,7 +394,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                 setTimeout(() => setIsSearchingDropoff(false), 200);
               }}
               placeholder="Destination"
-              className="min-w-0 flex-1 truncate bg-transparent text-sm font-bold text-gray-900 outline-none placeholder:font-medium placeholder:text-gray-400"
+              className="min-w-0 flex-1 truncate bg-transparent text-sm font-sans font-bold text-trust-slate outline-none placeholder:font-medium placeholder:text-cream-500"
             />
 
             <div className="flex shrink-0 items-center gap-0.5">
@@ -423,7 +404,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     onClearDropoff();
                     setDropoffSearch('');
                   }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-300 transition hover:bg-rose-50 hover:text-rose-600"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-cream-400 transition hover:bg-sunset-coral/10 hover:text-sunset-coral"
                   title="Clear drop-off"
                   aria-label="Clear drop-off"
                 >
@@ -436,7 +417,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   onClick={onPinDropoff}
                   aria-label="Choose drop-off on the map"
                   title="Choose drop-off on the map"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 active:scale-95"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-cream-500 transition hover:bg-cream-200 hover:text-trust-slate active:scale-95"
                 >
                   <MapIcon className="h-4 w-4" />
                 </button>
@@ -461,63 +442,63 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
       {pickup && dropoff ? (
         <>
           {/* How the fare is set — metered by the ordinance, or agreed for the
-              whole vehicle. It sits here, after the trip is known, because it is
-              only a real question once there is something to price. "City Trike
-              vs Pakyaw" named a vehicle against a pricing arrangement; these
-              name the same distinction on both sides. */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setActiveTab('ride');
-                onTogglePakyaw(false);
-                onSelectVehicle('pedicab_standard');
-              }}
-              className={`flex-1 rounded-xl py-2.5 text-xs font-semibold transition ${
-                !isPakyawNegotiated
-                  ? 'bg-gray-900 text-amber-400'
-                  : 'border border-gray-200 bg-white text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              Regular
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('pakyaw');
-                onTogglePakyaw(true);
-                onSelectVehicle('pakyaw_charter');
-                onChangeCustomPakyawFare(minimumPakyawFare);
-              }}
-              className={`flex-1 rounded-xl py-2.5 text-xs font-semibold transition ${
-                isPakyawNegotiated
-                  ? 'bg-gray-900 text-amber-400'
-                  : 'border border-gray-200 bg-white text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              Charter
-            </button>
+              whole vehicle. */}
+          <div className="space-y-1.5">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('ride');
+                  onTogglePakyaw(false);
+                  onSelectVehicle('pedicab_standard');
+                }}
+                className={`flex-1 rounded-pill py-2.5 text-xs font-display font-semibold transition ${
+                  !isPakyawNegotiated
+                    ? 'bg-trike-gold text-trust-slate shadow-xs'
+                    : 'border border-cream-300 bg-cream-50 text-cream-600 hover:text-trust-slate hover:bg-cream-200'
+                }`}
+              >
+                Regular (Shared)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('pakyaw');
+                  onTogglePakyaw(true);
+                  onSelectVehicle('pakyaw_charter');
+                  onChangeCustomPakyawFare(minimumPakyawFare);
+                }}
+                className={`flex-1 rounded-pill py-2.5 text-xs font-display font-semibold transition ${
+                  isPakyawNegotiated
+                    ? 'bg-trike-gold text-trust-slate shadow-xs'
+                    : 'border border-cream-300 bg-cream-50 text-cream-600 hover:text-trust-slate hover:bg-cream-200'
+                }`}
+              >
+                Charter (Private)
+              </button>
+            </div>
+            <p className="text-[11px] font-sans font-medium text-cream-600 px-1">
+              {isPakyawNegotiated
+                ? '🔒 Private Charter: Hire the entire pedicab exclusively for your group.'
+                : '👥 Regular: Standard ordinance fare per passenger along common route.'}
+            </p>
           </div>
 
-          {/* Passengers.
-              A label, five buttons and a card of its own took a third of the
-              screen to ask a question whose answer is 1 nearly every time. Now
-              one compact row, inline.
-
-              Hidden entirely for a charter: pakyaw is a price for the whole
-              vehicle, so the head count changes nothing about what is paid. */}
+          {/* Passengers. */}
           {!isPakyawNegotiated && (
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 shrink-0 text-gray-400" />
-              <span className="shrink-0 text-xs font-semibold text-gray-500">Passengers</span>
+              <Users className="h-4 w-4 shrink-0 text-cream-500" />
+              <span className="shrink-0 text-xs font-sans font-semibold text-cream-600">Passengers</span>
               <div className="ml-auto flex items-center gap-1">
                 {[1, 2, 3, 4].map((num) => (
                   <button
                     key={num}
                     type="button"
                     onClick={() => onChangePassengers(num)}
-                    className={`h-8 w-8 rounded-lg text-xs font-semibold transition ${
+                    className={`h-8 w-8 rounded-lg text-xs font-display font-bold transition ${
                       passengers === num
-                        ? 'bg-gray-900 text-amber-400'
-                        : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                        ? 'bg-trike-gold text-trust-slate shadow-xs'
+                        : 'border border-cream-300 bg-cream-50 text-cream-600 hover:bg-cream-200'
                     }`}
                   >
                     {num}
@@ -526,10 +507,10 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => onChangePassengers(passengers >= 5 ? 1 : 5)}
-                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-semibold transition ${
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-display font-bold transition ${
                     passengers >= 5
-                      ? 'bg-gray-900 text-amber-400'
-                      : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      ? 'bg-trike-gold text-trust-slate shadow-xs'
+                      : 'border border-cream-300 bg-cream-50 text-cream-600 hover:bg-cream-200'
                   }`}
                 >
                   {passengers >= 5 ? passengers : '5+'}
@@ -540,23 +521,16 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
           {/* Select Vehicle Category List */}
           <div>
-            {/* The distance chip that used to sit here duplicated the "for
-                X km" already printed on every vehicle card. Only the two cases
-                the cards cannot express stay: still measuring, and a figure
-                that is estimated rather than measured along real streets. */}
-            {/* Not a picker any more — there is one vehicle. The card stays
-                because it is the confirmation of what is coming and what it
-                costs, which is the question the passenger actually has. */}
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+              <h2 className="kicker-label">
                 Your ride
               </h2>
               {isRouting && !hasRoute ? (
-                <span className="text-[11px] font-bold text-gray-500">measuring route…</span>
+                <span className="text-[11px] font-sans font-bold text-cream-500">measuring route…</span>
               ) : (
                 distanceSource === 'estimate' && (
                   <span
-                    className="text-[11px] font-bold text-amber-700"
+                    className="text-[11px] font-sans font-bold text-sunset-coral"
                     title="Route server unreachable — distance estimated from map coordinates."
                   >
                     approximate distance
@@ -567,11 +541,11 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
             <div className="space-y-2">
               {availableModes.length === 0 && (
-                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-5 text-center">
-                  <p className="text-sm font-bold text-gray-900">
+                <div className="rounded-card border border-dashed border-cream-300 bg-cream-100 p-5 text-center">
+                  <p className="text-sm font-display font-bold text-trust-slate">
                     No vehicle seats {passengers} passengers
                   </p>
-                  <p className="mt-1 text-xs font-medium text-gray-500">
+                  <p className="mt-1 text-xs font-sans font-medium text-cream-600">
                     Reduce the party size, or book a Charter for the whole vehicle.
                   </p>
                 </div>
@@ -587,31 +561,29 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                   <div
                     key={mode}
                     onClick={() => onSelectVehicle(mode)}
-                    className={`p-3 rounded-xl cursor-pointer transition-all duration-150 relative ${
+                    data-selected={isSelected}
+                    className={`card-selectable p-3.5 cursor-pointer transition-all duration-150 relative ${
                       isSelected
-                        ? 'border border-gray-900 bg-gray-900 text-amber-400 shadow-sm'
-                        : 'border border-gray-200 bg-white hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-sm'
+                        ? '!border-2 !border-trike-gold shadow-sm'
+                        : 'hover:-translate-y-0.5 hover:border-cream-400 hover:shadow-sm'
                     }`}
                   >
                     <div className="flex justify-between items-center gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        {/* The art slot. Sized for a rendered pedicab: drop an
-                            <img> in place of the glyph and it will sit centred
-                            without touching the surrounding layout. */}
                         <div
-                          className={`flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border text-3xl ${
+                          className={`flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-card border text-3xl ${
                             isSelected
-                              ? 'border-amber-400/30 bg-amber-400/15'
-                              : 'border-amber-200 bg-amber-50'
+                              ? 'border-trike-gold/40 bg-trike-gold/20'
+                              : 'border-cream-300 bg-cream-200'
                           }`}
                         >
                           {VEHICLE_EMOJI[mode] ?? '🛺'}
                         </div>
                         <div className="min-w-0">
-                          <p className={`font-bold text-sm leading-tight truncate ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
+                          <p className="font-display font-bold text-sm leading-tight truncate text-trust-slate">
                             {detail.title}
                           </p>
-                          <p className={`text-xs mt-0.5 truncate ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <p className="text-xs font-sans mt-0.5 truncate text-cream-600">
                             {detail.capacity} •{' '}
                             {isLoadingRiders
                               ? 'checking riders…'
@@ -627,23 +599,19 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                       <div className="text-right shrink-0">
                         {isPakyawNegotiated ? (
                           <>
-                            {/* Presented the same way as every other vehicle: a
-                                fare for this distance. Labelling it "Estimated"
-                                over "ordinance minimum" made a correctly
-                                calculated figure look like a flat floor. */}
-                            <p className={`text-lg font-semibold ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
+                            <p className="text-lg font-display font-bold text-trust-slate">
                               {hasRoute ? `₱${minimumPakyawFare}` : '—'}
                             </p>
-                            <span className={`block text-[10px] font-bold ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span className="block text-[10px] font-sans font-bold text-cream-600">
                               {hasRoute ? `for ${distanceKm.toFixed(2)} km` : 'measuring route'}
                             </span>
                           </>
                         ) : (
                           <>
-                            <p className={`font-semibold text-lg ${isSelected ? 'text-amber-400' : 'text-gray-900'}`}>
+                            <p className="font-display font-extrabold text-lg text-trust-slate">
                               {hasRoute ? `₱${fare}` : '—'}
                             </p>
-                            <span className={`text-[10px] font-bold block ${isSelected ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span className="text-[10px] font-sans font-bold block text-cream-600">
                               {!hasRoute
                                 ? 'measuring route'
                                 : passengers > 1
@@ -662,22 +630,19 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
 
           {/* Pakyaw Custom Fare Negotiator */}
           {isPakyawNegotiated && (
-            <div className="space-y-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
-              <p className="text-sm font-bold text-amber-950">
+            <div className="space-y-3 rounded-card border-2 border-trike-gold/40 bg-cream-100 p-4">
+              <p className="text-sm font-display font-bold text-trust-slate">
                 What are you willing to pay for this trip?
               </p>
 
-              {/* Steppers live inside the field, against the amount they change.
-                  Separate +/- buttons flanking a boxed number read as a
-                  calculator keypad rather than a single value being adjusted. */}
               <div
-                className={`flex items-center gap-1 rounded-xl border-2 bg-white pl-3.5 pr-1.5 ${
+                className={`flex items-center gap-1 rounded-card border-2 bg-cream-50 pl-3.5 pr-1.5 ${
                   !isCustomFareValid && customPakyawFare > 0
-                    ? 'border-red-400 bg-red-50'
-                    : 'border-amber-400'
+                    ? 'border-sunset-coral bg-sunset-coral/10'
+                    : 'border-trike-gold'
                 }`}
               >
-                <span className="text-2xl font-semibold text-gray-900">₱</span>
+                <span className="text-2xl font-display font-bold text-trust-slate">₱</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -687,7 +652,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                     if (!isNaN(value)) onChangeCustomPakyawFare(value);
                   }}
                   placeholder={String(minimumPakyawFare)}
-                  className="w-24 min-w-0 bg-transparent py-3 text-2xl font-semibold text-gray-900 focus:outline-none"
+                  className="w-24 min-w-0 bg-transparent py-3 text-2xl font-display font-bold text-trust-slate focus:outline-none"
                 />
                 <div className="ml-auto flex shrink-0 flex-col">
                   <button
@@ -697,7 +662,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                         Math.max(minimumPakyawFare, (customPakyawFare || minimumPakyawFare) + 10)
                       )
                     }
-                    className="flex h-6 w-8 items-center justify-center rounded-t-md text-amber-800 transition hover:bg-amber-100 active:scale-95"
+                    className="flex h-6 w-8 items-center justify-center rounded-t-md text-trust-slate transition hover:bg-cream-200 active:scale-95"
                     aria-label="Raise your offer by 10 pesos"
                   >
                     <ChevronUp className="h-4 w-4" strokeWidth={3} />
@@ -710,7 +675,7 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
                       )
                     }
                     disabled={(customPakyawFare || minimumPakyawFare) <= minimumPakyawFare}
-                    className="flex h-6 w-8 items-center justify-center rounded-b-md text-amber-800 transition hover:bg-amber-100 active:scale-95 disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="flex h-6 w-8 items-center justify-center rounded-b-md text-trust-slate transition hover:bg-cream-200 active:scale-95 disabled:opacity-30 disabled:hover:bg-transparent"
                     aria-label="Lower your offer by 10 pesos"
                   >
                     <ChevronDown className="h-4 w-4" strokeWidth={3} />
@@ -719,40 +684,36 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
               </div>
 
               {!isCustomFareValid ? (
-                <p className="text-xs font-bold text-red-700">
+                <p className="text-xs font-sans font-bold text-sunset-coral">
                   Too low — this trip cannot be booked below ₱{minimumPakyawFare}.
                 </p>
               ) : (
                 <div className="space-y-1">
-                  {/* The rule itself, so a passenger can check the figure above
-                      rather than take it on trust. */}
-                  <p className="text-xs font-medium text-amber-800">
+                  <p className="text-xs font-sans font-medium text-cream-700">
                     ₱{VEHICLE_DETAILS.pakyaw_charter.baseFare} minimum for the first km + ₱
                     {VEHICLE_DETAILS.pakyaw_charter.perKm} for each succeeding km.
                   </p>
-                  <p className="text-xs font-medium text-amber-700">
-                    You can increase your offer to attract more riders.
+                  <p className="text-xs font-sans font-medium text-cream-600">
+                    You can increase your offer to attract more drivers.
                   </p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Payment. Emoji dropped — the selected state is already carried by
-              colour and weight, and a wallet glyph next to the word "Payment"
-              adds nothing a passenger reads. */}
-          <div className="space-y-2 border-t border-gray-100 pt-3">
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
+          {/* Payment Method */}
+          <div className="space-y-2 border-t border-cream-300 pt-3">
+            <label className="kicker-label">
               Payment Method
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => onChangePaymentMethod('cash')}
-                className={`flex min-h-11 items-center justify-center rounded-xl border text-xs font-semibold transition ${
+                className={`flex min-h-11 items-center justify-center rounded-card border text-xs font-display font-semibold transition ${
                   paymentMethod === 'cash'
-                    ? 'border-gray-900 bg-gray-900 text-amber-400 shadow-xs'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-2 border-trike-gold bg-trike-gold/20 text-trust-slate font-bold shadow-xs'
+                    : 'border-cream-300 bg-cream-50 text-cream-600 hover:border-cream-400 hover:bg-cream-200'
                 }`}
               >
                 Cash
@@ -760,10 +721,10 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
               <button
                 type="button"
                 onClick={() => onChangePaymentMethod('gcash')}
-                className={`flex min-h-11 items-center justify-center rounded-xl border text-xs font-semibold transition ${
+                className={`flex min-h-11 items-center justify-center rounded-card border text-xs font-display font-semibold transition ${
                   paymentMethod === 'gcash'
-                    ? 'border-blue-600 bg-blue-600 text-white shadow-xs'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    ? 'border-2 border-trust-slate bg-trust-slate text-cream-50 font-bold shadow-xs'
+                    : 'border-cream-300 bg-cream-50 text-cream-600 hover:border-cream-400 hover:bg-cream-200'
                 }`}
               >
                 GCash
@@ -771,10 +732,10 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
             </div>
           </div>
 
-          <div className="space-y-2 border-t border-gray-100 pt-3">
-            <label className="flex items-baseline gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-700">
-              Note to Rider
-              <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">
+          <div className="space-y-2 border-t border-cream-300 pt-3">
+            <label className="kicker-label flex items-baseline gap-1.5">
+              Note to Driver
+              <span className="text-[10px] font-sans font-medium normal-case tracking-normal text-cream-500">
                 optional
               </span>
             </label>
@@ -783,21 +744,20 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
               value={notes}
               onChange={(e) => onChangeNotes(e.target.value)}
               placeholder="e.g. Waiting in front of Sans Rival, near the gate"
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs font-medium text-gray-900 transition focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-200/50"
+              className="w-full rounded-card border border-cream-300 bg-cream-50 px-3.5 py-2.5 text-xs font-sans font-medium text-trust-slate transition focus:border-trike-gold focus:outline-none"
             />
           </div>
 
-          {/* Big Action CTA Button - Primary action, made larger and more prominent */}
+          {/* Big Action CTA Button */}
           <div className="pt-2">
             <button
               onClick={onBookRide}
               disabled={isBooking || !hasRoute || (isPakyawNegotiated && !isCustomFareValid)}
-              className="w-full py-4 rounded-xl font-semibold text-lg bg-amber-400 hover:bg-amber-300 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-gray-900 cursor-pointer shadow-lg transition active:scale-95 flex items-center justify-center gap-2.5"
+              className="btn-primary w-full py-4 text-base font-display font-bold shadow-lg flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isBooking ? (
                 <span>Sending your request...</span>
               ) : !hasRoute ? (
-                // Never quote a fare before the road distance is known.
                 <span>Measuring the route...</span>
               ) : isPakyawNegotiated && !isCustomFareValid ? (
                 <span>Increase fare to minimum ordinance rate</span>
@@ -811,14 +771,14 @@ export const RideBookingPanel: React.FC<RideBookingPanelProps> = ({
           </div>
         </>
       ) : (
-        <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-xl text-center space-y-2">
-          <div className="w-9 h-9 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto text-base font-bold">
+        <div className="bg-cream-100 border border-cream-300 p-4 rounded-card text-center space-y-2">
+          <div className="w-9 h-9 bg-cream-200 text-trust-slate rounded-full flex items-center justify-center mx-auto text-base font-bold">
             📍
           </div>
-          <p className="text-xs font-bold text-gray-900">
+          <p className="text-xs font-display font-bold text-trust-slate">
             Set Pickup & Drop-off Locations
           </p>
-          <p className="text-[11px] text-gray-600 leading-snug">
+          <p className="text-[11px] font-sans text-cream-600 leading-snug">
             Please select both your pickup point and drop-off destination above or tap on the map to view available vehicles and estimated fares.
           </p>
         </div>

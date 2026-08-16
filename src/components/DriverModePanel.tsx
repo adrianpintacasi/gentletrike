@@ -139,87 +139,138 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   const bookedSeats = currentCapacityCount;
   const seatsFree = Math.max(0, seatCapacity - bookedSeats - walkIn);
 
-  return (
-    <div className="flex flex-col gap-3 text-gray-900">
-      {/*
-        Duty and seats, on one line.
-        
-        There were two duty buttons on screen at once — a full-width slab here
-        and a black card in the pinned row above saying the same thing. Both are
-        gone. What is left is an icon: green means on duty, and it is the only
-        round control on the screen, so it is found by shape rather than read.
-      */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={handleToggleOnline}
-          disabled={isTogglingOnline}
-          aria-pressed={currentDriver.isOnline}
-          aria-label={currentDriver.isOnline ? 'End shift' : 'Start shift'}
-          title={currentDriver.isOnline ? 'On duty — tap to end shift' : 'Off duty — tap to start'}
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
-            currentDriver.isOnline
-              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-              : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-          } ${isTogglingOnline ? 'cursor-not-allowed opacity-60' : ''}`}
-        >
-          {isTogglingOnline ? (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            <Power className="h-5 w-5" />
-          )}
-        </button>
+  // Generate an array of seat states for the visual seating deck
+  const seatList = React.useMemo(() => {
+    const list: { id: number; status: 'booked' | 'walk-in' | 'free'; label: string }[] = [];
+    for (let i = 0; i < seatCapacity; i++) {
+      if (i < bookedSeats) {
+        list.push({ id: i + 1, status: 'booked', label: 'App' });
+      } else if (i < bookedSeats + walkIn) {
+        list.push({ id: i + 1, status: 'walk-in', label: 'Walk-in' });
+      } else {
+        list.push({ id: i + 1, status: 'free', label: 'Free' });
+      }
+    }
+    return list;
+  }, [seatCapacity, bookedSeats, walkIn]);
 
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-gray-900">
-            {currentDriver.isOnline ? 'On duty' : 'Off duty'}
-          </p>
-          <p className="truncate text-[11px] font-semibold text-gray-500">
-            {currentDriver.isOnline
-              ? `${seatsFree} of ${seatCapacity} seats free`
-              : 'Not receiving trips'}
-          </p>
+  return (
+    <div className="flex flex-col gap-3.5 text-trust-slate font-sans">
+      {/* Duty, capacity & visual seats card */}
+      <div className="p-3.5 rounded-card bg-cream-50 border border-cream-300 shadow-sm space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleToggleOnline}
+              disabled={isTogglingOnline}
+              aria-pressed={currentDriver.isOnline}
+              aria-label={currentDriver.isOnline ? 'End shift' : 'Start shift'}
+              title={currentDriver.isOnline ? 'On duty — tap to end shift' : 'Off duty — tap to start'}
+              className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-sm transition-all active:scale-95 ${
+                currentDriver.isOnline
+                  ? 'bg-sampaguita-green text-white hover:bg-sampaguita-green/90 ring-4 ring-sampaguita-green/20'
+                  : 'bg-cream-200 text-cream-600 hover:bg-cream-300'
+              } ${isTogglingOnline ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              {isTogglingOnline ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <Power className="h-5 w-5" />
+              )}
+            </button>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-base font-display font-extrabold text-trust-slate">
+                  {currentDriver.isOnline ? 'On Duty' : 'Off Duty'}
+                </p>
+                {currentDriver.isOnline && (
+                  <span className="px-2 py-0.5 rounded-pill bg-sampaguita-green/15 text-sampaguita-green text-[10px] font-display font-bold border border-sampaguita-green/30">
+                    Live
+                  </span>
+                )}
+              </div>
+              <p className="truncate text-xs font-sans font-semibold text-cream-600 mt-0.5">
+                {currentDriver.isOnline
+                  ? `${seatsFree} of ${seatCapacity} seats free`
+                  : 'Tap power to start receiving trips'}
+              </p>
+            </div>
+          </div>
+
+          {/* Walk-in summary chip */}
+          <div className="flex shrink-0 items-center gap-1.5 rounded-pill border border-cream-300 bg-cream-100 px-3 py-1.5 shadow-2xs text-xs font-display font-bold text-trust-slate">
+            <span className="text-cream-600 font-sans text-[11px]">Walk-in:</span>
+            <span className="font-black text-sunset-coral">{walkIn}</span>
+            {walkIn > 0 && (
+              <button
+                onClick={() => onSetWalkInSeats?.(0)}
+                className="ml-1 text-[10px] text-cream-500 hover:text-sunset-coral font-sans underline"
+                title="Clear all walk-ins"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
-        {/*
-          Passengers the rider picked up off the app.
-          
-          A trike flagged down on the road is still a full trike, and until now
-          the app had no way to know — so it went on offering seats that were
-          physically occupied and the rider declined each one by hand. Two taps,
-          and dispatch stops offering what does not fit.
-        */}
-        <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-gray-200 p-1">
-          <button
-            onClick={() => onSetWalkInSeats?.(Math.max(0, walkIn - 1))}
-            disabled={walkIn === 0}
-            aria-label="Remove a walk-in passenger"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <span className="flex min-w-8 flex-col items-center leading-none">
-            <span className="text-base font-bold text-gray-900 tabular-nums">{walkIn}</span>
-            <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
-              walk-in
+        {/* Visual Seating Deck (1-Tap Interactive) */}
+        <div className="pt-2 border-t border-cream-200">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="kicker-label text-[10px]">Vehicle Seating Deck (Tap seat to toggle)</span>
+            <span className="text-[10px] font-display font-bold text-cream-600">
+              {bookedSeats > 0 && <span className="text-trike-gold mr-2">● {bookedSeats} App</span>}
+              {walkIn > 0 && <span className="text-sunset-coral mr-2">● {walkIn} Walk-in</span>}
+              <span className="text-sampaguita-green">● {seatsFree} Free</span>
             </span>
-          </span>
-          <button
-            onClick={() => onSetWalkInSeats?.(Math.min(seatCapacity, walkIn + 1))}
-            disabled={walkIn >= seatCapacity - bookedSeats}
-            aria-label="Add a walk-in passenger"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          </div>
+          <div className="grid grid-cols-6 gap-1.5">
+            {seatList.map((seat) => {
+              const isFree = seat.status === 'free';
+              const isWalkIn = seat.status === 'walk-in';
+              const isBooked = seat.status === 'booked';
+              return (
+                <button
+                  key={seat.id}
+                  disabled={isBooked}
+                  onClick={() => {
+                    if (isFree) {
+                      onSetWalkInSeats?.(Math.min(seatCapacity - bookedSeats, walkIn + 1));
+                    } else if (isWalkIn) {
+                      onSetWalkInSeats?.(Math.max(0, walkIn - 1));
+                    }
+                  }}
+                  title={
+                    isBooked
+                      ? `Seat #${seat.id} (Booked by App Passenger)`
+                      : isWalkIn
+                      ? `Seat #${seat.id} (Walk-in: Tap to Free)`
+                      : `Seat #${seat.id} (Free: Tap to add Walk-in)`
+                  }
+                  className={`py-2 px-1 rounded-card border text-center transition-all duration-200 ${
+                    isBooked
+                      ? 'bg-trike-gold/20 border-trike-gold text-trust-slate font-bold shadow-2xs cursor-default'
+                      : isWalkIn
+                      ? 'bg-sunset-coral/20 border-sunset-coral text-sunset-coral font-bold shadow-2xs active:scale-95 hover:bg-sunset-coral/30'
+                      : 'bg-cream-50 border-cream-300 text-trust-slate font-semibold hover:border-sampaguita-green active:scale-95 hover:bg-sampaguita-green/10'
+                  }`}
+                >
+                  <div className="text-xs font-display font-black leading-none">#{seat.id}</div>
+                  <div className="text-[9px] font-sans font-bold leading-none mt-1 capitalize truncate">
+                    {seat.label}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Verification only when it is a problem. A rider who is verified does
-          not need telling; one who is not cannot go online and must know why. */}
+      {/* Verification notice */}
       {verification !== 'verified' && (
-        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
-          <p className="text-xs font-semibold text-amber-900">
+        <div className="flex items-center gap-2 rounded-card border border-trike-gold/40 bg-cream-100 px-3.5 py-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-trike-gold" />
+          <p className="text-xs font-sans font-semibold text-trust-slate">
             {verification === 'pending'
               ? 'Pending TMO verification — you cannot go on duty yet.'
               : `Rider account ${verification}.`}
@@ -227,24 +278,14 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
         </div>
       )}
 
-      {/* Accepted Passengers Pool — the rider drives each trip through its stages */}
-      {/*
-        Every trip except the one the pinned row is already driving.
-        
-        The pinned row carries the next stop and its action — the same trip, the
-        same button, the same fare — and this block repeated all of it directly
-        underneath, in the same colours, so a rider with one passenger saw the
-        card twice. It now lists what the pinned row cannot: the trips queued
-        behind the current one. With a single passenger there are none, and the
-        block disappears entirely.
-      */}
+      {/* Accepted Passengers Pool */}
       {routeOrderedRides.length > 1 && (
-        <div className="space-y-2.5 rounded-2xl bg-gray-900 p-3 text-white">
+        <div className="space-y-2.5 rounded-card bg-trust-slate p-3.5 text-cream-50 border border-cream-400/20 shadow-md">
           <div className="flex items-center justify-between">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+            <h4 className="kicker-label text-cream-300">
               After this stop
             </h4>
-            <span className="rounded-md bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-gray-900">
+            <span className="rounded-pill bg-trike-gold px-2.5 py-0.5 text-[10px] font-display font-bold text-trust-slate">
               {routeOrderedRides.length - 1} more
             </span>
           </div>
@@ -256,46 +297,40 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
               return (
                 <div
                   key={ride.id}
-                  className="space-y-2 rounded-lg border border-gray-700 bg-gray-800 p-2.5"
+                  className="space-y-2 rounded-card border border-cream-400/20 bg-trust-slate/80 p-3"
                 >
                   <div className="flex items-start gap-2">
-                    <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 text-[11px] font-black text-gray-900">
+                    <span className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-trike-gold text-[11px] font-display font-black text-trust-slate">
                       {idx + 1}
                     </span>
 
-                    {/* Full place names. Truncating to the first word turned
-                        "Doctor Venancio Aldecoa Drive" into "Doctor". */}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-bold leading-snug text-white">
+                      <p className="truncate text-xs font-display font-bold leading-snug text-cream-50">
                         {ride.pickupLocation.name}
                       </p>
-                      <p className="flex items-center gap-1 truncate text-xs font-bold leading-snug text-amber-300">
-                        <ArrowRight className="h-3 w-3 shrink-0 text-gray-500" />
+                      <p className="flex items-center gap-1 truncate text-xs font-display font-bold leading-snug text-trike-gold">
+                        <ArrowRight className="h-3 w-3 shrink-0 text-cream-400" />
                         {ride.dropoffLocation.name}
                       </p>
-                      <p className="mt-0.5 truncate text-[10px] text-gray-400">
+                      <p className="mt-0.5 truncate text-[10px] font-sans text-cream-300">
                         {ride.passengerName ? `${ride.passengerName} · ` : ''}
                         {ride.passengers} pax · {ride.distanceKm} km
                       </p>
                     </div>
 
-                    {/* Reaching the passenger is half the job — "I'm at the
-                        corner, where are you?" Chat works for everyone; calling
-                        needs a number, and riders often sign up without one, so
-                        the button is disabled rather than dialling nothing. */}
                     <div className="flex shrink-0 gap-1.5">
                       {ride.passengerPhone ? (
                         <a
                           href={`tel:${ride.passengerPhone}`}
                           title={`Call ${ride.passengerName ?? 'passenger'}`}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-700 text-amber-300 transition active:scale-95 hover:bg-gray-600"
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-cream-50/10 text-trike-gold transition active:scale-95 hover:bg-cream-50/20"
                         >
                           <Phone className="h-4 w-4" />
                         </a>
                       ) : (
                         <span
                           title="This passenger has no contact number on file"
-                          className="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-lg bg-gray-800 text-gray-600"
+                          className="flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-full bg-cream-50/5 text-cream-500"
                         >
                           <Phone className="h-4 w-4" />
                         </span>
@@ -307,15 +342,15 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                           if (opening) void markRead(ride.id);
                         }}
                         title="Message passenger"
-                        className={`relative flex h-10 w-10 items-center justify-center rounded-lg transition active:scale-95 ${
+                        className={`relative flex h-9 w-9 items-center justify-center rounded-full transition active:scale-95 ${
                           chatRideId === ride.id
-                            ? 'bg-amber-400 text-gray-900'
-                            : 'bg-gray-700 text-amber-300 hover:bg-gray-600'
+                            ? 'bg-trike-gold text-trust-slate'
+                            : 'bg-cream-50/10 text-trike-gold hover:bg-cream-50/20'
                         }`}
                       >
-                        <MessageSquare className="h-5 w-5" />
+                        <MessageSquare className="h-4 w-4" />
                         {(unread[ride.id] ?? 0) > 0 && chatRideId !== ride.id && (
-                          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sunset-coral px-1 text-[9px] font-black text-white">
                             {unread[ride.id]}
                           </span>
                         )}
@@ -331,7 +366,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                     {nextStage && (
                       <button
                         onClick={() => onAdvanceRideStatus(ride.id, nextStage.status)}
-                        className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-400 px-2 text-xs font-extrabold text-gray-900 shadow-xs transition active:scale-95 hover:bg-amber-300"
+                        className="btn-primary flex h-10 flex-1 items-center justify-center gap-1.5 px-2 text-xs font-display font-extrabold shadow-xs"
                       >
                         <MapPin className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{nextStage.label}</span>
@@ -339,7 +374,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                     )}
                     <button
                       onClick={() => onAdvanceRideStatus(ride.id, 'completed')}
-                      className={`flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 text-xs font-extrabold text-white shadow-xs transition active:scale-95 hover:bg-emerald-600 ${
+                      className={`flex h-10 items-center justify-center gap-1.5 rounded-pill bg-sampaguita-green px-3 text-xs font-display font-extrabold text-white shadow-xs transition active:scale-95 hover:bg-sampaguita-green/90 ${
                         nextStage ? 'shrink-0' : 'flex-1'
                       }`}
                     >
@@ -356,96 +391,57 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
 
       {/* Incoming Requests Queue or Offline Banner */}
       {!currentDriver.isOnline ? (
-        /* OFFLINE STATUS CARD - Nothing / No requests appear when offline */
-        <div className="p-8 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-3 shadow-xs">
+        /* OFFLINE STATUS CARD */
+        <div className="p-7 bg-cream-50 border border-cream-300 rounded-card text-center space-y-3.5 shadow-sm">
           <button
             onClick={handleToggleOnline}
             disabled={isTogglingOnline}
-            className={`w-12 h-12 bg-rose-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
+            className={`w-14 h-14 bg-sunset-coral/15 border-2 border-sunset-coral text-sunset-coral hover:bg-sunset-coral hover:text-white rounded-full flex items-center justify-center mx-auto shadow-sm transition-all duration-200 active:scale-95 ${
+              isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
           >
             {isTogglingOnline ? (
-              <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : (
-              <Power className="w-6 h-6" />
+              <Power className="w-7 h-7" />
             )}
           </button>
           <div>
-            <h4 className="font-extrabold text-base text-rose-950">Rider Status: OFFLINE</h4>
-            <p className="text-xs text-rose-800 mt-1 max-w-sm mx-auto font-medium">
-              You are currently offline. Turn ON your status to start receiving passenger trip requests across Dumaguete.
+            <h4 className="font-display font-black text-lg text-trust-slate">Rider Status: Offline</h4>
+            <p className="text-xs font-sans text-cream-700 mt-1 max-w-sm mx-auto font-medium leading-relaxed">
+              You are currently offline. Turn ON your duty status to start receiving trip requests in Dumaguete.
             </p>
           </div>
           <button
             onClick={handleToggleOnline}
             disabled={isTogglingOnline}
-            className={`mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-sm transition active:scale-95 inline-flex items-center gap-1.5 ${
+            className={`btn-primary text-xs font-display font-extrabold px-6 py-3 shadow-md inline-flex items-center gap-2 ${
               isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''
             }`}
           >
             {isTogglingOnline ? (
               <>
-                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Going Online...</span>
+                <span className="w-4 h-4 border-2 border-trust-slate border-t-transparent rounded-full animate-spin" />
+                <span>Connecting...</span>
               </>
             ) : (
               <>
-                <Power className="w-3.5 h-3.5" />
-                <span>Go Online Now</span>
+                <Power className="w-4 h-4" />
+                <span>Start Shift / Go Online</span>
               </>
             )}
           </button>
         </div>
       ) : (
         /* ONLINE REQUESTS QUEUE */
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              {activeRequests.length === 0
-                ? 'Waiting for requests'
-                : `${activeRequests.length} request${activeRequests.length > 1 ? 's' : ''}`}
-            </h4>
-            {seatsFree === 0 && (
-              <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-amber-400">
-                Full
-              </span>
-            )}
-          </div>
-
-          {activeRequests.length === 0 ? (
-            /* The old empty state named Dumaguete and listed four Dumaguete
-               landmarks as "popular zones", which is wrong everywhere else and
-               was never true anywhere — nothing measured them. It now says only
-               what is actually known: whether there is room, and that the app is
-               listening. */
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
-              <span className="mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-xs">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
-              </span>
-              <p className="text-sm font-bold text-gray-900">
-                {seatsFree === 0 ? 'No seats free' : 'Listening for nearby trips'}
-              </p>
-              <p className="mx-auto mt-1 max-w-[16rem] text-[11px] font-medium text-gray-500">
-                {seatsFree === 0
-                  ? 'Set a passenger down, or lower the walk-in count, to start receiving offers again.'
-                  : 'Offers appear here the moment a passenger books nearby. You do not need to keep this open.'}
-              </p>
+        activeRequests.length > 0 && (
+          <div className="pt-2 border-t border-cream-200">
+            <div className="mb-2.5 flex items-center justify-between">
+              <h4 className="kicker-label text-cream-600">
+                {`${activeRequests.length} incoming offer${activeRequests.length > 1 ? 's' : ''}`}
+              </h4>
             </div>
-          ) : (
-            /*
-              The top offer, then every other one under it.
 
-              This was a stack showing only the first card, which meant a second
-              request existed and could not be seen — the rider had to decide on
-              one before learning another was there. Pooling is the whole point
-              of the app, and it was hidden behind a gesture.
-
-              The top card keeps the swipe, because that is the one a rider
-              takes without looking. The rest are listed plainly and can be
-              accepted straight from the row, in any order.
-            */
             <div className="space-y-2.5 pb-3">
               <IncomingRequestCard
                 ride={nearestFirst[0]}
@@ -495,8 +491,8 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                 </>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )
       )}
     </div>
   );

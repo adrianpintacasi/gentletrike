@@ -45,6 +45,8 @@ interface MenuPageProps {
   onContactChanged?: (contactNumber: string) => void;
   initialScreen?: MenuScreen;
   onScreenChange?: (screen: MenuScreen) => void;
+  /** Returns to the map/home view when invoked */
+  onBackToHome?: () => void;
   /**
    * The rider's figures for today, rendered by the caller.
    *
@@ -88,6 +90,7 @@ export const MenuPage: React.FC<MenuPageProps> = ({
   onContactChanged,
   initialScreen = 'root',
   onScreenChange,
+  onBackToHome,
   riderToday,
   onSeatCapacityChange,
 }) => {
@@ -154,11 +157,11 @@ export const MenuPage: React.FC<MenuPageProps> = ({
       <button
         onClick={() => go('root')}
         aria-label="Back to menu"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition active:scale-95"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cream-300 bg-cream-50 text-trust-slate transition active:scale-95 hover:bg-cream-200 shadow-xs"
       >
         <ArrowLeft className="h-4 w-4" />
       </button>
-      <h1 className="text-lg font-bold tracking-tight text-gray-900">{title}</h1>
+      <h1 className="text-lg font-display font-bold tracking-tight text-trust-slate">{title}</h1>
     </div>
   );
 
@@ -166,35 +169,35 @@ export const MenuPage: React.FC<MenuPageProps> = ({
     return (
       <div className="space-y-2.5 pb-2">
         <Header title="Trip History" />
-        {isLoading && <p className="py-6 text-center text-xs font-semibold text-gray-400">Loading…</p>}
+        {isLoading && <p className="py-6 text-center text-xs font-sans font-semibold text-cream-400">Loading…</p>}
         {!isLoading && history.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
-            <p className="text-sm font-semibold text-gray-900">No finished trips yet</p>
+          <div className="rounded-card border border-dashed border-cream-300 bg-cream-100 p-8 text-center">
+            <p className="text-sm font-display font-semibold text-trust-slate">No finished trips yet</p>
           </div>
         )}
         {history.map((ride) => (
-          <div key={ride.id} className="rounded-2xl border border-gray-200 bg-white p-3.5">
+          <div key={ride.id} className="rounded-card border border-cream-300 bg-cream-50 p-3.5 shadow-xs">
             <div className="flex items-start gap-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-sm">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-cream-200 text-sm">
                 🛺
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-gray-900">
+                <p className="truncate text-xs font-display font-bold text-trust-slate">
                   {ride.pickupLocation.name}
                 </p>
-                <p className="truncate text-xs font-semibold text-amber-700">
+                <p className="truncate text-xs font-display font-bold text-trike-gold">
                   → {ride.dropoffLocation.name}
                 </p>
-                <p className="mt-0.5 truncate text-[11px] text-gray-400">
+                <p className="mt-0.5 truncate text-[11px] font-sans text-cream-600">
                   {formatWhen(ride.createdAt)} · {ride.distanceKm} km ·{' '}
                   {ride.role === 'driver' ? 'you drove' : 'you rode'}
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="text-sm font-bold text-gray-900">₱{ride.totalFare}</p>
+                <p className="text-sm font-display font-extrabold text-trust-slate">₱{ride.totalFare}</p>
                 <p
-                  className={`text-[10px] font-semibold uppercase ${
-                    ride.status === 'completed' ? 'text-emerald-600' : 'text-gray-400'
+                  className={`text-[10px] font-sans font-bold uppercase ${
+                    ride.status === 'completed' ? 'text-sampaguita-green' : 'text-cream-500'
                   }`}
                 >
                   {ride.status === 'completed' ? 'Completed' : 'Cancelled'}
@@ -211,11 +214,11 @@ export const MenuPage: React.FC<MenuPageProps> = ({
     return (
       <div className="space-y-2.5 pb-2">
         <Header title="Report Status" />
-        {isLoading && <p className="py-6 text-center text-xs font-semibold text-gray-400">Loading…</p>}
+        {isLoading && <p className="py-6 text-center text-xs font-sans font-semibold text-cream-400">Loading…</p>}
         {!isLoading && reports.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center">
-            <p className="text-sm font-semibold text-gray-900">No reports filed</p>
-            <p className="mt-1 text-xs text-gray-500">
+          <div className="rounded-card border border-dashed border-cream-300 bg-cream-100 p-8 text-center">
+            <p className="text-sm font-display font-semibold text-trust-slate">No reports filed</p>
+            <p className="mt-1 text-xs font-sans text-cream-600">
               If a fare is wrong, report it — you can track it here.
             </p>
           </div>
@@ -223,25 +226,25 @@ export const MenuPage: React.FC<MenuPageProps> = ({
         {reports.map((report) => {
           const status = REPORT_STATUS[report.status] ?? REPORT_STATUS.pending;
           return (
-            <div key={report.referenceCode} className="rounded-2xl border border-gray-200 bg-white p-3.5">
+            <div key={report.referenceCode} className="rounded-card border border-cream-300 bg-cream-50 p-3.5 shadow-xs">
               <div className="mb-1.5 flex items-center gap-2">
-                <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase ${status.className}`}>
+                <span className={`rounded-pill px-2.5 py-0.5 text-[10px] font-sans font-bold uppercase ${status.className}`}>
                   {status.label}
                 </span>
-                <span className="ml-auto font-mono text-[10px] text-gray-400">
+                <span className="ml-auto font-mono text-[10px] text-cream-500">
                   {report.referenceCode}
                 </span>
               </div>
-              <p className="text-xs font-semibold capitalize text-gray-900">
+              <p className="text-xs font-display font-bold capitalize text-trust-slate">
                 {report.violationType.replace(/_/g, ' ')}
               </p>
               {report.details && (
-                <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{report.details}</p>
+                <p className="mt-0.5 line-clamp-2 text-[11px] font-sans text-cream-600">{report.details}</p>
               )}
-              <p className="mt-1 text-[10px] text-gray-400">Filed {formatWhen(report.createdAt)}</p>
+              <p className="mt-1 text-[10px] font-sans text-cream-400">Filed {formatWhen(report.createdAt)}</p>
               {report.adminNotes && (
-                <p className="mt-2 rounded-xl bg-gray-50 p-2.5 text-[11px] text-gray-700">
-                  <span className="font-semibold text-gray-900">TMO: </span>
+                <p className="mt-2 rounded-card bg-cream-100 border border-cream-300 p-2.5 text-[11px] font-sans text-trust-slate">
+                  <span className="font-display font-bold text-trust-slate">TMO: </span>
                   {report.adminNotes}
                 </p>
               )}
@@ -253,20 +256,6 @@ export const MenuPage: React.FC<MenuPageProps> = ({
   }
 
   if (screen === 'transactions') {
-    /*
-     * A ledger, not a wallet.
-     *
-     * This screen was four payment-method cards — Cash, GCash, Maya — drawn as
-     * gradient credit cards with masked digits, none of them connected to
-     * anything. It looked like an account page and was a mock, and for a rider
-     * it answered a question nobody has: they do not choose how they are paid,
-     * the passenger does.
-     *
-     * What both sides actually want is the record. Every completed trip already
-     * carries its fare and how it settled, so this reads that back: what came in
-     * or went out, by method, with the trips that make up the total. Nothing on
-     * this page is invented — remove a trip and the figure changes.
-     */
     const settled = history.filter((r) => r.status === 'completed');
     const byMethod: Record<string, { count: number; total: number }> = {};
     for (const r of settled) {
@@ -288,72 +277,71 @@ export const MenuPage: React.FC<MenuPageProps> = ({
       <div className="space-y-3 pb-2">
         <Header title="Transactions" />
 
-        {/* The total first, because it is the answer to why anyone opened this. */}
-        <div className="rounded-2xl bg-gray-900 p-5 text-white shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">
+        <div className="rounded-card bg-trust-slate p-5 text-cream-50 shadow-md border border-cream-400/20">
+          <p className="kicker-label text-cream-300">
             {inbound ? 'Received, all time' : 'Paid, all time'}
           </p>
-          <p className="mt-1 text-4xl font-bold leading-none tracking-tight text-amber-400 tabular-nums">
+          <p className="mt-1 text-4xl font-display font-extrabold leading-none tracking-tight text-trike-gold tabular-nums">
             ₱{grandTotal}
           </p>
-          <p className="mt-2 text-[11px] font-semibold text-gray-400 tabular-nums">
+          <p className="mt-2 text-[11px] font-sans font-semibold text-cream-300 tabular-nums">
             across {settled.length} completed trip{settled.length === 1 ? '' : 's'}
           </p>
         </div>
 
         {Object.keys(byMethod).length > 0 && (
-          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+          <div className="divide-y divide-cream-200 overflow-hidden rounded-card border border-cream-300 bg-cream-50 shadow-xs">
             {Object.entries(byMethod).map(([method, m]) => (
               <div key={method} className="flex items-center gap-3 px-4 py-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-cream-200">
                   {method === 'cash' ? (
-                    <Wallet className="h-4 w-4 text-gray-500" />
+                    <Wallet className="h-4 w-4 text-trust-slate" />
                   ) : (
-                    <CreditCard className="h-4 w-4 text-gray-500" />
+                    <CreditCard className="h-4 w-4 text-trust-slate" />
                   )}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="text-sm font-display font-bold text-trust-slate">
                     {METHOD_LABEL[method] ?? method}
                   </p>
-                  <p className="text-[11px] font-medium text-gray-500 tabular-nums">
+                  <p className="text-[11px] font-sans font-medium text-cream-600 tabular-nums">
                     {m.count} trip{m.count === 1 ? '' : 's'}
                   </p>
                 </div>
-                <p className="shrink-0 text-sm font-bold text-gray-900 tabular-nums">₱{m.total}</p>
+                <p className="shrink-0 text-sm font-display font-extrabold text-trust-slate tabular-nums">₱{m.total}</p>
               </div>
             ))}
           </div>
         )}
 
-        <p className="px-1 pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+        <p className="kicker-label px-1 pt-1">
           Recent
         </p>
 
         {settled.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center">
-            <p className="text-sm font-semibold text-gray-900">Nothing settled yet</p>
-            <p className="mx-auto mt-1 max-w-xs text-[11px] font-medium text-gray-500">
+          <div className="rounded-card border border-dashed border-cream-300 bg-cream-100 px-4 py-10 text-center">
+            <p className="text-sm font-display font-semibold text-trust-slate">Nothing settled yet</p>
+            <p className="mx-auto mt-1 max-w-xs text-[11px] font-sans font-medium text-cream-600">
               {inbound
                 ? 'Fares appear here as you complete trips.'
                 : 'Your trip payments appear here once a ride is finished.'}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+          <div className="divide-y divide-cream-200 overflow-hidden rounded-card border border-cream-300 bg-cream-50 shadow-xs">
             {settled.slice(0, 12).map((r) => (
               <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-gray-900">
+                  <p className="truncate text-sm font-display font-bold text-trust-slate">
                     {r.dropoffLocation.name}
                   </p>
-                  <p className="truncate text-[11px] font-medium text-gray-500">
+                  <p className="truncate text-[11px] font-sans font-medium text-cream-600">
                     {formatWhen(r.createdAt)} · {METHOD_LABEL[r.paymentMethod ?? 'cash'] ?? r.paymentMethod}
                   </p>
                 </div>
                 <p
-                  className={`shrink-0 text-sm font-bold tabular-nums ${
-                    inbound ? 'text-emerald-600' : 'text-gray-900'
+                  className={`shrink-0 text-sm font-display font-extrabold tabular-nums ${
+                    inbound ? 'text-sampaguita-green' : 'text-trust-slate'
                   }`}
                 >
                   {inbound ? '+' : ''}₱{r.totalFare}
@@ -363,10 +351,9 @@ export const MenuPage: React.FC<MenuPageProps> = ({
           </div>
         )}
 
-        {/* Said plainly, because a ledger implies a processor behind it. */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <p className="text-xs font-semibold text-gray-900">Cash settles in person</p>
-          <p className="mt-1 text-[11px] text-gray-500">
+        <div className="rounded-card border border-cream-300 bg-cream-50 p-4 shadow-xs">
+          <p className="text-xs font-display font-bold text-trust-slate">Cash settles in person</p>
+          <p className="mt-1 text-[11px] font-sans text-cream-600">
             GentleTrike records what a trip cost and how it was paid; it does not move the
             money. Online and card settlement needs a payment provider the app is not
             connected to yet, so every figure here is a record of a cash fare
@@ -382,31 +369,9 @@ export const MenuPage: React.FC<MenuPageProps> = ({
       <div className="space-y-3 pb-2">
         <Header title="Settings" />
 
-        {/*
-          Appearance used to sit here: a Light/Dark pair that toggled a `dark`
-          class on <html>. Nothing in the app reads that class — there is not one
-          `dark:` utility in the codebase — so the control changed a stylesheet
-          hook and no pixels. A switch that does nothing is worse than no switch,
-          and it is the first thing anyone taps in a Settings screen.
-
-          The hook that stores the preference is left in place, so the day the
-          palette exists this is a UI change and nothing more.
-        */}
-        {/*
-          How many this unit seats.
-          
-          The rate card carries one figure per vehicle class, and it was applied
-          to every trike — so a sidecar built for two was offered parties of six
-          and had to decline them. This is the rider's own measurement, bounded
-          by the class ceiling because that ceiling is the franchise limit.
-          
-          A row of numbers rather than a text field: the range is small, the
-          choice is exact, and a rider setting this is doing it once, on a phone,
-          probably parked.
-        */}
         {driver && onSeatCapacityChange && (
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-            <p className="border-b border-gray-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <div className="overflow-hidden rounded-card border border-cream-300 bg-cream-50 shadow-xs">
+            <p className="kicker-label border-b border-cream-300 px-4 py-2.5">
               Seats in your unit
             </p>
             <div className="flex flex-wrap gap-2 p-3">
@@ -417,10 +382,10 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                     key={n}
                     onClick={() => onSeatCapacityChange(n)}
                     aria-pressed={active}
-                    className={`h-12 min-w-12 flex-1 rounded-xl text-sm font-bold tabular-nums transition active:scale-95 ${
+                    className={`h-12 min-w-12 flex-1 rounded-card text-sm font-display font-bold tabular-nums transition active:scale-95 ${
                       active
-                        ? 'bg-gray-900 text-white'
-                        : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                        ? 'bg-trike-gold text-trust-slate shadow-xs'
+                        : 'border border-cream-300 bg-cream-100 text-cream-700 hover:bg-cream-200'
                     }`}
                   >
                     {n}
@@ -428,7 +393,7 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                 );
               })}
             </div>
-            <p className="border-t border-gray-100 px-4 py-2.5 text-[11px] font-medium text-gray-500">
+            <p className="border-t border-cream-300 px-4 py-2.5 text-[11px] font-sans font-medium text-cream-600">
               Dispatch will not offer you a party larger than this, and a trip that
               would overfill the trike is never sent. The maximum for a{' '}
               {vehicleDetail(driver.vehicleType).title.toLowerCase()} is {seatCeiling}.
@@ -437,13 +402,13 @@ export const MenuPage: React.FC<MenuPageProps> = ({
         )}
 
         {saved && (
-          <p className="rounded-xl bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+          <p className="rounded-card bg-sampaguita-green/15 border border-sampaguita-green/30 px-3 py-2 text-[11px] font-sans font-bold text-sampaguita-green">
             {saved}
           </p>
         )}
 
-        <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          <p className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+        <div className="divide-y divide-cream-200 overflow-hidden rounded-card border border-cream-300 bg-cream-50 shadow-xs">
+          <p className="kicker-label px-4 py-2.5">
             Account
           </p>
 
@@ -455,12 +420,12 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                 onChange={(e) => setContact(e.target.value)}
                 inputMode="tel"
                 placeholder="Contact number"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                className="w-full rounded-card border border-cream-300 bg-cream-50 px-3 py-2.5 text-sm font-sans text-trust-slate outline-none focus:border-trike-gold"
               />
-              {formError && <p className="text-[11px] font-semibold text-rose-600">{formError}</p>}
+              {formError && <p className="text-[11px] font-sans font-bold text-sunset-coral">{formError}</p>}
               <div className="flex gap-2 pt-1">
-                <button onClick={closeForm} className="h-10 flex-1 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600">Cancel</button>
-                <button onClick={submitContact} disabled={saving} className="h-10 flex-1 rounded-xl bg-gray-900 text-xs font-semibold text-amber-400 disabled:opacity-50">
+                <button onClick={closeForm} className="h-10 flex-1 rounded-pill border border-cream-300 text-xs font-display font-semibold text-cream-700 hover:bg-cream-200">Cancel</button>
+                <button onClick={submitContact} disabled={saving} className="btn-primary h-10 flex-1 text-xs font-display font-bold shadow-xs disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>
@@ -471,20 +436,20 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                 setEditing('contact');
                 setSaved(null);
               }}
-              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-cream-100"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-cream-200 text-trust-slate">
                 <Phone className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-gray-900">
+                <span className="block text-sm font-display font-bold text-trust-slate">
                   Change contact number
                 </span>
-                <span className="block truncate text-[11px] text-gray-400">
+                <span className="block truncate text-[11px] font-sans text-cream-600">
                   {user.contact_number || 'Not set'}
                 </span>
               </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+              <ChevronRight className="h-4 w-4 shrink-0 text-cream-400" />
             </button>
           )}
 
@@ -496,19 +461,19 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Current password"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                className="w-full rounded-card border border-cream-300 bg-cream-50 px-3 py-2.5 text-sm font-sans text-trust-slate outline-none focus:border-trike-gold"
               />
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="New password (min 8 characters)"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-amber-400"
+                className="w-full rounded-card border border-cream-300 bg-cream-50 px-3 py-2.5 text-sm font-sans text-trust-slate outline-none focus:border-trike-gold"
               />
-              {formError && <p className="text-[11px] font-semibold text-rose-600">{formError}</p>}
+              {formError && <p className="text-[11px] font-sans font-bold text-sunset-coral">{formError}</p>}
               <div className="flex gap-2 pt-1">
-                <button onClick={closeForm} className="h-10 flex-1 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600">Cancel</button>
-                <button onClick={submitPassword} disabled={saving} className="h-10 flex-1 rounded-xl bg-gray-900 text-xs font-semibold text-amber-400 disabled:opacity-50">
+                <button onClick={closeForm} className="h-10 flex-1 rounded-pill border border-cream-300 text-xs font-display font-semibold text-cream-700 hover:bg-cream-200">Cancel</button>
+                <button onClick={submitPassword} disabled={saving} className="btn-primary h-10 flex-1 text-xs font-display font-bold shadow-xs disabled:opacity-50">
                   {saving ? 'Saving...' : 'Change'}
                 </button>
               </div>
@@ -519,18 +484,18 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                 setEditing('password');
                 setSaved(null);
               }}
-              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-gray-50"
+              className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition hover:bg-cream-100"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-cream-200 text-trust-slate">
                 <KeyRound className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-gray-900">Change password</span>
-                <span className="block truncate text-[11px] text-gray-400">
+                <span className="block text-sm font-display font-bold text-trust-slate">Change password</span>
+                <span className="block truncate text-[11px] font-sans text-cream-600">
                   Requires your current password
                 </span>
               </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+              <ChevronRight className="h-4 w-4 shrink-0 text-cream-400" />
             </button>
           )}
         </div>
@@ -538,21 +503,21 @@ export const MenuPage: React.FC<MenuPageProps> = ({
         {canUseRiderMode && (
           <button
             onClick={onToggleDriverMode}
-            className="flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-left transition active:scale-[0.99]"
+            className="flex w-full items-center gap-3 rounded-card border border-cream-300 bg-cream-50 p-4 text-left transition hover:bg-cream-100 shadow-xs active:scale-[0.99]"
           >
-            <UserCheck className="h-5 w-5 shrink-0 text-amber-600" />
-            <span className="flex-1 text-sm font-semibold text-gray-900">
-              {isDriverMode ? 'Switch to Passenger' : 'Switch to Rider Mode'}
+            <UserCheck className="h-5 w-5 shrink-0 text-trike-gold" />
+            <span className="flex-1 text-sm font-display font-bold text-trust-slate">
+              {isDriverMode ? 'Switch to Passenger Mode' : 'Switch to Driver Mode'}
             </span>
-            <ChevronRight className="h-4 w-4 text-gray-300" />
+            <ChevronRight className="h-4 w-4 text-cream-400" />
           </button>
         )}
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <p className="text-xs font-semibold text-gray-900">Location</p>
-          <p className="mt-1 text-[11px] text-gray-500">
+        <div className="rounded-card border border-cream-300 bg-cream-50 p-4 shadow-xs">
+          <p className="text-xs font-display font-bold text-trust-slate">Location</p>
+          <p className="mt-1 text-[11px] font-sans text-cream-600">
             GentleTrike uses your device location to set your pickup and to measure how far
-            riders are. It is granted through your browser and can be revoked there.
+            drivers are. It is granted through your browser and can be revoked there.
           </p>
         </div>
       </div>
@@ -573,22 +538,21 @@ export const MenuPage: React.FC<MenuPageProps> = ({
 
   return (
     <div className="space-y-3 pb-2">
-      {/* Identity, with the number instead of a role the user already knows. */}
-      <div className="gt-rise flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3.5">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-yellow-400 text-base font-bold text-gray-900">
+      {/* Identity card */}
+      <div className="gt-rise flex items-center gap-3 rounded-card border border-cream-300 bg-cream-50 p-4 shadow-xs">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-card bg-trike-gold text-base font-display font-extrabold text-trust-slate shadow-xs">
           {user.name.charAt(0).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-gray-900">{user.name}</p>
-          <p className="truncate text-[11px] text-gray-500">
+          <p className="truncate text-sm font-display font-bold text-trust-slate">{user.name}</p>
+          <p className="truncate text-[11px] font-sans text-cream-600">
             {user.contact_number || 'No contact number on file'}
             {driver ? ` · ${driver.unitNumber}` : ''}
           </p>
         </div>
       </div>
 
-      {/* A rider's day, moved off the Drive tab. Read once or twice a shift,
-          which is what the Menu is for. */}
+      {/* A rider's day, moved off the Drive tab */}
       {riderToday && <div className="gt-rise" style={{ animationDelay: '60ms' }}>{riderToday}</div>}
 
       <div className="space-y-2">
@@ -597,28 +561,28 @@ export const MenuPage: React.FC<MenuPageProps> = ({
             key={key}
             onClick={() => go(key)}
             style={{ animationDelay: `${110 + index * 40}ms` }}
-            className="gt-rise group flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md active:scale-[0.99]"
+            className="gt-rise group flex w-full items-center gap-3 rounded-card border border-cream-300 bg-cream-50 px-4 py-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-trike-gold hover:shadow-md active:scale-[0.99]"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-500 transition-colors group-hover:bg-yellow-400 group-hover:text-gray-900">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card bg-cream-200 text-trust-slate transition-colors group-hover:bg-trike-gold group-hover:text-trust-slate">
               <Icon className="h-4 w-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-gray-900">{label}</span>
-              <span className="block truncate text-[11px] text-gray-400">{hint}</span>
+              <span className="block text-sm font-display font-bold text-trust-slate">{label}</span>
+              <span className="block truncate text-[11px] font-sans text-cream-600">{hint}</span>
             </span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-transform group-hover:translate-x-0.5 group-hover:text-amber-500" />
+            <ChevronRight className="h-4 w-4 shrink-0 text-cream-400 transition-transform group-hover:translate-x-0.5 group-hover:text-trike-gold" />
           </button>
         ))}
       </div>
 
-      {/* At the root, where people look for it. */}
+      {/* At the root, where people look for it */}
       <button
         onClick={onLogout}
         style={{ animationDelay: '280ms' }}
-        className="gt-rise flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-rose-200 hover:bg-rose-50 hover:shadow-md active:scale-[0.99]"
+        className="gt-rise flex w-full items-center gap-3 rounded-card border border-sunset-coral/30 bg-cream-50 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-sunset-coral hover:bg-sunset-coral/10 hover:shadow-md active:scale-[0.99]"
       >
-        <LogOut className="h-5 w-5 shrink-0 text-rose-500" />
-        <span className="flex-1 text-sm font-semibold text-rose-600">Sign out</span>
+        <LogOut className="h-5 w-5 shrink-0 text-sunset-coral" />
+        <span className="flex-1 text-sm font-display font-bold text-sunset-coral">Sign out</span>
       </button>
     </div>
   );

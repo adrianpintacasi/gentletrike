@@ -59,9 +59,9 @@ export function StaffLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-blue-100 flex flex-col font-sans text-gray-900 antialiased">
+    <div className="min-h-screen bg-cream-100 flex flex-col font-sans text-trust-slate antialiased">
       <main className="flex-1 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl border border-blue-100 shadow-lg p-6 md:p-8 animate-fadeIn">
+        <div className="w-full max-w-md bg-cream-50 rounded-[28px] border border-cream-300 shadow-xl p-6 md:p-8 animate-fadeIn">
           <div className="text-center mb-6">
             <img
               src="/GentleTrike.png"
@@ -69,15 +69,15 @@ export function StaffLoginPage() {
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
               }}
-              className="inline-block w-14 h-14 object-contain rounded-2xl border border-amber-200 bg-white shadow-sm mb-3"
+              className="inline-block w-14 h-14 object-contain rounded-card border border-cream-300 bg-cream-50 shadow-xs mb-3"
             />
-            <h2 className="text-2xl font-black text-gray-900">Admin Portal</h2>
-            <p className="text-sm text-gray-500 mt-1.5 font-medium">Authorized TMO personnel only.</p>
+            <h2 className="text-2xl font-display font-black text-trust-slate">Admin Portal</h2>
+            <p className="text-sm font-sans text-cream-600 mt-1.5 font-medium">Authorized TMO personnel only.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="employeeId" className="block text-xs font-bold text-gray-700 mb-1.5">
+              <label htmlFor="employeeId" className="kicker-label block mb-1.5">
                 Employee ID
               </label>
               <input
@@ -87,13 +87,13 @@ export function StaffLoginPage() {
                 autoComplete="username"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3.5 py-2.5 rounded-card border border-cream-300 bg-cream-50 text-sm font-sans text-trust-slate focus:outline-none focus:ring-2 focus:ring-trike-gold focus:border-trike-gold"
                 placeholder="e.g. TMO-104"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-xs font-bold text-gray-700 mb-1.5">
+              <label htmlFor="password" className="kicker-label block mb-1.5">
                 Password
               </label>
               <input
@@ -103,27 +103,27 @@ export function StaffLoginPage() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3.5 py-2.5 rounded-card border border-cream-300 bg-cream-50 text-sm font-sans text-trust-slate focus:outline-none focus:ring-2 focus:ring-trike-gold focus:border-trike-gold"
                 placeholder="Enter your password"
               />
             </div>
 
             {error && (
-              <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
+              <p className="text-xs font-sans font-bold text-sunset-coral bg-sunset-coral/15 border border-sunset-coral/30 rounded-card px-3 py-2.5">
                 {error}
               </p>
             )}
 
             {blockedMsg && (
-              <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 space-y-2">
-                <p className="text-xs font-bold text-orange-800">{blockedMsg}</p>
+              <div className="rounded-card border border-sunset-coral/30 bg-cream-100 p-3.5 space-y-2">
+                <p className="text-xs font-sans font-bold text-sunset-coral">{blockedMsg}</p>
                 {alreadyPending || appealState === 'done' ? (
-                  <p className="text-xs font-bold text-emerald-700">
+                  <p className="text-xs font-sans font-bold text-sampaguita-green">
                     ⏳ Waiting for request approval — your reactivation request is under review by the TMO.
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    <label className="block text-[11px] font-bold text-orange-800">
+                    <label className="kicker-label block">
                       Request reactivation — tell the TMO why:
                     </label>
                     <textarea
@@ -131,14 +131,14 @@ export function StaffLoginPage() {
                       value={appealReason}
                       onChange={(e) => setAppealReason(e.target.value)}
                       placeholder="Explain why your account should be reactivated..."
-                      className="w-full px-3 py-2 rounded-lg border border-orange-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-orange-400"
+                      className="w-full px-3 py-2 rounded-card border border-cream-300 bg-cream-50 text-xs font-sans font-medium text-trust-slate focus:outline-none focus:ring-2 focus:ring-trike-gold"
                     />
-                    {appealError && <p className="text-xs font-bold text-red-600">{appealError}</p>}
+                    {appealError && <p className="text-xs font-sans font-bold text-sunset-coral">{appealError}</p>}
                     <button
                       type="button"
                       onClick={handleAppeal}
                       disabled={appealState === 'submitting'}
-                      className="w-full py-2 rounded-lg bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-white font-bold text-xs transition"
+                      className="btn-primary w-full py-2 text-xs font-display font-bold shadow-xs disabled:opacity-60"
                     >
                       {appealState === 'submitting' ? 'Submitting...' : 'Submit reactivation request'}
                     </button>
@@ -150,16 +150,16 @@ export function StaffLoginPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-sm transition shadow-sm active:scale-[0.98] flex items-center justify-center gap-2"
+              className="btn-primary w-full py-3.5 text-sm font-display font-extrabold shadow-md flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <LogIn className="w-4 h-4" />
               {isSubmitting ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 
-          <p className="text-center text-xs text-gray-500 mt-6 font-medium">
+          <p className="text-center text-xs font-sans text-cream-600 mt-6 font-medium">
             Not staff?{' '}
-            <a href="/" className="text-blue-700 font-bold underline hover:text-blue-800">
+            <a href="/" className="text-trust-slate font-display font-bold underline hover:text-trike-gold">
               Go to the passenger &amp; rider app
             </a>
           </p>
