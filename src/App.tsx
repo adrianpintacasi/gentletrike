@@ -118,9 +118,10 @@ export default function App() {
     );
   }
 
+  const path = window.location.pathname.replace(/\/+$/, '');
+
   if (!user) {
     // Admins/staff have their own isolated door at /staff.
-    const path = window.location.pathname.replace(/\/+$/, '');
     return path === '/staff' ? <StaffLoginPage /> : <AuthPage />;
   }
 
@@ -128,6 +129,12 @@ export default function App() {
   // no passenger/rider chrome or app navbar).
   if (user.role === 'admin') {
     return <AdminDashboard />;
+  }
+
+  // If a passenger/rider navigates directly to the staff portal, let them see
+  // the login page rather than swallowing the route and showing them the map.
+  if (path === '/staff') {
+    return <StaffLoginPage />;
   }
 
   return <MainApp user={user} onLogout={() => void logout()} />;
