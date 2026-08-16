@@ -13,6 +13,7 @@ import {
   Minus,
   X,
   CheckCircle,
+  Check,
   Phone,
   MessageSquare,
   AlertTriangle,
@@ -397,118 +398,47 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
               </p>
             </div>
           ) : (
-            /* One request per card, laid out top to bottom: where the trip
-               goes, what it is worth, then the two decisions. The previous
-               single-row layout truncated both place names to a few characters
-               and put Accept beside Decline at thumb width, which is the pair
-               you least want to mis-tap. */
-            <div className="space-y-3">
-              {activeRequests.map((req) => {
-                const isCharter = isExclusiveTrip(req.vehicleType);
-
-                return (
-                /* Kept deliberately short — a rider scans this list on a phone,
-                   so fitting three or four trips on screen matters more than
-                   breathing room. Route, price and both actions in three rows. */
-                <div
-                  key={req.id}
-                  className={`rounded-xl border p-3 transition hover:shadow-md ${
-                    isCharter
-                      ? 'border-2 border-indigo-300 bg-indigo-50 hover:border-indigo-400'
-                      : 'border-gray-200 bg-white hover:border-amber-400 hover:bg-amber-50'
-                  }`}
-                >
-                  {/* A charter is a different deal, not just a different price:
-                      the fare is flat, the party hires the whole vehicle, and
-                      accepting it means taking no one else. Worth saying before
-                      a rider taps Accept, not after. */}
-                  {isCharter && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-white">
-                      <Users className="h-3 w-3 shrink-0" />
-                      <span>Pakyaw charter · whole vehicle, no other passengers</span>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2.5">
-                    <div className="flex flex-col items-center pt-1">
-                      <span className="h-2 w-2 rounded-full border-2 border-emerald-600" />
-                      <span className="my-0.5 w-px flex-1 bg-gray-300" />
-                      <span className="h-2 w-2 rounded-full bg-red-600" />
-                    </div>
-
-                    {/* Full names on two lines. Truncating to one word turned
-                        "Doctor Venancio Aldecoa Drive" into "Doctor". */}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold leading-snug text-gray-900">
-                        {req.pickupLocation.name}
-                      </p>
-                      <p className="truncate text-[13px] font-bold leading-snug text-gray-900">
-                        {req.dropoffLocation.name}
-                      </p>
-                    </div>
-
-                    <div className="shrink-0 text-right leading-none">
-                      <p className="text-lg font-extrabold text-gray-900">₱{req.totalFare}</p>
-                      <p className="mt-0.5 text-[9px] font-bold uppercase text-gray-400">
-                        {req.paymentMethod}
-                      </p>
-                    </div>
+            /*
+              A list, not a stack of cards.
+              
+              Each offer used to be a full card with its own header, route
+              block, metadata row and pair of buttons — repeated below the
+              floating card showing the same trip, so the top request appeared
+              twice on one screen at two different sizes. This is the parked
+              view: one scannable row per offer, with the same two decisions.
+            */
+            <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200">
+              {activeRequests.map((req) => (
+                <div key={req.id} className="flex items-center gap-3 px-3.5 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-semibold text-gray-500">
+                      {req.pickupLocation.name}
+                    </p>
+                    <p className="truncate text-sm font-bold text-gray-900">
+                      {req.dropoffLocation.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-semibold text-gray-400 tabular-nums">
+                      ₱{req.totalFare} · {req.distanceKm} km · {req.passengers} pax
+                      {isExclusiveTrip(req.vehicleType) ? ' · pakyaw' : ''}
+                    </p>
                   </div>
 
-                  {/* Plain text rather than chips — same information, roughly a
-                      third of the height. */}
-                  <p className="mt-1.5 truncate text-[11px] font-bold text-gray-500">
-                    {typeof req.detourKm === 'number' && (
-                      <span
-                        className={
-                          acceptedPooledRides.length === 0 || req.alongTheWay
-                            ? 'text-emerald-700'
-                            : 'text-amber-700'
-                        }
-                      >
-                        {acceptedPooledRides.length === 0
-                          ? `${Math.round((req.pickupDistanceKm ?? 0) * 1000)} m away`
-                          : req.alongTheWay
-                            ? `on route +${Math.round(req.detourKm * 1000)} m`
-                            : `+${Math.round(req.detourKm * 1000)} m off route`}
-                        {' · '}
-                      </span>
-                    )}
-                    {req.passengers} pax · {req.distanceKm} km
-                    {isCharter && ' · flat fare, not per passenger'}
-                    {req.notes ? ` · "${req.notes}"` : ''}
-                  </p>
-
-                  {/* 48px targets: larger touch targets for rapid driver decisions.
-                      Accept takes the remaining width so the destructive choice
-                      is never the easier tap. */}
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={() => onDeclineRequest(req.id)}
-                      className="flex h-12 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-700 transition active:scale-95 hover:bg-rose-200 hover:border-rose-400 hover:shadow-sm"
-                    >
-                      <X className="h-4 w-4" />
-                      <span>Decline</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        // Earnings and trip count are credited on completion,
-                        // not on acceptance — otherwise every ride counts twice.
-                        onAcceptRequest(req.id);
-                      }}
-                      className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-lg text-base font-extrabold shadow-sm transition active:scale-95 hover:shadow-md ${
-                        isCharter
-                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                          : 'bg-amber-400 text-gray-900 hover:bg-amber-500'
-                      }`}
-                    >
-                      <Plus className="h-5 w-5" />
-                      <span>{isCharter ? `Accept charter · ₱${req.totalFare}` : 'Accept'}</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => onDeclineRequest(req.id)}
+                    aria-label="Decline this trip"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-400 transition active:scale-95 hover:bg-gray-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => onAcceptRequest(req.id)}
+                    className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-white transition active:scale-95 hover:bg-emerald-600"
+                  >
+                    <Check className="h-4 w-4" />
+                    Accept
+                  </button>
                 </div>
-                );
-              })}
+              ))}
             </div>
           )}
         </div>

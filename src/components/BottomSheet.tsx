@@ -76,8 +76,21 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   const [viewportH, setViewportH] = React.useState(() =>
     typeof window === 'undefined' ? 800 : window.innerHeight
   );
-  /** Non-null only while a finger is down; drives the live drag offset. */
-  const [dragOffset, setDragOffset] = React.useState<number | null>(null);
+  /*
+   * The drag is driven imperatively, not through state.
+   *
+   * It used to setState on every pointermove, which re-rendered the sheet and
+   * everything inside it — the whole booking panel, or the whole rider queue —
+   * sixty times a second. The finger outran React, so the sheet stuttered
+   * mid-drag, and worse: pointerup read the offset from a render closure that
+   * had not caught up, computed the wrong travel, and settled on the wrong
+   * snap. That is why a drag upward sometimes fell straight back to peek.
+   *
+   * The live offset lives in a ref and is written straight to the transform.
+   * React is told once, on release.
+   */
+  const offsetRef = React.useRef(0);
+  const draggingRef = React.useRef(false);
   const dragStart = React.useRef<{ y: number; offset: number } | null>(null);
 
   React.useEffect(() => {
@@ -138,20 +151,40 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   const maxOffset = offsetFor('peek');
 
   const settledOffset = offsetFor(snap);
-  const currentOffset = dragOffset ?? settledOffset;
-  const visibleHeight = fullHeight - currentOffset;
+  const visibleHeight = fullHeight - settledOffset;
+
+  /** Write the sheet's position without going through React. */
+  const applyOffset = (px: number, animate: boolean) => {
+    const el = sheetRef.current;
+    if (!el) return;
+    el.style.transition = animate
+      ? 'transform 260ms cubic-bezier(0.32, 0.72, 0, 1)'
+      : 'none';
+    el.style.transform = `translateY(${px}px)`;
+    offsetRef.current = px;
+  };
+
+  // Settle wherever the snap says, whenever the snap or the geometry changes —
+  // and never mid-drag, which would fight the finger.
+  React.useLayoutEffect(() => {
+    if (draggingRef.current) return;
+    applyOffset(settledOffset, true);
+  }, [settledOffset]);
 
   // Report only the settled height. Emitting on every drag frame would make the
   // map recompute its padding dozens of times a second for no visual gain.
   React.useEffect(() => {
-    onHeightChange?.(fullHeight - settledOffset + bottomOffset);
-  }, [settledOffset, fullHeight, bottomOffset, onHeightChange]);
+    onHeightChange?.(visibleHeight + bottomOffset);
+  }, [visibleHeight, bottomOffset, onHeightChange]);
 
   const onPointerDown = (event: React.PointerEvent) => {
-    // Ignore the second finger of a pinch; one drag at a time.
-    if (dragStart.current) return;
-    dragStart.current = { y: event.clientY, offset: currentOffset };
-    setDragOffset(currentOffset);
+    // A press on a control is a press on that control. Without this, every
+    // button in the pinned row would swallow its own tap into a drag.
+    if ((event.target as HTMLElement).closest('button,a,input,textarea,select')) return;
+    if (dragStart.current) return; // ignore the second finger of a pinch
+
+    dragStart.current = { y: event.clientY, offset: offsetRef.current };
+    draggingRef.current = true;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
 
@@ -159,20 +192,21 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     const start = dragStart.current;
     if (!start) return;
     const next = start.offset + (event.clientY - start.y);
-    setDragOffset(Math.min(maxOffset, Math.max(0, next)));
+    applyOffset(Math.min(maxOffset, Math.max(0, next)), false);
   };
 
   const onPointerUp = (event: React.PointerEvent) => {
     const start = dragStart.current;
     if (!start) return;
     dragStart.current = null;
+    draggingRef.current = false;
 
-    const released = dragOffset ?? start.offset;
+    const released = offsetRef.current;
     const travelled = released - start.offset;
 
     // A decisive flick moves one stop even when it did not cross the midpoint;
     // otherwise settle on whichever snap the sheet is physically closest to.
-    const FLICK_PX = 48;
+    const FLICK_PX = 40;
     let target: SheetSnap;
 
     if (Math.abs(travelled) > FLICK_PX) {
@@ -187,9 +221,17 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
       );
     }
 
-    setDragOffset(null);
+    // Move now rather than waiting for the parent to echo the new snap back —
+    // if the target equals the current snap, no prop changes and the layout
+    // effect above never fires, leaving the sheet wherever the finger left it.
+    applyOffset(offsetFor(target), true);
     onSnapChange(target);
-    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+
+    try {
+      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+    } catch {
+      /* the pointer was already released */
+    }
   };
 
   /** Tapping the grabber cycles up, then wraps back to peek from full. */
@@ -205,41 +247,43 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
       style={{
         bottom: 0,
         height: fullHeight,
-        transform: `translateY(${currentOffset}px)`,
-        // No transition mid-drag: the sheet must track the finger exactly.
-        transition: dragOffset === null ? 'transform 260ms cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
-        // Its own compositor layer. Without this every drag frame repaints the
-        // whole sheet — the map behind it makes that expensive, and it is what
-        // the drag felt like: heavy rather than broken.
+        // Position is written imperatively by applyOffset; this is only the
+        // value React renders with before the layout effect runs.
+        transform: `translateY(${settledOffset}px)`,
+        // Its own compositor layer, so a drag frame composites rather than
+        // repainting the sheet over a live map.
         willChange: 'transform',
       }}
     >
       {/* Drag zone. `touch-action: none` stops the browser claiming the gesture
           for a page scroll before the pointer handlers ever see it. */}
+      {/* The grab area is the grabber and the pinned row together. A 32px strip
+          was the only draggable part of a sheet several hundred pixels tall,
+          which is what "hard to drag" meant. Presses that land on a control are
+          let through to it — see onPointerDown. */}
       <div
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className="shrink-0 cursor-grab touch-none pb-2 pt-3 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none active:cursor-grabbing"
       >
+        <div className="pb-2 pt-3">
         {/* The visible grabber is 6px tall; the target around it is the whole
             strip, because a 6px target on a moving vehicle is not a target. */}
-        <button
-          onClick={cycleSnap}
-          aria-label={`Sheet is ${snap}. Tap to expand.`}
-          className="mx-auto block h-1.5 w-12 rounded-full bg-gray-300 transition hover:bg-gray-400"
-        />
-      </div>
-
-      {/* Padded clear of the floating tab bar. Without this the pill lands on
-          top of the one row that must never be covered — the row exists so a
-          rider does not have to open the sheet while driving. */}
-      {pinned && (
-        <div ref={pinnedRef} className="shrink-0 px-5 pb-2 sm:px-6">
-          {pinned}
+          <button
+            onClick={cycleSnap}
+            aria-label={`Sheet is ${snap}. Tap to expand.`}
+            className="mx-auto block h-1.5 w-12 rounded-full bg-gray-300 transition hover:bg-gray-400"
+          />
         </div>
-      )}
+
+        {pinned && (
+          <div ref={pinnedRef} className="px-5 pb-2 sm:px-6">
+            {pinned}
+          </div>
+        )}
+      </div>
 
       {/* The only scrollable region in the entire mobile layout. The bottom
           padding is the tab bar's height, so the last row can be scrolled clear

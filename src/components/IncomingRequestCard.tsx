@@ -81,24 +81,47 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
   const isCharter = isExclusiveTrip(ride.vehicleType);
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-4 pt-4">
-      <div className="pointer-events-auto w-full max-w-md">
-        {/* The intent rails. They brighten as the card is pushed toward one, so
-            the gesture says what it will do before it is finished. */}
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-4 pt-3">
+      <div className="pointer-events-auto w-full max-w-sm">
         <div className="relative">
+          {/* The rest of the queue, as a physical stack behind the top card.
+              Two slips of paper are enough to say "there are more" — a number
+              alone reads as a badge, and a rider glancing down understands a
+              pile without decoding it. */}
+          {remaining > 0 && (
+            <div
+              aria-hidden
+              className="absolute inset-x-3 -bottom-1.5 h-full rounded-2xl bg-gray-900/60 ring-1 ring-white/10"
+            />
+          )}
+          {remaining > 1 && (
+            <div
+              aria-hidden
+              className="absolute inset-x-6 -bottom-3 h-full rounded-2xl bg-gray-900/40 ring-1 ring-white/5"
+            />
+          )}
+
+          {/* Intent rails: they brighten as the card is pushed toward one, so
+              the gesture says what it will do before it is finished. */}
           <div
             className="absolute inset-0 flex items-center justify-between rounded-2xl px-5"
             style={{
               background:
                 leaning === 'accept'
-                  ? `rgba(16,185,129,${0.15 + progress * 0.5})`
+                  ? `rgba(16,185,129,${0.2 + progress * 0.55})`
                   : leaning === 'decline'
-                  ? `rgba(244,63,94,${0.15 + progress * 0.5})`
-                  : 'transparent',
+                    ? `rgba(244,63,94,${0.2 + progress * 0.55})`
+                    : 'transparent',
             }}
           >
-            <X className="h-5 w-5 text-rose-700" style={{ opacity: leaning === 'decline' ? progress : 0 }} />
-            <Check className="h-5 w-5 text-emerald-700" style={{ opacity: leaning === 'accept' ? progress : 0 }} />
+            <X
+              className="h-6 w-6 text-white"
+              style={{ opacity: leaning === 'decline' ? progress : 0 }}
+            />
+            <Check
+              className="h-6 w-6 text-white"
+              style={{ opacity: leaning === 'accept' ? progress : 0 }}
+            />
           </div>
 
           <div
@@ -106,44 +129,26 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            className="relative touch-pan-y rounded-2xl bg-gray-900 p-3.5 shadow-2xl ring-1 ring-white/10"
+            className="relative touch-pan-y rounded-2xl bg-gray-900 px-4 py-3 shadow-2xl ring-1 ring-white/10"
             style={{
               transform: `translateX(${dragX}px) rotate(${dragX * 0.02}deg)`,
               transition: dragStart.current === null ? 'transform 200ms ease-out' : 'none',
               opacity: committing ? 0 : 1,
+              willChange: 'transform',
             }}
           >
-            {/* One line of identity, so the card can start with the trip. */}
-            <div className="mb-2 flex items-center gap-2">
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-70" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400">
-                New request
-              </span>
-              {isCharter && (
-                <span className="rounded bg-amber-400 px-1.5 py-0.5 text-[9px] font-bold text-gray-900">
-                  PAKYAW
-                </span>
-              )}
-              <span className="ml-auto flex items-center gap-2 text-[11px] font-bold text-gray-400 tabular-nums">
-                <span>{ride.distanceKm} km</span>
-                <span>{ride.passengers} pax</span>
-                {remaining > 0 && (
-                  <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-amber-400">
-                    +{remaining}
-                  </span>
-                )}
-              </span>
-            </div>
-
-            {/* The trip and the money, on one row. These are the only two facts
-                a decision needs, so they get the whole width and the largest
-                type on the card — the rest is reference. */}
-            <div className="mb-3 flex items-end gap-3">
+            {/*
+              Everything a rider needs to say yes or no, and nothing else.
+              
+              This card was a header, a two-line route, a row of metadata, two
+              full-width buttons and a hint — tall enough to cover a third of
+              the map it was floating over, and repeating a queue that was
+              already open below. Where they are going and what it pays is the
+              decision; the rest is available in the sheet once parked.
+            */}
+            <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold leading-tight text-gray-300">
+                <p className="truncate text-[13px] font-semibold leading-tight text-gray-400">
                   {ride.pickupLocation.name}
                 </p>
                 <p className="flex items-center gap-1 truncate text-[15px] font-bold leading-tight text-white">
@@ -151,34 +156,44 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
                   {ride.dropoffLocation.name}
                 </p>
               </div>
-              <p className="shrink-0 text-2xl font-bold leading-none text-amber-400 tabular-nums">
-                ₱{ride.totalFare}
-              </p>
+              <div className="shrink-0 text-right">
+                <p className="text-xl font-bold leading-none text-amber-400 tabular-nums">
+                  ₱{ride.totalFare}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold text-gray-500 tabular-nums">
+                  {ride.distanceKm} km · {ride.passengers} pax
+                </p>
+              </div>
             </div>
 
-            {/* Decline is deliberately the smaller target: a mis-tap that turns
-                work away costs the rider money, a mis-tap that accepts costs
-                them a short detour. */}
-            <div className="flex gap-2">
+            {/* Swipe is the primary gesture. These stay for anyone who would
+                rather aim, and are sized to be hit without looking. */}
+            <div className="mt-2.5 flex items-center gap-2">
               <button
                 onClick={() => commit('decline')}
                 aria-label="Decline this trip"
-                className="flex h-14 w-16 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-400 transition active:scale-95 hover:bg-white/10"
+                className="flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-400 transition active:scale-95 hover:bg-white/10"
               >
-                <X className="h-6 w-6" />
+                <X className="h-5 w-5" />
               </button>
               <button
                 onClick={() => commit('accept')}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 text-base font-bold text-white shadow-sm transition active:scale-95 hover:bg-emerald-400"
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 text-sm font-bold text-white transition active:scale-95 hover:bg-emerald-400"
               >
-                <Check className="h-5 w-5" />
+                <Check className="h-4 w-4" />
                 Accept
+                {isCharter && (
+                  <span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-bold">
+                    PAKYAW
+                  </span>
+                )}
               </button>
+              {remaining > 0 && (
+                <span className="shrink-0 rounded-xl border border-white/10 px-2.5 py-2 text-[11px] font-bold text-gray-400 tabular-nums">
+                  +{remaining}
+                </span>
+              )}
             </div>
-
-            <p className="mt-2 text-center text-[10px] font-semibold text-gray-600">
-              swipe right to accept · left to decline
-            </p>
           </div>
         </div>
       </div>
