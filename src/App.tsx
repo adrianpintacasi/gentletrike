@@ -429,6 +429,71 @@ function MainApp({
   }, [user.role, myDriver, enterDriverMode]);
 
 
+  /*
+   * Ask iOS for the compass, on the first tap anywhere.
+   *
+   * Safari only delivers orientation events after an explicit grant, and the
+   * request must originate in a user gesture — so it was wired to the tap that
+   * enters rider mode. A passenger never makes that tap, which meant their
+   * arrow could not turn on an iPhone no matter what the map did with it.
+   *
+   * A one-shot listener on the first pointer down is a real gesture and costs
+   * the passenger nothing: on Android and desktop the API does not exist and
+   * this does nothing at all.
+   */
+  useEffect(() => {
+    const OrientationEvent = window.DeviceOrientationEvent as unknown as {
+      requestPermission?: () => Promise<'granted' | 'denied'>;
+    };
+    if (typeof OrientationEvent?.requestPermission !== 'function') return;
+
+    const ask = () => {
+      window.removeEventListener('pointerdown', ask);
+      OrientationEvent.requestPermission?.().catch(() => {
+        /* declined — the arrow falls back to GPS course, which still works */
+      });
+    };
+
+    window.addEventListener('pointerdown', ask, { once: true });
+    return () => window.removeEventListener('pointerdown', ask);
+  }, []);
+
+  /*
+   * A fast, coarse fix the moment the app opens.
+   *
+   * `watchPosition` runs with enableHighAccuracy, which asks the GPS chip for a
+   * precise fix and takes one to three seconds cold — long enough that the map
+   * has already opened on its fallback centre and has to jump afterwards.
+   *
+   * This asks the opposite question first: any fix, however rough, including a
+   * cached one from the last few minutes. It comes back near-instantly from
+   * wi-fi or cell positioning, which is more than good enough to decide which
+   * city to open on. The accurate watch overwrites it seconds later.
+   */
+  useEffect(() => {
+    if (simulatedLocation) return;
+    if (!('geolocation' in navigator)) return;
+
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const seed = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: null };
+        // Seeds only what is still empty — never overwrites a live fix.
+        if (isDriverMode) setMyPosition((cur) => cur ?? seed);
+        else setPassengerPosition((cur) => cur ?? seed);
+      },
+      () => {
+        /* denied or unavailable — the accurate watch will report it properly */
+      },
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 8000 }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDriverMode]);
+
   // Publish this phone's real GPS while on duty, so passengers watching the map
   // see the actual pedicab move rather than a scripted animation.
   useEffect(() => {

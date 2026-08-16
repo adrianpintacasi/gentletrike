@@ -1211,10 +1211,26 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           `;
 
         // Below the pickup and rider pins — useful context, not the subject.
-        upsertMarker(markersRef.current, 'my_passenger', map,
+        const meMarker = upsertMarker(markersRef.current, 'my_passenger', map,
           { lat: passengerLocation.lat, lng: passengerLocation.lng },
           meHtml, 'centre', { zIndex: -100, title: 'You are here' });
         live.add('my_passenger');
+
+        /*
+         * Hand this arrow to the compass, exactly as the rider's is.
+         *
+         * The listener writes to whatever element this ref holds, and it only
+         * ever held the rider's chevron — so ungating the listener alone left
+         * the passenger's arrow still turning from GPS course, which is null
+         * while standing still. This effect rebuilds the element, so it is
+         * re-grabbed and any accumulated rotation restored.
+         */
+        const meContent = meMarker.content as HTMLElement | null;
+        const meEl = meContent?.querySelector('.gt-me-arrow') as HTMLElement | null;
+        arrowElRef.current = meEl;
+        if (meEl && compassActiveRef.current) {
+          meEl.style.transform = `rotate(${arrowRotationRef.current}deg)`;
+        }
       }
     }
 
@@ -1388,10 +1404,20 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
 
 
 
-  // Rotate the rider's arrow from the phone's compass, in real time, so it
-  // points where the device faces even while standing still — like Waze.
+  /*
+   * Turn the self marker from the phone's compass, for both roles.
+   *
+   * It was gated to riders, so a passenger's arrow turned only from GPS course
+   * — which is null whenever they are not moving, which is the entire time they
+   * are standing on a road waiting to be collected. Their arrow pointed
+   * wherever they last walked, which is worse than not drawing one.
+   *
+   * Only the marker. A passenger's map stays north-up: they are reading it, not
+   * steering by it, and a map that swings while you are trying to check a pin
+   * is harder to use rather than easier. The rider's map still turns, because
+   * they are driving.
+   */
   useEffect(() => {
-    if (!isDriverMode) return;
     if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
 
     const readHeading = (e: DeviceOrientationEvent): number | null => {
@@ -1435,6 +1461,8 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
        * way the phone is pointing" is straight up the screen — so a rotating
        * arrow on a rotating map turns twice and reads as spinning.
        */
+      // When the map itself is turning to match, the marker must not: both
+      // rotating means it turns twice and reads as spinning.
       const el = arrowElRef.current;
       if (el) {
         el.style.transform = mapFollowsCompass
@@ -1459,7 +1487,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       window.removeEventListener(eventName, handleOrientation as EventListener, true);
       compassActiveRef.current = false;
     };
-  }, [isDriverMode, mapFollowsCompass]);
+  }, [mapFollowsCompass]);
 
   /**
    * Follow the user.
