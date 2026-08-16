@@ -194,11 +194,20 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     applyOffset(settledOffset, true);
   }, [settledOffset]);
 
-  // Report only the settled height. Emitting on every drag frame would make the
-  // map recompute its padding dozens of times a second for no visual gain.
+  /*
+   * How much of the map this sheet is covering.
+   *
+   * `visibleHeight` alone, not plus `bottomOffset`. The tab bar's height is
+   * already inside peek — that was the whole point of measuring it — so adding
+   * it again reported the sheet as ~84px taller than it is, and the map padded
+   * itself against an obstruction that was not there.
+   *
+   * Only the settled height is emitted. Sending it every drag frame would make
+   * the map recompute its padding dozens of times a second for no visual gain.
+   */
   React.useEffect(() => {
-    onHeightChange?.(visibleHeight + bottomOffset);
-  }, [visibleHeight, bottomOffset, onHeightChange]);
+    onHeightChange?.(visibleHeight);
+  }, [visibleHeight, onHeightChange]);
 
   const beginDrag = (event: React.PointerEvent) => {
     // A press on a control is a press on that control. Without this, every

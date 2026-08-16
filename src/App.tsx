@@ -47,6 +47,63 @@ import { useUnreadMessages } from './hooks/useUnreadMessages';
 import { Bell, X, ArrowLeft, Sparkles } from 'lucide-react';
 
 /** How often each role asks the server what changed. */
+/**
+ * Which way this phone is actually travelling, or null when it cannot be known.
+ *
+ * The old rule was "moved more than 5 metres since the last fix". Consumer GPS
+ * drifts five to fifteen metres while sitting perfectly still — more beside
+ * buildings, which is most of a city — so a parked trike produced a fresh
+ * random bearing every second or two, and the map spun on the spot.
+ *
+ * Two gates instead, in order of authority.
+ *
+ * `coords.speed` is the honest answer where the hardware supplies it: below
+ * walking pace there is no direction of travel, whatever the coordinates did,
+ * and `coords.heading` is meaningless at rest for the same reason.
+ *
+ * Where speed is unavailable, movement has to beat the measurement error rather
+ * than a fixed number. A fix accurate to +/-20m that appears to move 18m has not
+ * necessarily moved at all, so the threshold is the accuracy the device itself
+ * reports, floored at a distance no drift reaches.
+ *
+ * Returning null does not reset anything. The caller keeps the last known
+ * facing, which is what a parked vehicle should show: where it was last
+ * pointing, not north, and not a guess.
+ */
+const STOPPED_BELOW_MS = 1.4; // roughly walking pace
+const MIN_TRAVEL_M = 15;
+
+function travelHeading(
+  pos: GeolocationPosition,
+  previous: { lat: number; lng: number } | null
+): number | null {
+  const speed =
+    typeof pos.coords.speed === 'number' && !Number.isNaN(pos.coords.speed)
+      ? pos.coords.speed
+      : null;
+
+  // Known to be stopped. Nothing derived from this fix means anything.
+  if (speed !== null && speed < STOPPED_BELOW_MS) return null;
+
+  if (
+    speed !== null &&
+    typeof pos.coords.heading === 'number' &&
+    !Number.isNaN(pos.coords.heading)
+  ) {
+    return pos.coords.heading;
+  }
+
+  if (!previous) return null;
+
+  const accuracy = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : MIN_TRAVEL_M;
+  const movedMetres =
+    haversineKm(previous, { lat: pos.coords.latitude, lng: pos.coords.longitude }) * 1000;
+
+  return movedMetres > Math.max(MIN_TRAVEL_M, accuracy)
+    ? bearingDegrees(previous, { lat: pos.coords.latitude, lng: pos.coords.longitude })
+    : null;
+}
+
 const PASSENGER_POLL_MS = 2500;
 const DRIVER_POLL_MS = 3000;
 
@@ -390,19 +447,7 @@ function MainApp({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
 
-        // coords.heading is null whenever the phone is still or the hardware
-        // does not supply one, so fall back to the bearing between fixes.
-        // Ignore jitter under 5 m, which would spin the arrow while parked.
-        let heading =
-          typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)
-            ? pos.coords.heading
-            : null;
-
-        const previous = lastFixRef.current;
-        if (heading === null && previous) {
-          const movedMetres = haversineKm(previous, { lat, lng }) * 1000;
-          if (movedMetres > 5) heading = bearingDegrees(previous, { lat, lng });
-        }
+        const heading = travelHeading(pos, lastFixRef.current);
         if (heading !== null) lastHeadingRef.current = heading;
         lastFixRef.current = { lat, lng };
 
@@ -456,19 +501,7 @@ function MainApp({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
 
-        // Phones report no heading while stationary, so fall back to the
-        // bearing between fixes. Under 5 m is GPS jitter and would spin the
-        // arrow while the passenger stands still.
-        let heading =
-          typeof pos.coords.heading === 'number' && !Number.isNaN(pos.coords.heading)
-            ? pos.coords.heading
-            : null;
-
-        const previous = passengerFixRef.current;
-        if (heading === null && previous) {
-          const movedMetres = haversineKm(previous, { lat, lng }) * 1000;
-          if (movedMetres > 5) heading = bearingDegrees(previous, { lat, lng });
-        }
+        const heading = travelHeading(pos, passengerFixRef.current);
         if (heading !== null) passengerHeadingRef.current = heading;
         passengerFixRef.current = { lat, lng };
 
