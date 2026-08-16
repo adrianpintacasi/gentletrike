@@ -36,8 +36,19 @@ const SNAP_FRACTIONS: Record<Exclude<SheetSnap, 'peek'>, number> = {
   full: 0.9,
 };
 
-/** Used until the pinned row has been measured, and when there is none. */
-const PEEK_FALLBACK = 132;
+/** Height of the grabber strip above the content. */
+const GRABBER_H = 32;
+
+/**
+ * How much content peek shows when there is no pinned row to measure.
+ *
+ * A fraction, because a tall phone should reveal more than a short one, with a
+ * floor so it is never a sliver. This replaced a flat 132px that was applied at
+ * every screen size — and 132 minus the grabber minus the tab bar left 22px of
+ * usable sheet, which is why it read as broken rather than small.
+ */
+const PEEK_CONTENT_FRACTION = 0.24;
+const MIN_PEEK_CONTENT = 104;
 
 const ORDER: SheetSnap[] = ['peek', 'half', 'full'];
 
@@ -90,9 +101,13 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   const pinnedRef = React.useRef<HTMLDivElement>(null);
   const [pinnedH, setPinnedH] = React.useState(0);
 
-  React.useEffect(() => {
+  // Layout effect, not effect: the first measurement has to land before paint,
+  // or the sheet opens at the fallback height and visibly snaps to the real one.
+  React.useLayoutEffect(() => {
     const el = pinnedRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!el) return;
+    setPinnedH(el.getBoundingClientRect().height);
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => {
       setPinnedH(entry.contentRect.height);
     });
@@ -101,10 +116,18 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   }, [pinned]);
 
   const available = viewportH;
-  const GRABBER_H = 26;
-  const peekHeight = pinned
-    ? Math.round(GRABBER_H + (pinnedH || PEEK_FALLBACK - GRABBER_H) + bottomOffset + 8)
-    : PEEK_FALLBACK;
+
+  /*
+   * Peek = the grabber, the content, and the tab bar's height.
+   *
+   * That last term is the part that was missing. The pill floats over the
+   * sheet, so any peek that does not account for it is handing its bottom 84px
+   * to something that covers them.
+   */
+  const peekContent = pinned
+    ? pinnedH || MIN_PEEK_CONTENT
+    : Math.max(MIN_PEEK_CONTENT, Math.round(PEEK_CONTENT_FRACTION * available));
+  const peekHeight = Math.round(GRABBER_H + peekContent + bottomOffset + 8);
 
   const heightFor = (s: SheetSnap) =>
     s === 'peek' ? peekHeight : Math.round(SNAP_FRACTIONS[s] * available);
@@ -185,6 +208,10 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         transform: `translateY(${currentOffset}px)`,
         // No transition mid-drag: the sheet must track the finger exactly.
         transition: dragOffset === null ? 'transform 260ms cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+        // Its own compositor layer. Without this every drag frame repaints the
+        // whole sheet — the map behind it makes that expensive, and it is what
+        // the drag felt like: heavy rather than broken.
+        willChange: 'transform',
       }}
     >
       {/* Drag zone. `touch-action: none` stops the browser claiming the gesture
@@ -194,12 +221,14 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className="shrink-0 cursor-grab touch-none pt-2.5 pb-1 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none pb-2 pt-3 active:cursor-grabbing"
       >
+        {/* The visible grabber is 6px tall; the target around it is the whole
+            strip, because a 6px target on a moving vehicle is not a target. */}
         <button
           onClick={cycleSnap}
           aria-label={`Sheet is ${snap}. Tap to expand.`}
-          className="mx-auto block h-1.5 w-11 rounded-full bg-gray-300 transition hover:bg-gray-400"
+          className="mx-auto block h-1.5 w-12 rounded-full bg-gray-300 transition hover:bg-gray-400"
         />
       </div>
 
@@ -207,11 +236,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
           top of the one row that must never be covered — the row exists so a
           rider does not have to open the sheet while driving. */}
       {pinned && (
-        <div
-          ref={pinnedRef}
-          className="shrink-0 px-5 sm:px-6"
-          style={{ paddingBottom: bottomOffset > 0 ? 8 : 8 }}
-        >
+        <div ref={pinnedRef} className="shrink-0 px-5 pb-2 sm:px-6">
           {pinned}
         </div>
       )}
