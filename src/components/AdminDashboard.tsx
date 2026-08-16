@@ -17,9 +17,9 @@ import { useAuth } from '../context/AuthContext';
 type AccountStatus = 'active' | 'suspended' | 'banned';
 
 const STATUS_BADGE: Record<AccountStatus, string> = {
-  active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  suspended: 'bg-orange-50 text-orange-700 border-orange-200',
-  banned: 'bg-red-50 text-red-700 border-red-200',
+  active: 'bg-sampaguita-green/15 text-sampaguita-green border-sampaguita-green/30',
+  suspended: 'bg-sunset-coral/15 text-sunset-coral border-sunset-coral/30',
+  banned: 'bg-sunset-coral text-white border-sunset-coral',
 };
 
 /** Split a stored name when a staff account predates first/last-name fields. */
@@ -165,22 +165,22 @@ export const AdminDashboard: React.FC = () => {
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'admin':
-        return <Shield className="w-4 h-4 text-blue-500" />;
+        return <Shield className="w-4 h-4 text-trust-slate" />;
       case 'rider':
-        return <Bike className="w-4 h-4 text-amber-500" />;
+        return <Bike className="w-4 h-4 text-trike-gold" />;
       default:
-        return <UserIcon className="w-4 h-4 text-blue-500" />;
+        return <UserIcon className="w-4 h-4 text-trust-slate" />;
     }
   };
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case 'admin':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-trust-slate/10 text-trust-slate border-trust-slate/30';
       case 'rider':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
+        return 'bg-trike-gold/20 text-trust-slate border-trike-gold/40';
       default:
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-trust-slate/10 text-trust-slate border-trust-slate/30';
     }
   };
 
@@ -204,28 +204,28 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'audit' && <AuditLogPage />}
 
       {activeTab === 'users' && (
-        <div className="space-y-6 animate-fadeIn">
-          <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-gray-900">
-              <Filter className="w-4 h-4 text-gray-500" />
-              <span className="text-xs font-bold">Filter:</span>
+        <div className="space-y-6 animate-fadeIn font-sans text-trust-slate">
+          <div className="bg-cream-50 p-4 rounded-card border border-cream-300 shadow-sm flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-trust-slate">
+              <Filter className="w-4 h-4 text-cream-500" />
+              <span className="text-xs font-display font-bold">Filter:</span>
             </div>
             <input
               value={staffFirst}
               onChange={(e) => setStaffFirst(e.target.value)}
               placeholder="First name"
-              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 w-36"
+              className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-sans text-trust-slate placeholder:text-cream-400 outline-none focus:ring-2 focus:ring-trike-gold w-36"
             />
             <input
               value={staffLast}
               onChange={(e) => setStaffLast(e.target.value)}
               placeholder="Last name"
-              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 w-36"
+              className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-sans text-trust-slate placeholder:text-cream-400 outline-none focus:ring-2 focus:ring-trike-gold w-36"
             />
             <select
               value={staffStatus}
               onChange={(e) => setStaffStatus(e.target.value)}
-              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700 outline-none"
+              className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-display font-bold text-trust-slate outline-none"
             >
               <option value="">All Statuses</option>
               <option value="active">Active</option>
@@ -235,7 +235,7 @@ export const AdminDashboard: React.FC = () => {
             <select
               value={staffAccess}
               onChange={(e) => setStaffAccess(e.target.value)}
-              className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700 outline-none"
+              className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-display font-bold text-trust-slate outline-none"
             >
               <option value="">All Access</option>
               <option value="staff">Staff</option>
@@ -249,14 +249,14 @@ export const AdminDashboard: React.FC = () => {
                 setStaffAccess('');
               }}
               disabled={!(staffFirst || staffLast || staffStatus || staffAccess)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-3.5 py-1.5 rounded-pill text-xs font-display font-bold border border-cream-300 bg-cream-200 text-trust-slate hover:bg-cream-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Reset
             </button>
             {currentUser?.sub_role === 'super_admin' && (
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="ml-auto flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-xs active:scale-95"
+                className="btn-primary ml-auto flex items-center gap-1.5 text-xs font-display font-bold px-4 py-2 shadow-xs"
               >
                 <Plus className="w-4 h-4" />
                 Add Staff
@@ -265,16 +265,16 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {userError ? (
-            <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 font-bold text-sm">
+            <div className="bg-sunset-coral/10 text-sunset-coral p-4 rounded-card border border-sunset-coral/30 font-display font-bold text-sm">
               {userError}
             </div>
           ) : isLoadingUsers ? (
-            <div className="p-8 text-center text-xs font-bold text-gray-400 animate-pulse">Loading users...</div>
+            <div className="p-8 text-center text-xs font-display font-bold text-cream-500 animate-pulse">Loading users...</div>
           ) : (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+            <div className="bg-cream-50 rounded-card border border-cream-300 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-gray-600">
-                  <thead className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase tracking-wider font-bold">
+                <table className="w-full text-left text-sm text-cream-700 font-sans">
+                  <thead className="bg-cream-200/50 border-b border-cream-300 text-xs font-display text-trust-slate uppercase tracking-wider font-bold">
                     <tr>
                       <th className="px-6 py-4">First Name</th>
                       <th className="px-6 py-4">Last Name</th>
@@ -285,24 +285,24 @@ export const AdminDashboard: React.FC = () => {
                       <th className="px-6 py-4 text-center">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-cream-300/60">
                     {visibleStaff.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-6 py-10 text-center text-xs font-bold text-gray-400">
+                        <td colSpan={7} className="px-6 py-10 text-center text-xs font-sans font-bold text-cream-400">
                           No staff accounts found.
                         </td>
                       </tr>
                     )}
                     {visibleStaff.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-bold text-gray-900">{firstNameOf(user)}</td>
-                        <td className="px-6 py-4 font-bold text-gray-900">{lastNameOf(user) || '—'}</td>
-                        <td className="px-6 py-4 font-mono text-xs text-blue-600">
+                      <tr key={user.id} className="hover:bg-cream-100/70 transition-colors">
+                        <td className="px-6 py-4 font-bold text-trust-slate">{firstNameOf(user)}</td>
+                        <td className="px-6 py-4 font-bold text-trust-slate">{lastNameOf(user) || '—'}</td>
+                        <td className="px-6 py-4 font-mono text-xs font-bold text-trust-slate">
                           {user.employee_id ?? '—'}
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border capitalize ${getRoleBadgeColor(
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-[11px] font-display font-bold border capitalize ${getRoleBadgeColor(
                               user.role
                             )}`}
                           >
@@ -312,14 +312,14 @@ export const AdminDashboard: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span
-                            className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold border capitalize ${
+                            className={`inline-flex px-2.5 py-1 rounded-pill text-[11px] font-display font-bold border capitalize ${
                               STATUS_BADGE[(user.account_status ?? 'active') as AccountStatus]
                             }`}
                           >
                             {user.account_status ?? 'active'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-center text-xs font-medium text-gray-400">
+                        <td className="px-6 py-4 text-center text-xs font-medium text-cream-500">
                           {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
                         </td>
                         <td className="px-6 py-4 text-center">
@@ -357,21 +357,20 @@ export const AdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* Add User Modal — portaled to <body> so the page's transformed
-              container can't confine the overlay to the content area. */}
+          {/* Add User Modal */}
           {isAddModalOpen &&
             createPortal(
-              <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 overflow-y-auto animate-fadeIn">
+              <div className="fixed inset-0 bg-trust-slate/70 backdrop-blur-xs z-50 overflow-y-auto animate-fadeIn">
               <div className="flex min-h-full items-center justify-center p-4">
-                <div className="bg-white rounded-3xl w-full max-w-md shadow-xl overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <Plus className="w-4 h-4 text-blue-500" />
+                <div className="bg-cream-50 rounded-[28px] w-full max-w-md shadow-2xl border border-cream-300 overflow-hidden font-sans">
+                <div className="px-6 py-4 border-b border-cream-300 flex items-center justify-between bg-cream-100/40">
+                  <h3 className="font-display font-black text-trust-slate flex items-center gap-2 text-base">
+                    <Plus className="w-4 h-4 text-trike-gold" />
                     Add TMO Staff
                   </h3>
                   <button
                     onClick={() => setIsAddModalOpen(false)}
-                    className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full transition"
+                    className="p-1.5 text-cream-500 hover:text-trust-slate hover:bg-cream-200 rounded-full transition"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -379,38 +378,38 @@ export const AdminDashboard: React.FC = () => {
 
                 <form onSubmit={handleAddSubmit} className="p-6 space-y-4">
                   {addError && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-xl border border-red-100 font-bold text-xs">
+                    <div className="bg-sunset-coral/10 text-sunset-coral p-3 rounded-card border border-sunset-coral/30 font-display font-bold text-xs">
                       {addError}
                     </div>
                   )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">First Name</label>
+                      <label className="kicker-label">First Name</label>
                       <input
                         type="text"
                         required
                         value={formData.firstName}
                         onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full bg-cream-50 border border-cream-300 rounded-card px-4 py-2.5 text-sm font-sans text-trust-slate placeholder:text-cream-400 focus:ring-2 focus:ring-trike-gold outline-none"
                         placeholder="e.g. Juan"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Last Name</label>
+                      <label className="kicker-label">Last Name</label>
                       <input
                         type="text"
                         required
                         value={formData.lastName}
                         onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full bg-cream-50 border border-cream-300 rounded-card px-4 py-2.5 text-sm font-sans text-trust-slate placeholder:text-cream-400 focus:ring-2 focus:ring-trike-gold outline-none"
                         placeholder="e.g. Dela Cruz"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                    <label className="kicker-label">
                       Employee ID (used to sign in)
                     </label>
                     <input
@@ -418,30 +417,30 @@ export const AdminDashboard: React.FC = () => {
                       required
                       value={formData.employeeId}
                       onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-cream-50 border border-cream-300 rounded-card px-4 py-2.5 text-sm font-sans text-trust-slate placeholder:text-cream-400 focus:ring-2 focus:ring-trike-gold outline-none"
                       placeholder="e.g. TMO-104"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Password</label>
+                    <label className="kicker-label">Password</label>
                     <input
                       type="password"
                       required
                       minLength={8}
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-cream-50 border border-cream-300 rounded-card px-4 py-2.5 text-sm font-sans text-trust-slate placeholder:text-cream-400 focus:ring-2 focus:ring-trike-gold outline-none"
                       placeholder="Min 8 characters"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Access Level</label>
+                    <label className="kicker-label">Access Level</label>
                     <select
                       value={formData.subRole}
                       onChange={(e) => setFormData({ ...formData, subRole: e.target.value as AdminSubRole })}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-cream-50 border border-cream-300 rounded-card px-4 py-2.5 text-sm font-display font-bold text-trust-slate focus:ring-2 focus:ring-trike-gold outline-none"
                     >
                       <option value="staff">Staff (View / Resolve Reports)</option>
                       <option value="super_admin">Super Admin (Full Control &amp; User Management)</option>
@@ -452,7 +451,7 @@ export const AdminDashboard: React.FC = () => {
                     <button
                       type="submit"
                       disabled={isAdding}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black py-3 rounded-xl transition shadow-xs"
+                      className="btn-primary w-full py-3 text-sm font-display font-black shadow-xs"
                     >
                       {isAdding ? 'Creating Account...' : 'Create Account'}
                     </button>

@@ -30,7 +30,7 @@ export const SectionTabs: React.FC<SectionTabsProps> = ({
   onTabChange,
   badgeCount = 0,
 }) => (
-  <nav className="flex flex-1 items-center gap-1.5 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xs">
+  <nav className="flex flex-1 items-center gap-1.5 rounded-2xl border border-cream-300 bg-cream-50 p-1.5 shadow-xs">
     {TABS.map(({ key, label, icon: Icon }) => {
       const active = tab === key;
       return (
@@ -40,14 +40,14 @@ export const SectionTabs: React.FC<SectionTabsProps> = ({
           aria-current={active ? 'page' : undefined}
           className={`relative flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold transition ${
             active
-              ? 'bg-gray-900 text-white shadow-sm'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+              ? 'bg-trike-gold text-trust-slate font-display font-bold shadow-xs'
+              : 'text-cream-600 hover:bg-cream-200 hover:text-trust-slate'
           }`}
         >
           <Icon className="h-4 w-4 shrink-0" />
           {label}
           {key === 'home' && badgeCount > 0 && !active && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-sunset-coral px-1 text-[9px] font-bold text-white">
               {badgeCount > 9 ? '9+' : badgeCount}
             </span>
           )}

@@ -1,0 +1,204 @@
+/*
+  GentleTrike design tokens — Tailwind CSS v4 (CSS-first @theme config)
+  Import this into your main CSS entry, e.g.:
+    @import "tailwindcss";
+    @import "./gentletrike-theme.css";
+
+  Generates utilities automatically, e.g.:
+    bg-trike-gold, text-trust-slate, border-cream-300, font-display, rounded-card
+*/
+
+@theme {
+  /* ---- Brand ---- */
+  --color-trike-gold: #F0A830;
+  --color-trike-gold-hover: #DB9526;
+  --color-trust-slate: #123B3D;
+  --color-sunset-coral: #EF7B5C;
+  --color-sunset-coral-ink: #4A1B0C;
+  --color-sampaguita-green: #4C9A6A;
+
+  /* ---- Surfaces ---- */
+  --color-cream-50: #FEFEFC;  /* functional surfaces: sheets, cards, decision UI */
+  --color-cream-100: #FFFFFF; /* ambient surfaces: map/background (set to white per design requirement) */
+  --color-cream-200: #F4EEE0; /* avatar fallback bg, chips */
+  --color-cream-300: #E4DCC8; /* default border / divider */
+  --color-cream-400: #D8CFB8; /* stronger border, map roads */
+  --color-cream-500: #B5AC9B; /* muted labels, kickers */
+  --color-cream-600: #8A8172; /* secondary text */
+  --color-cream-700: #5C5548; /* body text alternative */
+
+  /* ---- Typography ---- */
+  --font-display: "Baloo 2", sans-serif;
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+
+  /* ---- Radius ---- */
+  --radius-pill: 999px;
+  --radius-card: 20px;
+  --radius-chip: 18px;
+
+  /* ---- Motion ---- */
+  --ease-gentle: cubic-bezier(0.34, 1.2, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-pulse: 1600ms;
+}
+
+/* ---- Reusable component classes ---- */
+
+.btn-primary {
+  background-color: var(--color-trike-gold);
+  color: var(--color-trust-slate);
+  font-family: var(--font-display);
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+  transition: transform var(--duration-fast) ease-out;
+}
+.btn-primary:active {
+  transform: scale(0.97);
+}
+.btn-primary:hover {
+  background-color: var(--color-trike-gold-hover);
+}
+
+.btn-icon-secondary {
+  background-color: var(--color-trust-slate);
+  color: var(--color-cream-100);
+  border-radius: 50%;
+  transition: transform var(--duration-fast) ease-out;
+}
+.btn-icon-secondary:active {
+  transform: scale(0.97);
+}
+
+.card-selectable {
+  background-color: var(--color-cream-50);
+  border: 0.5px solid var(--color-cream-300);
+  border-radius: var(--radius-card);
+  transition: border-color var(--duration-base) ease-out;
+}
+.card-selectable[data-selected="true"] {
+  border: 2px solid var(--color-trike-gold);
+}
+
+.status-pulse {
+  border-radius: 50%;
+  background-color: var(--color-sampaguita-green);
+  animation: gentle-pulse var(--duration-pulse) ease-in-out infinite;
+}
+
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(1.35); }
+}
+
+@keyframes radar-ripple {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
+@keyframes radar-beam {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer-shine {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes float-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.radar-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-sampaguita-green);
+  animation: radar-ripple 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+  pointer-events: none;
+}
+
+.radar-ring:nth-child(2) {
+  animation-delay: 0.8s;
+}
+
+.radar-ring:nth-child(3) {
+  animation-delay: 1.6s;
+}
+
+.radar-sweep-beam {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, transparent 270deg, rgba(76, 154, 106, 0.25) 360deg);
+  animation: radar-beam 3.2s linear infinite;
+  pointer-events: none;
+}
+
+.glass-pill {
+  background: rgba(254, 254, 252, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(228, 220, 200, 0.85);
+  box-shadow: 0 4px 20px -2px rgba(18, 59, 61, 0.12);
+}
+
+.glass-pill-dark {
+  background: rgba(18, 59, 61, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.25);
+}
+
+.btn-gently-ai {
+  background: linear-gradient(135deg, #F0A830 0%, #FBBF24 50%, #EF7B5C 100%);
+  background-size: 200% 200%;
+  color: var(--color-trust-slate);
+  font-family: var(--font-display);
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  transition: all var(--duration-fast) var(--ease-gentle);
+  box-shadow: 0 4px 16px -2px rgba(240, 168, 48, 0.45);
+}
+
+.btn-gently-ai:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 6px 20px -2px rgba(240, 168, 48, 0.6);
+}
+
+.btn-gently-ai:active {
+  transform: scale(0.96);
+}
+
+.kicker-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-cream-600);
+}

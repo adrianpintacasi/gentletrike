@@ -42,13 +42,10 @@ const GRABBER_H = 36;
 /**
  * How much content peek shows when there is no pinned row to measure.
  *
- * A fraction, because a tall phone should reveal more than a short one, with a
- * floor so it is never a sliver. This replaced a flat 132px that was applied at
- * every screen size — and 132 minus the grabber minus the tab bar left 22px of
- * usable sheet, which is why it read as broken rather than small.
+ * Sized to 28% content + grabber ≈ 30-32% of viewport (leaving ~70% for the map).
  */
-const PEEK_CONTENT_FRACTION = 0.24;
-const MIN_PEEK_CONTENT = 104;
+const PEEK_CONTENT_FRACTION = 0.28;
+const MIN_PEEK_CONTENT = 205;
 
 const ORDER: SheetSnap[] = ['peek', 'half', 'full'];
 
@@ -312,7 +309,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   return (
     <div
       ref={sheetRef}
-      className="fixed inset-x-0 z-30 flex flex-col rounded-t-3xl border-t border-gray-200 bg-white shadow-[0_-8px_32px_rgba(0,0,0,0.18)]"
+      className="fixed inset-x-0 z-30 flex flex-col rounded-t-[28px] border-t border-cream-300 bg-cream-50 shadow-[0_-8px_32px_rgba(18,59,61,0.14)]"
       style={{
         bottom: 0,
         height: fullHeight,
@@ -343,7 +340,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
           <button
             onClick={cycleSnap}
             aria-label={`Sheet is ${snap}. Tap to expand.`}
-            className="mx-auto block h-1.5 w-12 rounded-full bg-gray-300 transition hover:bg-gray-400"
+            className="mx-auto block h-1.5 w-12 rounded-full bg-cream-300 transition hover:bg-cream-400"
           />
         </div>
 

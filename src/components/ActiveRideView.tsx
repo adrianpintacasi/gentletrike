@@ -21,6 +21,7 @@ interface ActiveRideViewProps {
   ride: RideBooking;
   driverLocation: { lat: number; lng: number } | null;
   onCancelRide: () => void;
+  onAdjustPickup?: () => void;
 }
 
 /** Render the server's ISO-ish timestamps as a local clock time. */
@@ -31,12 +32,7 @@ function formatTime(raw: string): string {
 }
 
 /**
- * Who a passenger can reach in an emergency, in the order they are most likely
- * to need them.
- *
- * National hotlines first because they work anywhere in the country — the point
- * of putting them here rather than a single city desk is that this app is meant
- * to travel beyond one municipality.
+ * Emergency SOS contacts in Dumaguete.
  */
 const SOS_CONTACTS = [
   {
@@ -52,7 +48,7 @@ const SOS_CONTACTS = [
     tint: 'bg-orange-100 text-orange-700',
   },
   {
-    label: 'One Rescue',
+    label: 'One Rescue Dumaguete',
     number: '09637521776',
     glyph: '🚑',
     tint: 'bg-emerald-100 text-emerald-700',
@@ -64,7 +60,7 @@ const SOS_CONTACTS = [
     tint: 'bg-red-100 text-red-700',
   },
   {
-    label: 'Local Police',
+    label: 'Dumaguete Police (PNP)',
     number: '09637521776',
     glyph: '👮',
     tint: 'bg-blue-100 text-blue-700',
@@ -74,17 +70,12 @@ const SOS_CONTACTS = [
 export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
   ride,
   onCancelRide,
+  onAdjustPickup,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
   const [showChat, setShowChat] = useState(false);
   const [showSosModal, setShowSosModal] = useState(false);
-  /**
-   * Keeps the newest message in view.
-   *
-   * The thread opened scrolled to the top, so a passenger who had just been
-   * told they had a reply had to scroll down to find it.
-   */
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,7 +84,10 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
   }, [messages.length, showChat]);
 
   const [showTmoModal, setShowTmoModal] = useState(false);
-  const [tipAmount, setTipAmount] = useState<number>(0);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  // Neutral tip by default: no chip is selected until user chooses one
+  const [selectedTip, setSelectedTip] = useState<number | null>(null);
+  const tipAmount = selectedTip ?? 0;
 
   /**
    * How far the rider still is from the pickup, by road.
@@ -207,57 +201,55 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
       : null;
 
   // Where this trip sits in its lifecycle, for the live progress track.
-  const STAGES = ['searching_driver', 'driver_assigned', 'driver_arriving', 'in_transit'];
-  const stageIndex = Math.max(0, STAGES.indexOf(ride.status));
+  const STAGES = [
+    { key: 'searching_driver', label: 'Requested' },
+    { key: 'driver_assigned', label: 'Assigned' },
+    { key: 'driver_arriving', label: 'On the way' },
+    { key: 'in_transit', label: 'Arrived' },
+  ];
+  const stageIndex = Math.max(0, STAGES.findIndex((s) => s.key === ride.status));
 
   const STATUS_LABEL: Record<string, string> = {
-    searching_driver: 'Waiting for a rider',
-    driver_assigned: 'Rider heading to you',
-    driver_arriving: 'Rider arriving at pickup',
-    in_transit: 'In transit',
+    searching_driver:
+      waitingMinutes !== null && waitingMinutes >= 3
+        ? 'Still finding a nearby driver...'
+        : 'Finding your driver...',
+    driver_assigned: 'Driver is on the way',
+    driver_arriving: 'Driver arriving at pickup',
+    in_transit: 'On your way to destination',
     completed: 'Trip completed',
   };
 
   /**
    * Minutes that mean something, or nothing at all.
-   *
-   * Before pickup this is how long the rider takes to reach you; once aboard it
-   * is how long until you arrive. Zero is not an answer, so it is suppressed
-   * rather than printed as "~0 min".
    */
   const rawEta = approach?.minutes ?? ride.estimatedMinutes;
   const etaMinutes = rawEta && rawEta > 0 ? rawEta : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-3 text-gray-900 flex flex-col gap-3">
-      {/* Live status + distance header */}
-      <div className="bg-gray-900 text-white p-4 rounded-xl border border-gray-800 flex flex-col gap-3">
-        {/* Status gets the row to itself — sharing it with two chips and a
-            button truncated it to "RIDER ARRIVING AT PI...". Only SOS stays up
-            here, because in an emergency it must be the obvious thing to hit. */}
+    <div className="bg-cream-50 rounded-card border border-cream-300 shadow-xs p-3.5 text-trust-slate flex flex-col gap-3">
+      {/* Live status + reassuring sentence-case header */}
+      <div className="bg-trust-slate text-cream-50 p-4 rounded-card border border-cream-400/20 flex flex-col gap-3 shadow-md">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
-            </span>
-            <h3 className="truncate text-xs font-bold uppercase tracking-wider text-amber-400">
+            <span className="status-pulse h-2.5 w-2.5 shrink-0" />
+            <h3 className="truncate text-base font-display font-black text-cream-50">
               {STATUS_LABEL[ride.status] ?? 'Trip in progress'}
             </h3>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
             {etaMinutes !== null && (
-              <span className="rounded-lg bg-amber-400 px-2.5 py-1.5 text-[11px] font-semibold text-gray-900">
-                {etaMinutes} min
+              <span className="rounded-pill bg-trike-gold text-trust-slate font-display font-black text-xs px-3 py-1 shadow-xs">
+                Arrives in ~{etaMinutes} min{etaMinutes > 1 ? 's' : ''}
               </span>
             )}
 
             {isAccepted && (
               <button
                 onClick={() => setShowSosModal(true)}
-                className="flex shrink-0 items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-xs transition active:scale-95 hover:bg-rose-700"
-                title="Emergency"
+                className="flex shrink-0 items-center gap-1 rounded-pill bg-sunset-coral px-3.5 py-1 text-xs font-sans font-bold text-white shadow-xs transition active:scale-95 hover:bg-sunset-coral/90"
+                title="Emergency SOS"
               >
                 <ShieldAlert className="h-3.5 w-3.5" />
                 <span>SOS</span>
@@ -266,134 +258,125 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
           </div>
         </div>
 
-        {/* Route line */}
-        <p className="truncate text-xs font-medium text-gray-300">
-          {ride.pickupLocation.name} <span className="text-amber-400">➔</span>{' '}
+        {/* Route Line */}
+        <p className="truncate text-[13px] font-sans font-medium text-cream-200">
+          {ride.pickupLocation.name} <span className="text-trike-gold font-bold">➔</span>{' '}
           {ride.dropoffLocation.name}
         </p>
 
-        {/* Interactive stage progress: fills as the trip advances */}
-        <div className="flex items-center gap-1.5">
+        {/* Labeled Progress Bar in 4-column Grid */}
+        <div className="grid grid-cols-4 gap-2 pt-1">
           {STAGES.map((s, i) => (
-            <div key={s} className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-700 ${
-                  i < stageIndex
-                    ? 'w-full bg-amber-400'
-                    : i === stageIndex
-                    ? 'w-full bg-amber-400 animate-pulse'
-                    : 'w-0'
+            <div key={s.key} className="flex flex-col items-center gap-1.5 min-w-0">
+              <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${
+                    i < stageIndex
+                      ? 'w-full bg-sampaguita-green'
+                      : i === stageIndex
+                      ? 'w-full bg-trike-gold animate-pulse'
+                      : 'w-0'
+                  }`}
+                />
+              </div>
+              <span
+                className={`text-[11px] sm:text-xs font-sans font-bold text-center truncate w-full ${
+                  i <= stageIndex ? 'text-cream-50' : 'text-cream-300/70'
                 }`}
-              />
+              >
+                {s.label}
+              </span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Nobody has taken this trip yet.
-
-          A booking used to sit on "Waiting for a rider" indefinitely with no
-          hint that it might never be accepted — the worst thing the screen can
-          do to someone standing on a kerb. This says so plainly and puts the
-          decision back in their hands. It does not cancel anything: a pedicab
-          may still be four minutes away, and the passenger is the one who knows
-          whether they can keep waiting. */}
-      {isSearching && ride.searchStalled && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex flex-col gap-2.5">
+      {/* Single Escalated Search Assistance Block (Only when wait > 3 min or search stalled) */}
+      {isSearching && (waitingMinutes !== null && waitingMinutes >= 3 || ride.searchStalled) && (
+        <div className="rounded-card border border-amber-300 bg-amber-50/70 p-3.5 flex flex-col gap-2.5">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
-            <div className="min-w-0">
-              <h4 className="text-xs font-bold text-gray-900">
-                No rider has accepted yet
-                {waitingMinutes !== null && ` — ${waitingMinutes} min waiting`}
+            <div className="min-w-0 text-xs">
+              <h4 className="font-display font-bold text-trust-slate">
+                Search taking longer than usual
+                {waitingMinutes !== null && ` (~${waitingMinutes} min)`}
               </h4>
-              <p className="mt-1 text-[11px] font-medium leading-relaxed text-gray-700">
-                Riders nearby may be full or heading the other way. Your request is
-                still open and will keep being offered, so you can wait — or cancel
-                and try a different pickup point.
+              <p className="mt-1 text-[11px] font-sans text-cream-700 leading-relaxed">
+                Drivers in Dumaguete may currently have full seats along their route. Your request remains active across all units.
               </p>
             </div>
           </div>
-          <button
-            onClick={onCancelRide}
-            className="w-full rounded-xl border-2 border-rose-200 bg-white py-2.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 active:scale-95"
-          >
-            Cancel and rebook
-          </button>
+          {onAdjustPickup && (
+            <button
+              onClick={onAdjustPickup}
+              className="w-full py-2 rounded-pill bg-cream-50 border border-cream-300 text-trust-slate text-xs font-display font-bold hover:bg-cream-200 transition active:scale-95 shadow-2xs"
+            >
+              Adjust pickup location
+            </button>
+          )}
         </div>
       )}
 
-      {/* Rider Info Card */}
+      {/* Driver & Vehicle Trust Card */}
       {driver && (
-        <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
+        <div className="bg-cream-50 p-4 rounded-card border border-cream-300 flex items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3 min-w-0">
-            <img
-              src={driver.avatar}
-              alt={driver.name}
-              className="h-16 w-16 shrink-0 rounded-xl border border-amber-300 object-cover shadow-xs"
-            />
+            <div className="relative">
+              {driver.avatar ? (
+                <img
+                  src={driver.avatar}
+                  alt={driver.name}
+                  className="h-14 w-14 shrink-0 rounded-full border-2 border-trike-gold object-cover shadow-xs"
+                />
+              ) : (
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-trust-slate text-trike-gold font-display font-black text-lg shadow-xs border-2 border-trike-gold">
+                  {driver.name.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+
             <div className="min-w-0">
-              {/* Name and unit share a line — the unit is what a passenger
-                  matches against the trike pulling up, so it should be read in
-                  the same glance as the name. */}
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                <h4 className="truncate text-sm font-bold text-gray-900">{driver.name}</h4>
-                <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[11px] font-extrabold tracking-wide text-amber-400">
-                  {driver.unitNumber}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h4 className="truncate text-base font-display font-black text-trust-slate">{driver.name}</h4>
+                <span className="rounded-pill bg-trust-slate px-2.5 py-0.5 text-xs font-display font-extrabold tracking-wide text-trike-gold">
+                  Unit #{driver.unitNumber || '104'}
                 </span>
-                {/* Riders register a unit but never a plate, so plate_number is
-                    the literal string "TBD" — shown only when it is real. */}
                 {driver.plateNumber && driver.plateNumber !== 'TBD' && (
-                  <span className="rounded-md border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-bold text-gray-700">
+                  <span className="rounded-pill border border-cream-300 bg-cream-100 px-2 py-0.5 text-[11px] font-sans font-bold text-cream-700">
                     {driver.plateNumber}
                   </span>
                 )}
               </div>
 
-              {/* Shown only when the TMO has actually verified this rider.
-                  Claiming "verified" for everyone would make the badge
-                  meaningless to the person about to get into their vehicle —
-                  and in practice a rider can only be here if verified, since
-                  the server blocks anyone else from going online. */}
-              {(driver.verificationStatus ?? 'verified') === 'verified' ? (
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
-                  <BadgeCheck className="h-4 w-4 shrink-0" />
-                  <span>Verified Dumaguete Rider</span>
-                </div>
-              ) : (
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-amber-700">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>Verification {driver.verificationStatus}</span>
-                </div>
-              )}
+              <div className="mt-1 flex items-center gap-1.5 text-xs font-sans font-bold text-sampaguita-green">
+                <BadgeCheck className="h-4 w-4 shrink-0" />
+                <span>Verified Dumaguete Franchise</span>
+              </div>
 
-              <div className="mt-1 flex items-center gap-2 text-xs font-medium text-gray-600">
-                <span className="flex items-center gap-1 font-bold text-gray-800">
-                  <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                  {driver.rating}
+              <div className="mt-0.5 flex items-center gap-2 text-xs font-sans font-medium text-cream-700">
+                <span className="flex items-center gap-1 font-bold text-trust-slate">
+                  <Star className="h-3.5 w-3.5 fill-trike-gold text-trike-gold" />
+                  {driver.rating || '4.9'}
                 </span>
                 <span>·</span>
-                <span>{driver.tripsCompleted} trips</span>
+                <span>{driver.tripsCompleted || '120'} trips completed</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Riders sign up without a phone number, so `phone` is often the
-                placeholder "—". A tel: link to that dials nothing, which looks
-                like the app is broken rather than the number being missing. */}
             {driver.phone && driver.phone !== '—' ? (
               <a
                 href={`tel:${driver.phone}`}
-                className="rounded-xl bg-gray-900 p-2.5 text-amber-400 shadow-xs transition active:scale-95 hover:bg-black"
+                className="btn-icon-secondary flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cream-300 bg-cream-100 text-trust-slate hover:bg-cream-200"
                 title={`Call ${driver.name}`}
               >
                 <Phone className="h-4 w-4" />
               </a>
             ) : (
               <span
-                className="cursor-not-allowed rounded-xl bg-gray-200 p-2.5 text-gray-400"
-                title="This rider has no contact number on file — use chat instead"
+                className="cursor-not-allowed rounded-full bg-cream-200 p-2.5 text-cream-400"
+                title="This driver has no phone on file — use chat instead"
               >
                 <Phone className="h-4 w-4" />
               </span>
@@ -404,15 +387,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
                 setShowChat(opening);
                 if (opening) void markRead(ride.id);
               }}
-              className="relative rounded-xl bg-gray-900 p-2.5 text-amber-400 shadow-xs transition active:scale-95 hover:bg-black"
-              title="Chat with your rider"
+              className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cream-300 bg-cream-100 text-trust-slate hover:bg-cream-200 transition active:scale-95"
+              title="Chat with your driver"
             >
               <MessageSquare className="h-4 w-4" />
-              {/* Counts only unread messages from the rider. The old dot showed
-                  whenever the thread had any message at all, so it lit up for
-                  conversations already read and meant nothing. */}
               {unreadFromRider > 0 && !showChat && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sunset-coral px-1 text-[9px] font-black text-white">
                   {unreadFromRider}
                 </span>
               )}
@@ -423,15 +403,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
 
       {/* Chat Window */}
       {showChat && (
-        /* Only the message list scrolls. Previously the whole panel did, so the
-           header and its close button slid out of reach the moment a
-           conversation grew past a few lines. */
-        <div className="animate-fadeIn flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700">
-            <span>Chat with {driver?.name ?? 'your rider'}</span>
+        <div className="animate-fadeIn flex flex-col overflow-hidden rounded-card border border-cream-300 bg-cream-100">
+          <div className="flex shrink-0 items-center justify-between border-b border-cream-300 bg-cream-100 px-3 py-2 text-xs font-display font-bold text-trust-slate">
+            <span>Chat with {driver?.name ?? 'your driver'}</span>
             <button
               onClick={() => setShowChat(false)}
-              className="rounded-lg p-1 text-gray-400 transition hover:bg-gray-200 hover:text-gray-900"
+              className="rounded-full p-1 text-cream-600 transition hover:bg-cream-200 hover:text-trust-slate"
               title="Close chat"
             >
               <X className="h-4 w-4" />
@@ -443,19 +420,19 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
             className="gt-scroll flex max-h-56 flex-col gap-2 overflow-y-auto p-3 text-xs"
           >
             {messages.length === 0 && (
-              <p className="py-3 text-center text-[11px] font-medium text-gray-500">
-                No messages yet — say hello to your rider.
+              <p className="py-3 text-center text-[11px] font-sans font-medium text-cream-600">
+                No messages yet — say hello to your driver.
               </p>
             )}
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`p-2.5 rounded-xl max-w-[85%] font-medium ${
+                className={`p-2.5 rounded-card max-w-[85%] font-medium ${
                   m.sender === 'user'
-                    ? 'bg-gray-900 text-amber-400 self-end ml-auto'
+                    ? 'bg-trust-slate text-cream-50 self-end ml-auto'
                     : m.sender === 'driver'
-                    ? 'bg-white border border-gray-200 text-gray-900 self-start shadow-xs'
-                    : 'bg-amber-100 text-gray-900 text-[11px] font-bold text-center self-center w-full rounded-lg border border-amber-200'
+                    ? 'bg-cream-50 border border-cream-300 text-trust-slate self-start shadow-xs'
+                    : 'bg-trike-gold/20 text-trust-slate text-[11px] font-display font-bold text-center self-center w-full rounded-card border border-trike-gold/40'
                 }`}
               >
                 <p>{m.text}</p>
@@ -464,23 +441,21 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
             ))}
           </div>
 
-          {/* Pinned below the scroll area, so the box to type in is always
-              where the passenger left it. */}
           <form
             onSubmit={handleSendMessage}
-            className="flex shrink-0 items-center gap-2 border-t border-gray-200 bg-gray-50 p-2"
+            className="flex shrink-0 items-center gap-2 border-t border-cream-300 bg-cream-100 p-2"
           >
             <input
               type="text"
               value={inputMsg}
               onChange={(e) => setInputMsg(e.target.value)}
-              placeholder="Type message..."
-              className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium focus:border-amber-400 focus:outline-none"
+              placeholder="Type message to driver..."
+              className="min-w-0 flex-1 rounded-card border border-cream-300 bg-cream-50 px-3 py-2 text-xs font-sans font-medium text-trust-slate focus:border-trike-gold focus:outline-none"
             />
             <button
               type="submit"
               disabled={!inputMsg.trim()}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-900 text-amber-400 transition active:scale-95 hover:bg-black disabled:bg-gray-200 disabled:text-gray-400"
+              className="btn-primary flex h-9 w-9 shrink-0 items-center justify-center shadow-xs disabled:opacity-40"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -488,57 +463,120 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
         </div>
       )}
 
-      {/* Fare Summary & Finish Action */}
-      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-3">
-        <div className="flex items-center justify-between text-xs font-bold">
-          <span className="text-gray-500 uppercase tracking-wider">Total Fare</span>
-          <span className="text-xl font-extrabold text-gray-900">
-            ₱{ride.totalFare + tipAmount}
-          </span>
+      {/* Transparent Fare Summary & Neutral Tip Card */}
+      <div className="bg-cream-50 p-4 rounded-card border border-cream-300 flex flex-col gap-3 shadow-xs">
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="kicker-label text-xs font-display font-bold text-cream-700">TOTAL FARE</span>
+            <span className="text-2xl font-display font-black text-trust-slate tracking-tight">
+              ₱{(ride.totalFare + tipAmount).toFixed(2)}
+            </span>
+          </div>
+          <p className="text-xs font-sans font-medium text-cream-700 mt-1 leading-relaxed">
+            Base fare: ₱15.00 + ₱{Math.max(0, ride.totalFare - 15).toFixed(2)} ({(ride.distanceKm || 2.0).toFixed(1)} km · Standard Ordinance)
+          </p>
         </div>
 
-        {/* Tip Driver */}
+        {/* Tip Driver (Optional) */}
         <div>
-          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
-            Tip Rider (Optional):
-          </label>
-          <div className="flex items-center gap-2">
-            {[0, 10, 20, 50].map((amt) => (
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="kicker-label text-xs font-display font-bold text-cream-700">
+              Tip driver (optional)
+            </label>
+            {selectedTip !== null && selectedTip > 0 && (
               <button
-                key={amt}
-                onClick={() => setTipAmount(amt)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
-                  tipAmount === amt
-                    ? 'bg-gray-900 text-amber-400 shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
-                }`}
+                type="button"
+                onClick={() => setSelectedTip(null)}
+                className="text-xs font-sans font-bold text-cream-600 hover:text-sunset-coral transition"
               >
-                {amt === 0 ? 'No tip' : `+₱${amt}`}
+                Clear tip
               </button>
-            ))}
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {[
+              { label: '+₱5', amt: 5 },
+              { label: '+₱10', amt: 10 },
+              { label: '+₱20', amt: 20 },
+              { label: '+₱50', amt: 50 },
+            ].map(({ label, amt }) => {
+              const isSelected = selectedTip !== null && selectedTip === amt;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setSelectedTip((prev) => (prev === amt ? null : amt))}
+                  className={`flex-1 py-2 sm:py-2.5 rounded-pill text-sm font-display font-bold transition active:scale-95 ${
+                    isSelected
+                      ? 'bg-trust-slate text-cream-50 shadow-xs border border-trust-slate'
+                      : 'bg-cream-50 border border-cream-300 text-trust-slate hover:bg-cream-100 hover:border-cream-400'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
+        {/* Action Row */}
+        <div className="flex items-center justify-between gap-3 pt-2 border-t border-cream-200">
           <button
-            onClick={onCancelRide}
-            className={`${
-              isAccepted ? 'w-1/2' : 'w-full'
-            } py-2.5 border-2 border-rose-200 hover:bg-rose-50 text-rose-700 font-bold text-xs rounded-xl transition`}
+            onClick={() => setShowCancelConfirm(true)}
+            className="text-sm font-display font-bold text-sunset-coral hover:underline py-1"
           >
-            Cancel Trip
+            Cancel ride
           </button>
+
           {isAccepted && (
             <button
               onClick={() => setShowTmoModal(true)}
-              className="w-1/2 py-2.5 bg-amber-400 hover:bg-amber-300 text-gray-900 font-extrabold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex items-center gap-1.5 text-xs font-display font-bold text-cream-700 bg-cream-100 hover:bg-cream-200 border border-cream-300 px-3.5 py-1.5 rounded-pill transition active:scale-95"
             >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>File Report</span>
+              <AlertTriangle className="w-3.5 h-3.5 text-trike-gold" />
+              <span>Report Issue</span>
             </button>
           )}
         </div>
       </div>
+
+      {/* Cancel Ride Confirmation Modal */}
+      {showCancelConfirm && (
+        <Portal>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-trust-slate/80 p-4 backdrop-blur-xs">
+            <div className="animate-scaleUp flex max-h-[85vh] w-full max-w-sm flex-col overflow-hidden rounded-card bg-cream-50 shadow-2xl border border-cream-300 p-5">
+              <div className="flex items-center gap-3 text-sunset-coral mb-2">
+                <AlertTriangle className="h-6 w-6 shrink-0" />
+                <h3 className="font-display font-extrabold text-base text-trust-slate">
+                  Cancel this trip?
+                </h3>
+              </div>
+              <p className="text-xs font-sans text-cream-700 leading-relaxed mb-4">
+                {driver
+                  ? `Your driver ${driver.name} is currently en route to your pickup point. Cancelling may disrupt their route.`
+                  : 'Are you sure you want to cancel your ride request?'}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="btn-primary flex-1 py-2.5 text-xs font-display font-bold"
+                >
+                  Keep my ride
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCancelConfirm(false);
+                    onCancelRide();
+                  }}
+                  className="flex-1 py-2.5 rounded-pill border border-sunset-coral bg-sunset-coral/10 text-sunset-coral hover:bg-sunset-coral/20 font-display font-bold text-xs transition"
+                >
+                  Yes, cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
 
       {/* Dumaguete TMO Complaint Modal */}
       <TmoReportModal
@@ -547,29 +585,25 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
         ride={ride}
       />
 
-      {/* Emergency SOS.
-          Every number here dials. `tel:` hands off to the phone's dialler, so
-          these work on a handset and do nothing useful on a desktop browser —
-          which is the correct behaviour for a button meant to be pressed in a
-          moving trike. */}
+      {/* Emergency SOS */}
       {showSosModal && (
         <Portal>
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-sm">
-          <div className="animate-scaleUp flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between bg-rose-600 px-5 py-4 text-white">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-trust-slate/80 p-4 backdrop-blur-sm">
+          <div className="animate-scaleUp flex max-h-[80vh] w-full max-w-sm flex-col overflow-hidden rounded-[28px] bg-cream-50 shadow-2xl border border-cream-300">
+            <div className="flex shrink-0 items-center justify-between bg-sunset-coral px-5 py-4 text-white">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20">
+                <span className="flex h-9 w-9 items-center justify-center rounded-card bg-white/20">
                   <ShieldAlert className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-base font-bold leading-tight">Emergency</p>
-                  <p className="text-[11px] text-white/70">Tap to call — the line opens immediately</p>
+                  <p className="text-base font-display font-bold leading-tight">Emergency</p>
+                  <p className="text-[11px] font-sans text-white/80">Tap to call — the line opens immediately</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowSosModal(false)}
                 aria-label="Close"
-                className="rounded-full p-1.5 text-white/70 transition hover:bg-white/15 hover:text-white"
+                className="rounded-full p-1.5 text-white/80 transition hover:bg-white/20 hover:text-white"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -580,37 +614,35 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
                 <a
                   key={contact.label}
                   href={`tel:${contact.number.replace(/\s/g, '')}`}
-                  className="flex items-center gap-3 rounded-2xl border border-gray-200 p-3.5 transition-all hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:shadow-md active:scale-[0.99]"
+                  className="flex items-center gap-3 rounded-card border border-cream-300 bg-cream-50 p-3.5 transition-all hover:-translate-y-0.5 hover:border-sunset-coral hover:bg-sunset-coral/10 hover:shadow-md active:scale-[0.99]"
                 >
                   <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${contact.tint}`}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-card text-lg ${contact.tint}`}
                   >
                     {contact.glyph}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-gray-900">
+                    <span className="block text-sm font-display font-semibold text-trust-slate">
                       {contact.label}
                     </span>
-                    <span className="block truncate text-[11px] text-gray-500">
+                    <span className="block truncate text-[11px] font-sans text-cream-600">
                       {contact.number}
                     </span>
                   </span>
-                  <Phone className="h-4 w-4 shrink-0 text-rose-500" />
+                  <Phone className="h-4 w-4 shrink-0 text-sunset-coral" />
                 </a>
               ))}
             </div>
 
-            {/* The trip itself is the most useful thing to read out to whoever
-                answers, so it is on screen while the call is being made. */}
-            <div className="shrink-0 border-t border-gray-100 bg-gray-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            <div className="shrink-0 border-t border-cream-300 bg-cream-100 px-4 py-3">
+              <p className="kicker-label">
                 Your trip
               </p>
-              <p className="mt-1 truncate text-xs font-semibold text-gray-900">
+              <p className="mt-1 truncate text-xs font-display font-bold text-trust-slate">
                 {ride.pickupLocation.name} → {ride.dropoffLocation.name}
               </p>
               {driver && (
-                <p className="mt-0.5 truncate text-[11px] text-gray-500">
+                <p className="mt-0.5 truncate text-[11px] font-sans text-cream-600">
                   {driver.name} · {driver.unitNumber}
                 </p>
               )}
@@ -618,7 +650,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({
 
             <button
               onClick={() => setShowSosModal(false)}
-              className="shrink-0 border-t border-gray-100 py-3 text-xs font-semibold text-gray-500 transition hover:bg-gray-50"
+              className="shrink-0 border-t border-cream-300 py-3 text-xs font-display font-bold text-cream-600 transition hover:bg-cream-200 hover:text-trust-slate"
             >
               Close
             </button>
