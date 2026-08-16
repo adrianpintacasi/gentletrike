@@ -247,7 +247,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
 
     if (m.draftState === 'declined') {
       return (
-        <div className="mt-2 rounded-card border border-cream-300 bg-cream-100 p-3 text-[11px] font-sans font-semibold text-cream-600">
+        <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] font-semibold text-gray-500">
           Draft dismissed. Nothing was booked.
         </div>
       );
@@ -256,33 +256,33 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
     const busy = m.draftState === 'booking';
 
     return (
-      <div className="mt-2 rounded-card border-2 border-amber-400/50 bg-cream-50 p-3.5 shadow-xs">
-        <p className="kicker-label text-amber-900 font-bold mb-2">
+      <div className="mt-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
+        <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-800">
           Not booked yet — please review
         </p>
 
-        <div className="space-y-1.5 text-[11px] font-sans font-semibold text-trust-slate">
+        <div className="space-y-1.5 text-[11px] font-semibold text-gray-800">
           <div className="flex items-start gap-1.5">
-            <MapPin className="mt-px h-3.5 w-3.5 shrink-0 text-trust-slate" />
-            <span className="font-display font-bold">
+            <MapPin className="mt-px h-3.5 w-3.5 shrink-0 text-gray-500" />
+            <span>
               {d.pickupLocation.name} → {d.dropoffLocation.name}
             </span>
           </div>
-          <div className="text-cream-600">
+          <div className="text-gray-600">
             {vehicle} · {d.passengers} passenger{d.passengers > 1 ? 's' : ''} ·{' '}
             {d.distanceKm} km · ~{d.estimatedMinutes} min
           </div>
-          <div className="text-base font-display font-extrabold text-trust-slate">₱{d.totalFare} · {d.paymentMethod}</div>
+          <div className="text-sm font-black text-gray-900">₱{d.totalFare} · {d.paymentMethod}</div>
         </div>
 
-        {m.error && <p className="mt-2 text-[11px] font-sans font-bold text-sunset-coral">{m.error}</p>}
+        {m.error && <p className="mt-2 text-[11px] font-bold text-red-600">{m.error}</p>}
 
         {canBook ? (
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => handleConfirmDraft(idx)}
               disabled={busy}
-              className="btn-primary flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-display font-bold shadow-xs disabled:opacity-40"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-gray-900 px-3 py-2 text-[11px] font-bold text-amber-400 transition hover:bg-black disabled:bg-gray-300 disabled:text-gray-500"
             >
               <Check className="h-3.5 w-3.5" />
               {busy ? 'Booking...' : 'Confirm booking'}
@@ -290,14 +290,14 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
             <button
               onClick={() => setDraftState(idx, 'declined')}
               disabled={busy}
-              className="flex items-center justify-center gap-1.5 rounded-pill border border-cream-300 bg-cream-50 px-3 py-2 text-[11px] font-display font-bold text-cream-600 transition hover:bg-cream-200 disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-[11px] font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
             >
               <Ban className="h-3.5 w-3.5" />
               Cancel
             </button>
           </div>
         ) : (
-          <p className="mt-3 text-[11px] font-sans font-semibold text-cream-600">
+          <p className="mt-3 text-[11px] font-semibold text-gray-500">
             {bookBlockedReason ?? 'Sign in as a passenger to book this ride.'}
           </p>
         )}
@@ -305,28 +305,39 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
     );
   };
 
+  /*
+   * A floating dialog, centred at every width.
+   *
+   * It used to be 85vh, which on a phone covered the map, the booking, and
+   * whatever the question was actually about — you could not read your own fare
+   * while asking about it. The answer was not to move it to the bottom but to
+   * make it smaller: centred, inset from all four edges, with the screen it
+   * belongs to visible around it.
+   */
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-trust-slate/80 p-4 backdrop-blur-xs animate-fadeIn">
-      <div className="flex h-[68dvh] max-h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border border-cream-300 bg-cream-50 text-trust-slate shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fadeIn">
+      <div className="flex h-[68dvh] max-h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
         {/* Header */}
-        <div className="relative flex items-center justify-between overflow-hidden bg-trust-slate p-4 text-cream-50 border-b border-cream-400/20">
+        <div className="gt-gently-header relative flex items-center justify-between overflow-hidden p-4 text-amber-400">
           <div className="flex items-center gap-3">
+            {/* Pulses only while a reply is being composed, so the motion
+                means something rather than decorating idle time. */}
             <div
-              className={`rounded-card bg-trike-gold p-2 text-trust-slate shadow-lg ${
+              className={`rounded-xl bg-amber-400 p-2 text-gray-900 shadow-lg shadow-amber-400/30 ${
                 loading ? 'gt-thinking' : ''
               }`}
             >
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-display font-bold text-base leading-tight text-cream-50">Gently</h3>
-              <p className="text-[11px] font-sans font-medium text-cream-300">Routes, fares and local knowledge</p>
+              <h3 className="font-bold text-base leading-tight text-white">Gently</h3>
+              <p className="text-[11px] font-medium text-white/60">Routes, fares and local knowledge</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="rounded-full p-1.5 text-cream-300 transition hover:bg-white/10 hover:text-cream-50"
+            className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white"
             aria-label="Close Gently"
           >
             <X className="h-5 w-5" />
@@ -336,15 +347,15 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
         {/* Messages Body */}
         <div
           ref={scrollRef}
-          className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 bg-cream-100 text-xs font-medium"
+          className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 bg-gray-50 text-xs font-medium"
         >
           {messages.map((m, idx) => (
             <div
               key={idx}
-              className={`p-3.5 rounded-card max-w-[88%] leading-relaxed shadow-xs ${
+              className={`p-3.5 rounded-xl max-w-[88%] leading-relaxed shadow-xs ${
                 m.role === 'user'
-                  ? 'bg-trust-slate text-cream-50 self-end font-sans font-medium'
-                  : 'bg-cream-50 border border-cream-300 text-trust-slate self-start font-sans'
+                  ? 'bg-gray-900 text-amber-400 self-end font-semibold'
+                  : 'bg-white border border-gray-200 text-gray-900 self-start'
               }`}
             >
               <span className="whitespace-pre-line">{renderMarkdown(m.text)}</span>
@@ -353,22 +364,23 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
           ))}
 
           {loading && (
-            <div className="bg-cream-50 border border-cream-300 p-3 rounded-card self-start flex items-center gap-2 text-trust-slate font-sans font-semibold animate-pulse shadow-xs">
-              <Sparkles className="w-4 h-4 text-trike-gold animate-spin" />
+            <div className="bg-white border border-gray-200 p-3 rounded-xl self-start flex items-center gap-2 text-gray-800 font-semibold animate-pulse">
+              <Sparkles className="w-4 h-4 text-amber-500 animate-spin" />
               <span>Gently is thinking...</span>
             </div>
           )}
 
+          {/* Scroll anchor — kept last so new messages and the draft card are visible. */}
           <div ref={endRef} />
         </div>
 
         {/* Quick Chips */}
-        <div className="p-2.5 bg-cream-50 border-t border-cream-300 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+        <div className="p-2 bg-white border-t border-gray-100 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           {quickQuestions.map((q, i) => (
             <button
               key={i}
               onClick={() => handleSendQuery(q)}
-              className="px-3 py-1.5 bg-cream-200 hover:bg-trike-gold/30 border border-cream-300 rounded-pill text-[11px] font-sans font-bold text-trust-slate whitespace-nowrap transition shadow-2xs"
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-xl text-[11px] font-bold text-amber-900 whitespace-nowrap transition"
             >
               {q}
             </button>
@@ -381,19 +393,19 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
             e.preventDefault();
             handleSendQuery();
           }}
-          className="p-3 bg-cream-50 border-t border-cream-300 flex items-center gap-2"
+          className="p-3 bg-white border-t border-gray-200 flex items-center gap-2"
         >
           <input
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask about fares, routes or places..."
-            className="flex-1 rounded-card border border-cream-300 bg-cream-50 px-3.5 py-2.5 font-sans font-medium text-trust-slate placeholder:text-cream-400 focus:border-trike-gold focus:outline-none text-xs"
+            className="gt-field flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 font-medium text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
           />
           <button
             type="submit"
             disabled={loading || !prompt.trim()}
-            className="btn-primary p-2.5 !rounded-card shadow-xs disabled:opacity-40"
+            className="p-2.5 bg-gray-900 text-amber-400 hover:bg-black disabled:bg-gray-200 disabled:text-gray-400 rounded-xl shadow-xs transition"
           >
             <Send className="w-4 h-4" />
           </button>

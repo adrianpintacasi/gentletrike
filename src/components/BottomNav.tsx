@@ -55,7 +55,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   variant = 'passenger',
 }) => (
   <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
-    <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-trust-slate p-1.5 shadow-[0_8px_32px_rgba(18,59,61,0.35)] border border-cream-400/20">
+    <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-gray-900 p-2 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
       {(variant === 'rider' ? RIDER_TABS : PASSENGER_TABS).map(({ key, label, icon: Icon }) => {
         const active = tab === key;
         return (
@@ -64,16 +64,18 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             onClick={() => onTabChange(key)}
             aria-label={label}
             aria-current={active ? 'page' : undefined}
-            className={`relative flex h-11 items-center justify-center gap-1.5 rounded-full px-3.5 sm:px-4 transition-all active:scale-95 ${
+            className={`relative flex h-12 items-center justify-center rounded-full transition-all active:scale-95 ${
               active
-                ? 'bg-trike-gold text-trust-slate font-display font-bold shadow-xs'
-                : 'text-cream-300 hover:bg-white/10 hover:text-cream-50 font-sans font-semibold text-xs'
+                ? 'gap-2 bg-yellow-400 px-5 text-gray-900'
+                : 'w-12 text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
           >
-            <Icon className="h-4 w-4 shrink-0" />
-            <span className="text-xs">{label}</span>
+            <Icon className="h-5 w-5 shrink-0" />
+            {/* Only the active tab is labelled, so three destinations fit a
+                narrow phone without shrinking the tap targets. */}
+            {active && <span className="text-xs font-semibold">{label}</span>}
             {key === 'home' && badgeCount > 0 && !active && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-sunset-coral px-1 text-[9px] font-bold text-white shadow-xs">
+              <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
                 {badgeCount > 9 ? '9+' : badgeCount}
               </span>
             )}

@@ -49,22 +49,22 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
 
   return (
     <>
-      <div className="animate-fadeIn fixed inset-0 z-[100] flex items-center justify-center bg-trust-slate/80 p-4 backdrop-blur-sm">
-        <div className="bg-cream-50 rounded-[28px] max-w-md w-full shadow-2xl border border-cream-300 text-trust-slate flex flex-col overflow-hidden animate-scaleUp">
+      <div className="animate-fadeIn fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 text-gray-900 flex flex-col overflow-hidden animate-scaleUp">
           {/* Header */}
-          <div className="bg-trust-slate text-cream-50 p-4 flex items-center justify-between border-b border-cream-400/20">
+          <div className="bg-gray-900 text-white p-4 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <CheckCircle className="w-5 h-5 text-sampaguita-green shrink-0" />
+              <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
               <div>
-                <h3 className="font-display font-bold text-sm leading-tight text-cream-50">Trip completed</h3>
-                <p className="text-[11px] text-cream-300 font-sans font-medium">
+                <h3 className="font-bold text-sm leading-tight">Trip completed</h3>
+                <p className="text-[11px] text-gray-400 font-medium">
                   Daghang salamat sa pagsakay!
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 hover:bg-white/10 rounded-full transition text-cream-300 hover:text-cream-50"
+              className="p-1.5 hover:bg-gray-800 rounded-full transition text-gray-400 hover:text-white"
               title="Close"
             >
               <X className="w-5 h-5" />
@@ -74,40 +74,44 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
           <div className="p-5 space-y-4">
             {/* Rider details stay visible */}
             {driver && (
-              <div className="bg-cream-100 p-3.5 rounded-card border border-cream-300 flex items-center gap-3">
+              <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 flex items-center gap-3">
                 <img
                   src={driver.avatar}
                   alt={driver.name}
-                  className="w-12 h-12 rounded-card object-cover border border-cream-300 shrink-0"
+                  className="w-12 h-12 rounded-xl object-cover border border-amber-300 shrink-0"
                 />
                 <div className="min-w-0">
-                  <h4 className="font-display font-bold text-sm text-trust-slate truncate">{driver.name}</h4>
-                  <p className="text-[11px] text-cream-600 font-sans font-medium truncate">
+                  <h4 className="font-bold text-sm truncate">{driver.name}</h4>
+                  <p className="text-[11px] text-gray-600 font-medium truncate">
                     {driver.unitNumber}
                   </p>
                 </div>
-                <span className="ml-auto text-lg font-display font-extrabold text-trust-slate shrink-0">
+                <span className="ml-auto text-lg font-extrabold shrink-0">
                   ₱{ride.totalFare}
                 </span>
               </div>
             )}
 
-            <p className="text-[11px] text-cream-600 font-sans font-medium text-center">
+            <p className="text-[11px] text-gray-500 font-medium text-center">
               {ride.pickupLocation.name} ➔ {ride.dropoffLocation.name} • {ride.distanceKm} km
             </p>
 
-            {/* Star rating */}
+            {/* Star rating.
+                The gradient is defined once and referenced by every lit star,
+                so the row reads as one band of light rather than five separate
+                yellow shapes. Each lights with a small pop as it is passed. */}
             <div className="gt-star-row space-y-2 text-center">
               <svg width="0" height="0" aria-hidden className="absolute">
                 <defs>
                   <linearGradient id="gt-star-gradient" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="var(--color-trike-gold)" />
-                    <stop offset="100%" stopColor="var(--color-trike-gold-hover)" />
+                    <stop offset="0%" stopColor="var(--gt-star-from)" />
+                    <stop offset="55%" stopColor="var(--gt-star-via)" />
+                    <stop offset="100%" stopColor="var(--gt-star-to)" />
                   </linearGradient>
                 </defs>
               </svg>
 
-              <p className="text-sm font-display font-bold text-trust-slate">How was your ride?</p>
+              <p className="text-sm font-semibold text-gray-900">How was your ride?</p>
 
               <div className="flex items-center justify-center gap-1">
                 {[1, 2, 3, 4, 5].map((n) => (
@@ -123,35 +127,37 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
                     style={{ animationDelay: `${(n - 1) * 40}ms` }}
                     aria-label={`${n} star${n > 1 ? 's' : ''}`}
                   >
-                    <Star className="h-9 w-9 text-trike-gold" />
+                    <Star className="h-9 w-9" />
                   </button>
                 ))}
               </div>
 
-              <p className="h-4 text-[11px] font-sans font-medium text-cream-600">
+              {/* Says what the score means, so the choice is not five silent
+                  shapes the passenger has to interpret. */}
+              <p className="h-4 text-[11px] font-medium text-gray-400">
                 {shown > 0 ? RATING_WORDS[shown - 1] : 'Tap to rate — optional'}
               </p>
               {saved && (
-                <p className="text-xs font-sans font-semibold text-sampaguita-green">
+                <p className="text-xs font-semibold text-emerald-700">
                   Salamat! Your rating was recorded.
                 </p>
               )}
-              {error && <p className="text-xs font-sans font-semibold text-sunset-coral">{error}</p>}
+              {error && <p className="text-xs font-semibold text-rose-700">{error}</p>}
             </div>
 
-            {/* Actions */}
+            {/* Actions — every one of these is optional */}
             <div className="space-y-2 pt-1">
               <button
                 onClick={handleSubmit}
                 disabled={stars < 1 || saving || saved}
-                className="btn-primary w-full py-3 text-xs font-display font-bold shadow-sm disabled:opacity-40"
+                className="w-full py-3 rounded-xl font-bold text-xs bg-amber-400 hover:bg-amber-300 disabled:bg-gray-200 disabled:text-gray-400 text-gray-900 shadow-sm transition active:scale-95"
               >
                 {saving ? 'Saving…' : saved ? 'Rating submitted' : 'Submit rating'}
               </button>
 
               <button
                 onClick={() => setShowReport(true)}
-                className="w-full py-2.5 rounded-pill font-display font-bold text-xs bg-cream-50 border border-sunset-coral/40 text-sunset-coral hover:bg-sunset-coral/10 transition flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 rounded-xl font-bold text-xs bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 transition flex items-center justify-center gap-1.5"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>File a report to Dumaguete TMO</span>
@@ -159,7 +165,7 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
 
               <button
                 onClick={onClose}
-                className="w-full py-2 text-xs font-display font-bold text-cream-600 hover:text-trust-slate transition"
+                className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-900 transition"
               >
                 {saved ? 'Done' : 'Skip and close'}
               </button>

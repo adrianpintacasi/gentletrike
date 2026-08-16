@@ -226,11 +226,11 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     <div
       className={
         inline
-          ? "relative h-full w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-md"
-          : "fixed inset-0 z-50 bg-white"
+          ? "relative h-full w-full overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-md"
+          : "fixed inset-0 z-50 bg-gray-100"
       }
     >
-      <div ref={containerRef} className="absolute inset-0 bg-white" />
+      <div ref={containerRef} className="absolute inset-0" />
 
       {/* Centre-locked pin. Offset by its own height so the point of the
           teardrop, not its middle, marks the coordinate. */}

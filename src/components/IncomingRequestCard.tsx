@@ -120,7 +120,7 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            className="relative touch-pan-y rounded-card bg-trust-slate px-4 py-3 shadow-2xl ring-1 ring-cream-400/20 border border-cream-400/20"
+            className="relative touch-pan-y rounded-2xl bg-gray-900 px-4 py-3 shadow-2xl ring-1 ring-white/10"
             style={{
               transform: `translateX(${dragX}px) rotate(${dragX * 0.02}deg)`,
               transition: dragStart.current === null ? 'transform 200ms ease-out' : 'none',
@@ -128,48 +128,59 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
               willChange: 'transform',
             }}
           >
+            {/*
+              Everything a rider needs to say yes or no, and nothing else.
+              
+              This card was a header, a two-line route, a row of metadata, two
+              full-width buttons and a hint — tall enough to cover a third of
+              the map it was floating over, and repeating a queue that was
+              already open below. Where they are going and what it pays is the
+              decision; the rest is available in the sheet once parked.
+            */}
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-sans font-semibold leading-tight text-cream-300">
+                <p className="truncate text-[13px] font-semibold leading-tight text-gray-400">
                   {ride.pickupLocation.name}
                 </p>
-                <p className="flex items-center gap-1 truncate text-[15px] font-display font-bold leading-tight text-cream-50">
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-trike-gold" />
+                <p className="flex items-center gap-1 truncate text-[15px] font-bold leading-tight text-white">
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-amber-400" />
                   {ride.dropoffLocation.name}
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="text-xl font-display font-extrabold leading-none text-trike-gold tabular-nums">
+                <p className="text-xl font-bold leading-none text-amber-400 tabular-nums">
                   ₱{ride.totalFare}
                 </p>
-                <p className="mt-1 text-[10px] font-sans font-semibold text-cream-300 tabular-nums">
+                <p className="mt-1 text-[10px] font-semibold text-gray-500 tabular-nums">
                   {ride.distanceKm} km · {ride.passengers} pax
                 </p>
               </div>
             </div>
 
+            {/* Swipe is the primary gesture. These stay for anyone who would
+                rather aim, and are sized to be hit without looking. */}
             <div className="mt-2.5 flex items-center gap-2">
               <button
                 onClick={() => commit('decline')}
                 aria-label="Decline this trip"
-                className="flex h-11 w-14 shrink-0 items-center justify-center rounded-pill border border-cream-400/30 text-cream-300 transition active:scale-95 hover:bg-white/10 hover:text-white"
+                className="flex h-11 w-14 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-400 transition active:scale-95 hover:bg-white/10"
               >
                 <X className="h-5 w-5" />
               </button>
               <button
                 onClick={() => commit('accept')}
-                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-pill bg-sampaguita-green text-sm font-display font-bold text-white transition active:scale-95 hover:bg-sampaguita-green/90 shadow-md"
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 text-sm font-bold text-white transition active:scale-95 hover:bg-emerald-400"
               >
                 <Check className="h-4 w-4" />
                 Accept
                 {isCharter && (
-                  <span className="rounded-pill bg-white/20 px-2 py-0.5 text-[9px] font-display font-extrabold">
+                  <span className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-bold">
                     PAKYAW
                   </span>
                 )}
               </button>
               {remaining > 0 && (
-                <span className="shrink-0 rounded-pill border border-cream-400/20 bg-cream-50/10 px-2.5 py-2 text-[11px] font-display font-bold text-cream-300 tabular-nums">
+                <span className="shrink-0 rounded-xl border border-white/10 px-2.5 py-2 text-[11px] font-bold text-gray-400 tabular-nums">
                   +{remaining}
                 </span>
               )}

@@ -4,9 +4,9 @@ import * as adminApi from '../../api/adminApi';
 import { Filter, Printer, X, User, Bike, FileText, ClipboardCheck } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-trike-gold/20 text-trust-slate border-trike-gold/40',
-  investigating: 'bg-trust-slate/15 text-trust-slate border-trust-slate/30',
-  resolved: 'bg-sampaguita-green/15 text-sampaguita-green border-sampaguita-green/30',
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  investigating: 'bg-blue-100 text-blue-800 border-blue-200',
+  resolved: 'bg-emerald-100 text-emerald-800 border-emerald-200',
 };
 
 /** A pickup/dropoff is stored as a JSON string on the ride — pull out its name. */
@@ -31,17 +31,17 @@ function formatDateTime(s: string | null): string {
 const prettyViolation = (v: string) => v.replace(/_/g, ' ');
 
 const SectionTitle: React.FC<{ icon: React.ReactNode; children: React.ReactNode }> = ({ icon, children }) => (
-  <div className="flex items-center gap-1.5 text-cream-600 mb-1.5">
-    <span className="text-trike-gold">{icon}</span>
-    <h4 className="kicker-label">{children}</h4>
+  <div className="flex items-center gap-1.5 text-gray-500 mb-1.5">
+    <span className="text-gray-400">{icon}</span>
+    <h4 className="text-[11px] font-black uppercase tracking-wider">{children}</h4>
   </div>
 );
 
 /** Inline "LABEL:  value" field with clear spacing between label and value. */
 const Field: React.FC<{ label: string; value?: React.ReactNode; full?: boolean }> = ({ label, value, full }) => (
   <div className={`text-sm ${full ? 'col-span-2' : ''}`}>
-    <span className="kicker-label">{label}:</span>
-    <span className="ml-2 font-sans font-semibold text-trust-slate break-words">{value ?? '—'}</span>
+    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{label}:</span>
+    <span className="ml-2 font-semibold text-gray-900 break-words">{value ?? '—'}</span>
   </div>
 );
 
@@ -62,24 +62,24 @@ function printReport(r: adminApi.TmoReportItem) {
     r.reference_code
   )}</title><style>
     * { box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Arial, sans-serif; color: #123b3d; margin: 40px; font-size: 13px; }
-    .head { border-bottom: 3px solid #123b3d; padding-bottom: 12px; margin-bottom: 4px; }
-    .org { font-size: 16px; font-weight: 800; color: #123b3d; letter-spacing: .3px; }
-    .sub { font-size: 11px; color: #5c5548; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; margin: 40px; font-size: 13px; }
+    .head { border-bottom: 3px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 4px; }
+    .org { font-size: 16px; font-weight: 800; color: #1e3a8a; letter-spacing: .3px; }
+    .sub { font-size: 11px; color: #6b7280; }
     .title { text-align: center; font-size: 15px; font-weight: 800; letter-spacing: 2px; margin: 18px 0 4px; }
-    .ref { text-align: center; font-size: 12px; color: #123b3d; margin-bottom: 18px; }
-    h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #123b3d;
-         border-bottom: 1px solid #e4dcc8; padding-bottom: 4px; margin: 20px 0 8px; }
+    .ref { text-align: center; font-size: 12px; color: #374151; margin-bottom: 18px; }
+    h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #1e3a8a;
+         border-bottom: 1px solid #d1d5db; padding-bottom: 4px; margin: 20px 0 8px; }
     table { width: 100%; border-collapse: collapse; }
     td { padding: 5px 6px; vertical-align: top; }
-    td.k { width: 170px; color: #5c5548; font-weight: 700; text-transform: uppercase; font-size: 10.5px; }
+    td.k { width: 170px; color: #6b7280; font-weight: 700; text-transform: uppercase; font-size: 10.5px; }
     td.v { font-weight: 600; }
-    .viol { color: #ef7b5c; font-weight: 800; text-transform: capitalize; }
-    .box { border: 1px solid #e4dcc8; border-radius: 6px; padding: 10px 12px; min-height: 54px; }
+    .viol { color: #dc2626; font-weight: 800; text-transform: capitalize; }
+    .box { border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; min-height: 54px; }
     .sign { margin-top: 46px; display: flex; justify-content: space-between; }
-    .sign div { width: 45%; border-top: 1px solid #e4dcc8; padding-top: 4px; text-align: center;
-                font-size: 11px; color: #5c5548; }
-    .foot { margin-top: 30px; font-size: 10px; color: #8a8172; text-align: center; }
+    .sign div { width: 45%; border-top: 1px solid #9ca3af; padding-top: 4px; text-align: center;
+                font-size: 11px; color: #6b7280; }
+    .foot { margin-top: 30px; font-size: 10px; color: #9ca3af; text-align: center; }
     @media print { body { margin: 20px; } }
   </style></head><body>
     <div class="head">
@@ -152,6 +152,9 @@ export const ReportsPage: React.FC = () => {
       const el = document.getElementById('admin-main');
       if (!el) return setContentBox(null);
       const r = el.getBoundingClientRect();
+      // Clamp to the visible viewport — the content panel can be taller than the
+      // window, and an overlay taller than the screen would push the modal out
+      // of reach with nothing to scroll.
       const top = Math.max(r.top, 0);
       const bottom = Math.min(r.bottom, window.innerHeight);
       setContentBox({ left: r.left, top, width: r.width, height: Math.max(0, bottom - top) });
@@ -173,6 +176,7 @@ export const ReportsPage: React.FC = () => {
       .finally(() => setIsLoading(false));
   }, [categoryFilter, statusFilter]);
 
+  // Initial load + live auto-refresh.
   useEffect(() => {
     fetchReports();
     const id = setInterval(fetchReports, 15000);
@@ -200,18 +204,18 @@ export const ReportsPage: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center p-12">
-        <p className="text-xs font-display font-bold text-cream-500 animate-pulse">Loading TMO reports...</p>
+        <p className="text-xs font-bold text-gray-500 animate-pulse">Loading TMO reports...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fadeIn font-sans text-trust-slate">
+    <div className="space-y-6 animate-fadeIn">
       {/* Report Filter Bar */}
-      <div className="bg-cream-50 p-4 rounded-card border border-cream-300 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-cream-500" />
-          <span className="text-xs font-display font-bold text-trust-slate">Filter Reports:</span>
+          <Filter className="w-4 h-4 text-gray-500" />
+          <span className="text-xs font-bold text-gray-900">Filter Reports:</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -219,13 +223,13 @@ export const ReportsPage: React.FC = () => {
             value={refFilter}
             onChange={(e) => setRefFilter(e.target.value)}
             placeholder="Ref code"
-            className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-sans text-trust-slate placeholder:text-cream-400 outline-none focus:ring-2 focus:ring-trike-gold w-36"
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 w-36"
           />
 
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-display font-bold text-trust-slate outline-none"
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700 outline-none"
           >
             <option value="">All Categories</option>
             <option value="overcharging">Overcharging</option>
@@ -238,7 +242,7 @@ export const ReportsPage: React.FC = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-cream-50 border border-cream-300 rounded-pill px-3.5 py-1.5 text-xs font-display font-bold text-trust-slate outline-none"
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700 outline-none"
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
@@ -246,6 +250,7 @@ export const ReportsPage: React.FC = () => {
             <option value="resolved">Resolved</option>
           </select>
 
+          {/* Reset sits to the right of the dropdowns and is always visible */}
           <button
             onClick={() => {
               setCategoryFilter('');
@@ -253,7 +258,7 @@ export const ReportsPage: React.FC = () => {
               setRefFilter('');
             }}
             disabled={!hasFilters}
-            className="px-3.5 py-1.5 rounded-pill text-xs font-display font-bold border border-cream-300 bg-cream-200 text-trust-slate hover:bg-cream-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 rounded-xl text-xs font-bold border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Reset
           </button>
@@ -261,10 +266,10 @@ export const ReportsPage: React.FC = () => {
       </div>
 
       {/* Reports Table */}
-      <div className="bg-cream-50 rounded-card border border-cream-300 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-cream-700 font-sans">
-            <thead className="bg-cream-200/50 border-b border-cream-300 text-xs font-display text-trust-slate uppercase tracking-wider font-bold">
+          <table className="w-full text-left text-sm text-gray-600">
+            <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider font-bold">
               <tr>
                 <th className="px-6 py-4">Ref Code</th>
                 <th className="px-6 py-4">Category</th>
@@ -274,24 +279,24 @@ export const ReportsPage: React.FC = () => {
                 <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-cream-300/60">
+            <tbody className="divide-y divide-gray-100">
               {visibleReports.map((report) => (
-                <tr key={report.id} className="hover:bg-cream-100/70 transition">
-                  <td className="px-6 py-4 font-mono font-bold text-trust-slate">{report.reference_code}</td>
-                  <td className="px-6 py-4 capitalize font-display font-bold text-trust-slate">
+                <tr key={report.id} className="hover:bg-gray-50 transition">
+                  <td className="px-6 py-4 font-mono font-bold text-blue-700">{report.reference_code}</td>
+                  <td className="px-6 py-4 capitalize font-bold text-gray-900">
                     {prettyViolation(report.violation_type)}
                   </td>
-                  <td className="px-6 py-4 font-medium text-cream-700">{report.driver_name ?? 'N/A'}</td>
+                  <td className="px-6 py-4 font-medium text-gray-600">{report.driver_name ?? 'N/A'}</td>
                   <td className="px-6 py-4">
                     <span
-                      className={`px-2.5 py-1 rounded-pill text-[11px] font-display font-bold border capitalize ${
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border capitalize ${
                         STATUS_COLORS[report.status || 'pending']
                       }`}
                     >
                       {report.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-xs text-cream-500 font-medium">
+                  <td className="px-6 py-4 text-xs text-gray-400 font-medium">
                     {new Date(report.created_at.replace(' ', 'T') + 'Z').toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -299,7 +304,7 @@ export const ReportsPage: React.FC = () => {
                       <button
                         onClick={() => printReport(report)}
                         title="Print report"
-                        className="p-1.5 bg-cream-200 hover:bg-cream-300 text-trust-slate rounded-card border border-cream-300 transition shadow-2xs"
+                        className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
                       >
                         <Printer className="w-4 h-4" />
                       </button>
@@ -308,7 +313,7 @@ export const ReportsPage: React.FC = () => {
                           setSelectedReport(report);
                           setAdminNotes(report.admin_notes || '');
                         }}
-                        className="px-3.5 py-1.5 bg-cream-200 hover:bg-trike-gold/30 text-trust-slate font-display font-bold text-xs rounded-pill border border-cream-300 transition shadow-2xs"
+                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-xs rounded-xl transition"
                       >
                         Review
                       </button>
@@ -318,7 +323,7 @@ export const ReportsPage: React.FC = () => {
               ))}
               {visibleReports.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-cream-400 font-sans font-medium">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-400 font-medium">
                     No reports match the selected filters.
                   </td>
                 </tr>
@@ -328,11 +333,11 @@ export const ReportsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Review Modal */}
+      {/* Review Modal — compact professional report, scoped to the content panel */}
       {selectedReport &&
         createPortal(
           <div
-            className="fixed z-50 bg-trust-slate/70 backdrop-blur-xs overflow-y-auto"
+            className="fixed z-50 bg-slate-900/30 overflow-y-auto"
             style={
               contentBox
                 ? { left: contentBox.left, top: contentBox.top, width: contentBox.width, height: contentBox.height }
@@ -340,34 +345,37 @@ export const ReportsPage: React.FC = () => {
             }
             onClick={() => setSelectedReport(null)}
           >
+            {/* The whole modal scrolls within this overlay (header included). */}
             <div className="flex min-h-full items-center justify-center p-4">
               <div
-                className="bg-cream-50 rounded-[28px] w-full max-w-2xl shadow-2xl border border-cream-300 overflow-hidden animate-scaleUp"
+                className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-scaleUp"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Official header */}
-                <div className="px-6 py-4 border-b-2 border-trust-slate bg-cream-100/50">
+                <div className="px-6 py-4 border-b-2 border-blue-800">
                   <div className="flex justify-end -mr-2 -mt-1 mb-1">
                     <button
                       onClick={() => setSelectedReport(null)}
-                      className="p-1.5 text-cream-500 hover:text-trust-slate hover:bg-cream-200 rounded-full transition"
+                      className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
                     >
                       <X className="w-5 h-5" />
                     </button>
                   </div>
 
+                  {/* Row 1: office (left) · date/time (right) */}
                   <div className="flex items-baseline justify-between gap-4">
-                    <p className="text-lg font-display font-black text-trust-slate leading-tight">
+                    <p className="text-lg font-black text-gray-900 leading-tight">
                       Dumaguete Traffic Management Office
                     </p>
-                    <p className="text-sm font-sans font-bold text-cream-700 text-right shrink-0">
+                    <p className="text-sm font-bold text-gray-800 text-right shrink-0">
                       {formatDateTime(selectedReport.created_at)}
                     </p>
                   </div>
+                  {/* Row 2: reference code (left) · status (right) */}
                   <div className="flex items-center justify-between gap-4 mt-1.5">
-                    <p className="text-lg font-mono font-bold text-trike-gold-hover">{selectedReport.reference_code}</p>
+                    <p className="text-lg font-mono font-bold text-blue-700">{selectedReport.reference_code}</p>
                     <span
-                      className={`px-2.5 py-0.5 rounded-pill text-[11px] font-display font-bold border capitalize ${
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border capitalize ${
                         STATUS_COLORS[selectedReport.status || 'pending']
                       }`}
                     >
@@ -377,10 +385,10 @@ export const ReportsPage: React.FC = () => {
                 </div>
 
                 {/* Report body */}
-                <div className="px-6 py-4 space-y-4 font-sans">
+                <div className="px-6 py-4 space-y-4">
                 {/* Complainant + Respondent side by side */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-card border border-cream-300 bg-cream-50 p-3 shadow-2xs">
+                  <div className="rounded-xl border border-gray-200 p-3">
                     <SectionTitle icon={<User className="w-3.5 h-3.5" />}>Complainant (Passenger)</SectionTitle>
                     <div className="space-y-1">
                       <Field label="Name" value={selectedReport.complainant_name || 'Anonymous'} />
@@ -390,7 +398,7 @@ export const ReportsPage: React.FC = () => {
                       />
                     </div>
                   </div>
-                  <div className="rounded-card border border-cream-300 bg-cream-50 p-3 shadow-2xs">
+                  <div className="rounded-xl border border-gray-200 p-3">
                     <SectionTitle icon={<Bike className="w-3.5 h-3.5" />}>Respondent (Driver)</SectionTitle>
                     <div className="space-y-1">
                       <Field label="Name" value={selectedReport.driver_name || 'Unidentified'} />
@@ -399,14 +407,14 @@ export const ReportsPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Incident */}
-                <div className="rounded-card border border-cream-300 bg-cream-50 p-3 shadow-2xs">
+                {/* Incident — violation highlighted, compact grid */}
+                <div className="rounded-xl border border-gray-200 p-3">
                   <SectionTitle icon={<FileText className="w-3.5 h-3.5" />}>Incident Details</SectionTitle>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     <Field
                       label="Violation"
                       value={
-                        <span className="text-sunset-coral font-display font-black capitalize">
+                        <span className="text-red-600 font-black capitalize">
                           {prettyViolation(selectedReport.violation_type)}
                         </span>
                       }
@@ -425,7 +433,7 @@ export const ReportsPage: React.FC = () => {
                     {selectedReport.demanded_fare != null && (
                       <Field
                         label="Demanded Fare"
-                        value={<span className="text-sunset-coral font-display font-bold">₱{selectedReport.demanded_fare}</span>}
+                        value={<span className="text-red-600 font-bold">₱{selectedReport.demanded_fare}</span>}
                       />
                     )}
                   </div>
@@ -434,27 +442,27 @@ export const ReportsPage: React.FC = () => {
                 {/* Narrative */}
                 <div>
                   <SectionTitle icon={<FileText className="w-3.5 h-3.5" />}>Complaint Narrative</SectionTitle>
-                  <p className="p-3 bg-cream-100/60 rounded-card border border-cream-300 text-sm font-medium text-trust-slate leading-relaxed">
+                  <p className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 leading-relaxed">
                     {selectedReport.details || 'No description provided.'}
                   </p>
                 </div>
 
-                {/* Officer action */}
-                <div className="pt-3 border-t border-cream-300">
+                {/* Officer action — a resolved report is closed (read-only) */}
+                <div className="pt-3 border-t border-gray-200">
                   <SectionTitle icon={<ClipboardCheck className="w-3.5 h-3.5" />}>TMO Officer Action</SectionTitle>
 
                   {selectedReport.status === 'resolved' ? (
-                    <div className="rounded-card border border-sampaguita-green/30 bg-sampaguita-green/10 p-3 space-y-1">
-                      <p className="text-xs font-display font-bold text-sampaguita-green">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1">
+                      <p className="text-xs font-bold text-emerald-800">
                         ✓ This report has been resolved — no further action needed.
                       </p>
                       {selectedReport.admin_notes && (
-                        <p className="text-xs text-trust-slate font-sans whitespace-pre-wrap break-words">
+                        <p className="text-xs text-gray-700 whitespace-pre-wrap break-words">
                           <span className="font-bold">Notes:</span> {selectedReport.admin_notes}
                         </p>
                       )}
                       {selectedReport.resolved_by && (
-                        <p className="text-[11px] font-sans text-cream-600">
+                        <p className="text-[11px] text-gray-500">
                           Resolved by {selectedReport.resolved_by}
                           {selectedReport.resolved_at ? ` · ${formatDateTime(selectedReport.resolved_at)}` : ''}
                         </p>
@@ -467,10 +475,10 @@ export const ReportsPage: React.FC = () => {
                           <button
                             key={st}
                             onClick={() => handleUpdateReport(selectedReport.id, st)}
-                            className={`flex-1 py-2 rounded-pill font-display font-bold capitalize text-xs transition border ${
+                            className={`flex-1 py-2 rounded-xl font-bold capitalize text-xs transition border ${
                               selectedReport.status === st
-                                ? 'bg-trust-slate text-cream-50 border-trust-slate shadow-xs'
-                                : 'bg-cream-50 text-trust-slate border-cream-300 hover:bg-cream-200'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                             }`}
                           >
                             {st}
@@ -483,11 +491,11 @@ export const ReportsPage: React.FC = () => {
                         value={adminNotes}
                         onChange={(e) => setAdminNotes(e.target.value)}
                         placeholder="Officer findings / resolution notes..."
-                        className="w-full bg-cream-50 border border-cream-300 rounded-card p-3 text-xs font-sans text-trust-slate outline-none focus:ring-2 focus:ring-trike-gold font-medium"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                       />
                       <button
                         onClick={() => handleUpdateReport(selectedReport.id, selectedReport.status)}
-                        className="btn-primary w-full mt-2 py-2.5 font-display font-bold text-xs shadow-xs"
+                        className="w-full mt-2 py-2 bg-gray-900 text-white font-bold rounded-xl text-xs hover:bg-gray-800 transition"
                       >
                         Save Notes
                       </button>

@@ -41,17 +41,17 @@ export interface VehicleDetail {
 export const VEHICLE_DETAILS: Record<TransportMode, VehicleDetail> = {
   pedicab_standard: {
     title: 'Pedicab',
-    subtitle: 'Shared ride along common route · Standard fare',
-    capacity: 'Seats 4–6',
+    subtitle: 'Shared ride · pay per seat',
+    capacity: '4-6 passengers',
     maxPassengers: 6,
     baseFare: 15,
     perKm: 2,
     eta: '3 mins',
   },
   pakyaw_charter: {
-    title: 'Pakyaw / Private Charter',
-    subtitle: 'Exclusive hire · Direct private ride for your group',
-    capacity: 'Entire vehicle (up to 6 seats)',
+    title: 'Pakyaw Charter',
+    subtitle: 'Hire the whole trike · price agreed with the rider',
+    capacity: 'Up to vehicle capacity',
     maxPassengers: 6,
     baseFare: 70,
     perKm: 5,
