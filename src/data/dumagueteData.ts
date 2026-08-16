@@ -151,6 +151,56 @@ export const DUMAGUETE_LOCATIONS: LocationPoint[] = [
 ];
 
 export const INITIAL_DRIVERS: Driver[] = [
+  /*
+   * Riders standing at CIT-U, Cebu.
+   *
+   * The hackathon is at Cebu Institute of Technology, and a queue with nobody
+   * in it dispatches nothing — so the demo would end at "searching for a
+   * rider". These sit a few hundred metres apart around the campus, which is
+   * far enough that the map draws a real approach route rather than a dot.
+   */
+  {
+    id: 'drv_cebu_1',
+    name: 'Kuya Ramon',
+    vehicleType: 'pedicab_standard',
+    unitNumber: 'Trike #221',
+    plateNumber: 'CB-2210',
+    rating: 4.9,
+    tripsCompleted: 640,
+    phone: '0917-555-2210',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    currentLat: 10.2962,
+    currentLng: 123.8798,
+    isOnline: true,
+  },
+  {
+    id: 'drv_cebu_2',
+    name: 'Manong Elmer',
+    vehicleType: 'pedicab_standard',
+    unitNumber: 'Trike #114',
+    plateNumber: 'CB-1142',
+    rating: 4.8,
+    tripsCompleted: 980,
+    phone: '0918-555-1142',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    currentLat: 10.2934,
+    currentLng: 123.8829,
+    isOnline: true,
+  },
+  {
+    id: 'drv_cebu_3',
+    name: 'Ate Marivic',
+    vehicleType: 'pedicab_standard',
+    unitNumber: 'Trike #305',
+    plateNumber: 'CB-3051',
+    rating: 5.0,
+    tripsCompleted: 410,
+    phone: '0920-555-3051',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    currentLat: 10.2977,
+    currentLng: 123.8845,
+    isOnline: true,
+  },
   {
     id: 'drv_1',
     name: 'Nong Jun (Pedicab Leader)',
@@ -181,9 +231,9 @@ export const INITIAL_DRIVERS: Driver[] = [
   },
   {
     id: 'drv_3',
-    name: 'Master Dodong (Express Moto)',
-    vehicleType: 'habal_habal',
-    unitNumber: 'Habal #07',
+    name: 'Master Dodong',
+    vehicleType: 'pedicab_standard',
+    unitNumber: 'Trike #07',
     plateNumber: 'MC-9921',
     rating: 4.8,
     tripsCompleted: 2150,
@@ -195,9 +245,9 @@ export const INITIAL_DRIVERS: Driver[] = [
   },
   {
     id: 'drv_4',
-    name: 'Manoy Rolly (Multicab Express)',
-    vehicleType: 'multicab',
-    unitNumber: 'EasyRide #12',
+    name: 'Manoy Rolly',
+    vehicleType: 'pedicab_standard',
+    unitNumber: 'Trike #12',
     plateNumber: 'PUJ-4412',
     rating: 4.9,
     tripsCompleted: 3100,

@@ -12,7 +12,7 @@ import { LocationPoint } from '../types';
  */
 
 /** Long enough that "Sil" does not fire a request, short enough to feel live. */
-const MIN_QUERY = 3;
+export const MIN_QUERY = 3;
 const DEBOUNCE_MS = 350;
 
 export interface PlaceSearchState {
@@ -23,7 +23,18 @@ export interface PlaceSearchState {
   searching: boolean;
 }
 
-export function usePlaceSearch(query: string, curatedSource: LocationPoint[]): PlaceSearchState {
+export function usePlaceSearch(
+  query: string,
+  curatedSource: LocationPoint[],
+  /**
+   * Where the passenger is, so results are near them.
+   *
+   * The search used to be restricted to a box around Dumaguete, which made the
+   * question "where am I" irrelevant. Now that it works anywhere, position is
+   * what decides whether "the university" means the one across the street.
+   */
+  near?: { lat: number; lng: number } | null
+): PlaceSearchState {
   const trimmed = query.trim();
   const lower = trimmed.toLowerCase();
 
@@ -54,7 +65,7 @@ export function usePlaceSearch(query: string, curatedSource: LocationPoint[]): P
     setSearching(true);
 
     const timer = setTimeout(async () => {
-      const results = await api.searchPlaces(trimmed);
+      const results = await api.searchPlaces(trimmed, near ?? undefined);
       if (ticket !== latest.current) return;
 
       const alreadyShown = new Set(curated.map((c) => c.name.toLowerCase()));
@@ -78,8 +89,10 @@ export function usePlaceSearch(query: string, curatedSource: LocationPoint[]): P
 
     return () => clearTimeout(timer);
     // `curated` is derived from the same query, so depending on the query alone
-    // is correct and avoids re-running on every parent render.
-  }, [trimmed]); // eslint-disable-line react-hooks/exhaustive-deps
+    // is correct and avoids re-running on every parent render. Position is
+    // rounded first: a raw GPS watch changes every second, and re-running the
+    // search on each fix would bill a request per heartbeat.
+  }, [trimmed, near ? `${near.lat.toFixed(2)},${near.lng.toFixed(2)}` : '']); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { curated, found, searching };
 }

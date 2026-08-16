@@ -52,8 +52,10 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         dropoff: { type: 'string', description: 'Destination place. Any place in Dumaguete City.' },
         vehicleType: {
           type: 'string',
-          enum: ['pedicab_standard', 'habal_habal', 'multicab'],
-          description: 'Defaults to pedicab_standard.',
+          enum: ['pedicab_standard', 'pakyaw_charter'],
+          description:
+            'Defaults to pedicab_standard. pakyaw_charter is the same trike hired ' +
+            'whole at a negotiated price, not a different vehicle.',
         },
         passengers: { type: 'integer', description: 'Number of passengers. Defaults to 1.' },
       },
@@ -85,7 +87,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         pickup: { type: 'string', description: 'Any place in Dumaguete City.' },
         dropoff: { type: 'string', description: 'Any place in Dumaguete City.' },
-        vehicleType: { type: 'string', enum: ['pedicab_standard', 'habal_habal', 'multicab'] },
+        vehicleType: { type: 'string', enum: ['pedicab_standard', 'pakyaw_charter'] },
         passengers: { type: 'integer' },
         notes: { type: 'string', description: 'Optional note for the driver.' },
       },
@@ -134,7 +136,12 @@ const missingPlace = (which: string): ToolResult => ({
  * (offer the terminal), the words match several places (ask), or nothing matches
  * (ask). None of them may end in a guessed fare.
  */
-async function resolvePair(pickup: string, dropoff: string) {
+async function resolvePair(
+  pickup: string,
+  dropoff: string,
+  /** Where the passenger is, so both ends resolve near them rather than by name alone. */
+  near?: { lat: number; lng: number }
+) {
   // Nothing to look up is not the same as nothing found.
   if (!pickup.trim()) return { error: missingPlace('pickup') };
   if (!dropoff.trim()) return { error: missingPlace('destination') };
@@ -165,7 +172,10 @@ async function resolvePair(pickup: string, dropoff: string) {
     }
   }
 
-  const [from, to] = await Promise.all([resolvePlace(pickup), resolvePlace(dropoff)]);
+  const [from, to] = await Promise.all([
+    resolvePlace(pickup, near),
+    resolvePlace(dropoff, near),
+  ]);
 
   if (from.kind !== 'resolved') return { error: unresolved('pickup', pickup, from) };
   if (to.kind !== 'resolved') return { error: unresolved('destination', dropoff, to) };
@@ -203,6 +213,15 @@ const headsOf = (v: unknown): number => Math.max(1, Math.min(12, Math.floor(Numb
 
 export interface ToolContext {
   embed?: (text: string) => Promise<number[]>;
+  /**
+   * Where the passenger is standing.
+   *
+   * Place resolution is biased by position, so this is what makes "the mall"
+   * mean the one they can reach. Without it, the same words resolve to whichever
+   * place on earth matched the string best — which is how a passenger in Cebu
+   * gets quoted a fare to a mall in Negros.
+   */
+  near?: { lat: number; lng: number };
 }
 
 export async function executeTool(
@@ -229,7 +248,7 @@ export async function executeTool(
 
     case 'plan_route':
     case 'estimate_fare': {
-      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''));
+      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''), ctx.near);
       if ('error' in pair) return pair.error!;
 
       const route = await getStreetRoute([
@@ -269,7 +288,7 @@ export async function executeTool(
     }
 
     case 'draft_booking': {
-      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''));
+      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''), ctx.near);
       if ('error' in pair) return pair.error!;
 
       const route = await getStreetRoute([

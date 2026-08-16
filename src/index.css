@@ -101,3 +101,217 @@
   animation: scaleUp 0.2s ease-out forwards;
 }
 
+
+/*
+ * Entrance motion for the home screen.
+ *
+ * Short and small on purpose: a 220 ms rise of 8 px reads as the screen
+ * settling, where anything longer or larger reads as the app being slow. Each
+ * element is offset slightly so the eye is led down the page rather than
+ * everything arriving at once.
+ */
+@keyframes gt-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.gt-rise {
+  opacity: 0;
+  animation: gt-rise 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Anyone who has asked for less motion gets none of it. */
+@media (prefers-reduced-motion: reduce) {
+  .gt-rise {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+/* Gently is the one thing in the app that is not a normal control, so it gets
+   the one gradient. Everything else stays flat. */
+.gt-gently {
+  background-image: linear-gradient(135deg, #fde047 0%, #facc15 45%, #f59e0b 100%);
+}
+
+.gt-gently:hover {
+  background-image: linear-gradient(135deg, #fef08a 0%, #fde047 45%, #fbbf24 100%);
+}
+
+/*
+ * Scrollable without a visible scrollbar.
+ *
+ * Applied where the content obviously continues — sheets, the menu column —
+ * so the bar is not carrying that information on its own. Not applied to long
+ * documents, where losing the position indicator costs more than the tidiness
+ * is worth.
+ */
+.gt-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.gt-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Gently's header.
+ *
+ * Three coloured lights drifting across a dark field at different speeds, so
+ * the surface never repeats and never sits still. The previous version animated
+ * background-position on a gradient, which browsers render as an almost
+ * imperceptible shift — it was technically moving and visually static.
+ *
+ * Separate layers on their own timings is what actually reads as "thinking":
+ * the eye catches the interference between them rather than any one sweep.
+ */
+.gt-gently-header {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, #0a0f1e 0%, #131c31 50%, #0a0f1e 100%);
+}
+
+.gt-gently-header::before,
+.gt-gently-header::after {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  z-index: -1;
+  border-radius: 9999px;
+  filter: blur(38px);
+  opacity: 0.55;
+}
+
+.gt-gently-header::before {
+  background: radial-gradient(circle, #facc15 0%, rgba(250, 204, 21, 0) 62%);
+  animation: gt-drift-a 9s ease-in-out infinite;
+}
+
+.gt-gently-header::after {
+  background: radial-gradient(circle, #22d3ee 0%, rgba(34, 211, 238, 0) 62%);
+  animation: gt-drift-b 12s ease-in-out infinite;
+}
+
+@keyframes gt-drift-a {
+  0%, 100% { transform: translate3d(-22%, -12%, 0) scale(1); }
+  33%      { transform: translate3d(26%, 14%, 0) scale(1.25); }
+  66%      { transform: translate3d(8%, -18%, 0) scale(0.9); }
+}
+
+@keyframes gt-drift-b {
+  0%, 100% { transform: translate3d(24%, 16%, 0) scale(1.1); }
+  40%      { transform: translate3d(-20%, -10%, 0) scale(0.85); }
+  75%      { transform: translate3d(-6%, 20%, 0) scale(1.3); }
+}
+
+/* A slow sheen across the whole bar, tying the two lights together. */
+.gt-gently-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-gently-header::before,
+  .gt-gently-header::after {
+    animation: none;
+  }
+}
+
+/* The mark itself pulses while a reply is being composed. */
+.gt-thinking {
+  animation: gt-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gt-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.65; transform: scale(0.94); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-thinking { animation: none; }
+}
+
+/*
+ * Google's zoom control is a hard-edged rectangle, which is the one square
+ * thing on a screen where every other control is a pill or a rounded card.
+ * Restyled from outside because the control itself is not ours to author.
+ */
+.gm-bundled-control .gmnoprint > div {
+  border-radius: 9999px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18) !important;
+  overflow: hidden !important;
+}
+
+.gm-bundled-control button {
+  border-radius: 9999px !important;
+}
+
+/*
+ * Rating stars.
+ *
+ * A gradient rather than a flat fill, with a warm glow behind the filled ones,
+ * so a five-star rating actually looks like praise instead of five identical
+ * yellow shapes. The gradient runs across the whole row, not per star, so the
+ * lit stars read as one continuous band of light.
+ */
+.gt-star-row {
+  --gt-star-from: #fde047;
+  --gt-star-via: #fbbf24;
+  --gt-star-to: #f59e0b;
+}
+
+.gt-star-lit svg {
+  fill: url(#gt-star-gradient);
+  stroke: none;
+  filter: drop-shadow(0 2px 6px rgba(245, 158, 11, 0.45));
+}
+
+.gt-star-dim svg {
+  fill: #f1f5f9;
+  stroke: #e2e8f0;
+}
+
+/* A small lift as each star lights, so the row animates left to right. */
+.gt-star-lit {
+  animation: gt-star-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes gt-star-pop {
+  0%   { transform: scale(0.7); }
+  60%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-star-lit { animation: none; }
+}
+
+/*
+ * Text fields that do not make the page jump.
+ *
+ * iOS Safari zooms the entire viewport when a focused input's font-size is
+ * under 16px — so every search box and chat field in the app yanked the layout
+ * sideways the moment a thumb touched it, and left it zoomed afterwards. There
+ * is no setting for this; 16px is the whole fix.
+ *
+ * Applied at the small breakpoint only. Above it there is no zoom behaviour to
+ * avoid, and 16px is larger than these fields want to be on a desktop.
+ */
+.gt-field {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .gt-field,
+  input[type='text'],
+  input[type='search'],
+  input[type='email'],
+  input[type='password'],
+  input[type='tel'],
+  input[type='number'],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

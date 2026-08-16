@@ -72,6 +72,13 @@ interface GentleAiAssistantProps {
   bookBlockedReason?: string;
   /** Hands the created ride back to the app so it can track it like any other. */
   onRideBooked?: (ride: RideBooking) => void;
+  /**
+   * Where the passenger is standing.
+   *
+   * Gently resolves place names near this point, which is what makes "the mall"
+   * mean the one down the road rather than whichever mall matched the word best.
+   */
+  position?: { lat: number; lng: number } | null;
 }
 
 export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
@@ -82,12 +89,13 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
   canBook = false,
   bookBlockedReason,
   onRideBooked,
+  position,
 }) => {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      text: 'Maayong adlaw! I am Gently, your local Dumaguete guide. Ask me about pedicab fares, tourist spots like Rizal Boulevard or Casaroro Falls, local food like Silvanas & Budbud Kabog — or ask me to book you a ride.',
+      text: 'Maayong adlaw! I am Gently. Ask me what a trip should cost, how to reach somewhere, or what is worth seeing nearby — or ask me to book you a ride.',
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -118,12 +126,21 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
 
   if (!isOpen) return null;
 
+  /*
+   * Openers that work wherever the app is opened.
+   *
+   * These used to name Silliman, Rizal Boulevard and Dumaguete festivals, which
+   * made the first thing a passenger saw a set of questions about a city they
+   * may never have been to. Gently resolves "here" and "near me" against their
+   * actual position, so the prompts can ask about where they are without
+   * naming anywhere at all.
+   */
   const quickQuestions = [
-    'How much is pedicab fare from Silliman to Boulevard?',
-    'Book me a ride from Rizal Boulevard to Robinsons',
-    'What festivals happen in Dumaguete?',
-    'How do I report an overcharging driver to TMO?',
-    'What can I see near Rizal Boulevard?',
+    'Where am I right now?',
+    'How much is a pedicab fare per kilometre?',
+    'How much from here to the mall?',
+    'What can I see near here?',
+    'How do I report an overcharging driver?',
   ];
 
   const handleSendQuery = async (queryText?: string) => {
@@ -149,6 +166,7 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
         pickup: pickupName,
         dropoff: dropoffName,
         history,
+        ...(position && { lat: position.lat, lng: position.lng }),
       });
 
       const draft = api.findBookingDraft(res.data);
@@ -287,26 +305,42 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
     );
   };
 
+  /*
+   * A floating dialog, centred at every width.
+   *
+   * It used to be 85vh, which on a phone covered the map, the booking, and
+   * whatever the question was actually about — you could not read your own fare
+   * while asking about it. The answer was not to move it to the bottom but to
+   * make it smaller: centred, inset from all four edges, with the screen it
+   * belongs to visible around it.
+   */
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-      <div className="bg-white rounded-2xl max-w-lg w-full h-[85vh] max-h-[620px] shadow-2xl border border-gray-200 flex flex-col text-gray-900 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fadeIn">
+      <div className="flex h-[68dvh] max-h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
         {/* Header */}
-        <div className="bg-gray-900 text-amber-400 p-4 flex items-center justify-between">
+        <div className="gt-gently-header relative flex items-center justify-between overflow-hidden p-4 text-amber-400">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-400 text-gray-900 rounded-xl">
-              <Sparkles className="w-5 h-5" />
+            {/* Pulses only while a reply is being composed, so the motion
+                means something rather than decorating idle time. */}
+            <div
+              className={`rounded-xl bg-amber-400 p-2 text-gray-900 shadow-lg shadow-amber-400/30 ${
+                loading ? 'gt-thinking' : ''
+              }`}
+            >
+              <Sparkles className="h-5 w-5" />
             </div>
             <div>
               <h3 className="font-bold text-base leading-tight text-white">Gently</h3>
-              <p className="text-xs text-gray-400 font-medium">Dumaguete Route & City Knowledge</p>
+              <p className="text-[11px] font-medium text-white/60">Routes, fares and local knowledge</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-800 rounded-full transition text-gray-400 hover:text-white"
+            className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white"
+            aria-label="Close Gently"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -365,8 +399,8 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
             type="text"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Ask Gently about Dumaguete pedicabs, fares, places..."
-            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-900 font-medium focus:outline-none focus:bg-white focus:border-amber-400"
+            placeholder="Ask about fares, routes or places..."
+            className="gt-field flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 font-medium text-gray-900 focus:border-amber-400 focus:bg-white focus:outline-none"
           />
           <button
             type="submit"

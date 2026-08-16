@@ -1,19 +1,23 @@
 import React from 'react';
 import { Driver, RideBooking } from '../types';
 import type { OpenRide } from '../api';
-import { sequenceStops, isExclusiveTrip } from '../../shared/dispatch';
-import { VEHICLE_DETAILS } from '../../shared/transport';
+import { isExclusiveTrip } from '../../shared/dispatch';
+import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
+import { IncomingRequestCard } from './IncomingRequestCard';
+import { haversineKm } from '../../shared/geo';
+import { VEHICLE_DETAILS , vehicleDetail } from '../../shared/transport';
 import {
   Power,
   MapPin,
   ArrowRight,
   Users,
   Plus,
+  Minus,
   X,
   CheckCircle,
+  Check,
   Phone,
   MessageSquare,
-  BadgeCheck,
   AlertTriangle,
 } from 'lucide-react';
 import { RiderChatPanel } from './RiderChatPanel';
@@ -28,10 +32,17 @@ interface DriverModePanelProps {
   onDeclineRequest: (rideId: string) => void;
   onAdvanceRideStatus: (rideId: string, status: RideBooking['status']) => void;
   onToggleOnline: (isOnline: boolean) => void;
+  /** Records passengers picked up off the app, so capacity stays truthful. */
+  onSetWalkInSeats?: (seats: number) => void;
 }
 
-/** The next stage a rider moves a trip into, and the button that does it. */
-const NEXT_STAGE: Record<
+/**
+ * The next stage a rider moves a trip into, and the button that does it.
+ *
+ * Exported because the bottom sheet pins this same action above the fold, and a
+ * second copy would drift the moment a stage is added.
+ */
+export const NEXT_STAGE: Record<
   string,
   { status: RideBooking['status']; label: string } | undefined
 > = {
@@ -47,13 +58,17 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
   onDeclineRequest,
   onAdvanceRideStatus,
   onToggleOnline,
+  onSetWalkInSeats,
 }) => {
   // Loading state for online toggle
   const [isTogglingOnline, setIsTogglingOnline] = React.useState(false);
 
-  // Earnings and trip counts are the server's numbers, credited on completion.
-  const earningsToday = currentDriver.earningsToday ?? 0;
-  const tripsCompletedToday = currentDriver.tripsToday ?? 0;
+  /*
+   * `earningsToday` and `tripsToday` used to be read here and shown on this
+   * screen. They come from columns that are incremented on completion and never
+   * reset, so they were career totals labelled "today" — and they sat beside the
+   * real figures, disagreeing. The Menu now derives both from completed trips.
+   */
 
   // Only one thread open at a time — a rider glancing at their phone should
   // see one conversation, not a stack of them.
@@ -82,144 +97,160 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
 
   // Was hardcoded to 6, which is only right for a pedicab — a habal-habal seats
   // one and an EasyRide twelve. Same number the server enforces on accept.
-  const seatCapacity = VEHICLE_DETAILS[currentDriver.vehicleType]?.maxPassengers ?? 6;
+  // The rider's own figure, not the vehicle class ceiling. Set in Settings and
+  // clamped by the server, so this can be trusted as-is.
+  const seatCapacity =
+    currentDriver.seatCapacity ?? vehicleDetail(currentDriver.vehicleType).maxPassengers;
 
   /**
    * Passengers listed in the order the rider will next deal with them, so the
-   * numbers here match the numbered pins on the map. Listing by booking time
-   * put a passenger who is minutes away at the top simply because they tapped
-   * first, which is not the order anyone drives in.
+   * numbers here match the numbered pins on the map and the action pinned to
+   * the top of the sheet.
    */
-  const routeOrderedRides = React.useMemo(() => {
-    if (acceptedPooledRides.length < 2) return acceptedPooledRides;
+  const routeOrderedRides = useRouteOrderedRides(currentDriver, acceptedPooledRides);
 
-    const origin = { lat: currentDriver.currentLat, lng: currentDriver.currentLng };
-    const nextStopOrder = new Map<string, number>();
+  // Seats booked through the app, plus anyone flagged down on the road. The
+  // server applies exactly the same sum before offering a trip.
+  /*
+   * Nearest pickup first.
+   *
+   * The server ranks by how well a trip fits the rider's existing route, which
+   * is the right order for deciding *whether* to pool. For a rider with nothing
+   * accepted it reads as arbitrary — the useful order is simply which one they
+   * can reach soonest.
+   */
+  const nearestFirst = React.useMemo(
+    () =>
+      [...activeRequests].sort(
+        (a, b) =>
+          haversineKm(
+            { lat: currentDriver.currentLat, lng: currentDriver.currentLng },
+            { lat: a.pickupLocation.lat, lng: a.pickupLocation.lng }
+          ) -
+          haversineKm(
+            { lat: currentDriver.currentLat, lng: currentDriver.currentLng },
+            { lat: b.pickupLocation.lat, lng: b.pickupLocation.lng }
+          )
+      ),
+    [activeRequests, currentDriver.currentLat, currentDriver.currentLng]
+  );
 
-    for (const stop of sequenceStops(
-      origin,
-      acceptedPooledRides.map((r) => ({
-        rideId: r.id,
-        pickup:
-          r.status === 'in_transit'
-            ? null
-            : { lat: r.pickupLocation.lat, lng: r.pickupLocation.lng },
-        dropoff: { lat: r.dropoffLocation.lat, lng: r.dropoffLocation.lng },
-      }))
-    )) {
-      // First time this trip appears is the next thing the rider does for it.
-      if (!nextStopOrder.has(stop.rideId)) nextStopOrder.set(stop.rideId, stop.order);
-    }
-
-    return [...acceptedPooledRides].sort(
-      (a, b) => (nextStopOrder.get(a.id) ?? 0) - (nextStopOrder.get(b.id) ?? 0)
-    );
-  }, [acceptedPooledRides, currentDriver.currentLat, currentDriver.currentLng]);
+  const walkIn = currentDriver.walkInSeats ?? 0;
+  const bookedSeats = currentCapacityCount;
+  const seatsFree = Math.max(0, seatCapacity - bookedSeats - walkIn);
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 text-gray-900 shadow-md md:p-5">
-      {/* Rider header. The online toggle sits here, in the space the identity
-          block left empty, so the control a rider reaches for most is the
-          largest target on the card. Switching back to the passenger app lives
-          in the navbar. */}
-      <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
-        <img
-          src={currentDriver.avatar}
-          alt={currentDriver.name}
-          className="h-12 w-12 shrink-0 rounded-xl border border-gray-200 object-cover shadow-xs"
-        />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-bold text-gray-900">{currentDriver.name}</h3>
-            <span className="shrink-0 rounded-md border border-amber-200 bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-              {currentDriver.unitNumber}
-            </span>
-          </div>
-          {/* A rider's own standing, stated honestly. Telling someone they are
-              "Verified" while the server refuses to let them go online is the
-              kind of contradiction that turns into a support message. */}
-          {verification === 'verified' ? (
-            <p className="flex items-center gap-1 truncate text-xs font-medium text-emerald-700">
-              <BadgeCheck className="h-3.5 w-3.5 shrink-0" />
-              Verified Dumaguete Rider · ★ {currentDriver.rating}
-            </p>
-          ) : (
-            <p className="flex items-center gap-1 truncate text-xs font-bold text-amber-700">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              {verification === 'pending'
-                ? 'Pending TMO verification'
-                : `Rider account ${verification}`}
-            </p>
-          )}
-        </div>
-
+    <div className="flex flex-col gap-3 text-gray-900">
+      {/*
+        Duty and seats, on one line.
+        
+        There were two duty buttons on screen at once — a full-width slab here
+        and a black card in the pinned row above saying the same thing. Both are
+        gone. What is left is an icon: green means on duty, and it is the only
+        round control on the screen, so it is found by shape rather than read.
+      */}
+      <div className="flex items-center gap-3">
         <button
           onClick={handleToggleOnline}
           disabled={isTogglingOnline}
-          className={`flex min-h-12 shrink-0 items-center gap-2.5 rounded-xl px-5 text-sm font-extrabold shadow-sm transition active:scale-95 ${
+          aria-pressed={currentDriver.isOnline}
+          aria-label={currentDriver.isOnline ? 'End shift' : 'Start shift'}
+          title={currentDriver.isOnline ? 'On duty — tap to end shift' : 'Off duty — tap to start'}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
             currentDriver.isOnline
               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-              : 'bg-rose-600 text-white hover:bg-rose-700'
-          } ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
+              : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+          } ${isTogglingOnline ? 'cursor-not-allowed opacity-60' : ''}`}
         >
           {isTogglingOnline ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>{currentDriver.isOnline ? 'GOING OFFLINE...' : 'GOING ONLINE...'}</span>
-            </>
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
           ) : (
-            <>
-              <Power className="h-4 w-4" />
-              <span>{currentDriver.isOnline ? 'ONLINE' : 'OFFLINE'}</span>
-            </>
+            <Power className="h-5 w-5" />
           )}
         </button>
+
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-gray-900">
+            {currentDriver.isOnline ? 'On duty' : 'Off duty'}
+          </p>
+          <p className="truncate text-[11px] font-semibold text-gray-500">
+            {currentDriver.isOnline
+              ? `${seatsFree} of ${seatCapacity} seats free`
+              : 'Not receiving trips'}
+          </p>
+        </div>
+
+        {/*
+          Passengers the rider picked up off the app.
+          
+          A trike flagged down on the road is still a full trike, and until now
+          the app had no way to know — so it went on offering seats that were
+          physically occupied and the rider declined each one by hand. Two taps,
+          and dispatch stops offering what does not fit.
+        */}
+        <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-gray-200 p-1">
+          <button
+            onClick={() => onSetWalkInSeats?.(Math.max(0, walkIn - 1))}
+            disabled={walkIn === 0}
+            aria-label="Remove a walk-in passenger"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <span className="flex min-w-8 flex-col items-center leading-none">
+            <span className="text-base font-bold text-gray-900 tabular-nums">{walkIn}</span>
+            <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
+              walk-in
+            </span>
+          </span>
+          <button
+            onClick={() => onSetWalkInSeats?.(Math.min(seatCapacity, walkIn + 1))}
+            disabled={walkIn >= seatCapacity - bookedSeats}
+            aria-label="Add a walk-in passenger"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      {/* Today's numbers. Three equal columns with the labels and values on
-          shared baselines, so the row scans left to right instead of the third
-          item dropping to its own line at narrow widths. */}
-      <div className="grid grid-cols-3 divide-x divide-amber-200 rounded-xl border border-amber-200 bg-amber-50">
-        <div className="px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
-            Earnings
-          </span>
-          <p className="mt-1 text-xl font-extrabold leading-none text-gray-900">₱{earningsToday}</p>
-        </div>
-        <div className="px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
-            Trips
-          </span>
-          <p className="mt-1 text-xl font-extrabold leading-none text-gray-900">
-            {tripsCompletedToday}
+      {/* Verification only when it is a problem. A rider who is verified does
+          not need telling; one who is not cannot go online and must know why. */}
+      {verification !== 'verified' && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700" />
+          <p className="text-xs font-semibold text-amber-900">
+            {verification === 'pending'
+              ? 'Pending TMO verification — you cannot go on duty yet.'
+              : `Rider account ${verification}.`}
           </p>
         </div>
-        <div className="px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-900">
-            Seats
-          </span>
-          <p className="mt-1 flex items-center justify-center gap-1.5 text-xl font-extrabold leading-none text-gray-900">
-            <Users className="h-4 w-4 text-amber-800" />
-            {currentCapacityCount}/{seatCapacity}
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Accepted Passengers Pool — the rider drives each trip through its stages */}
-      {acceptedPooledRides.length > 0 && (
-        <div className="space-y-2.5 rounded-xl border border-gray-800 bg-gray-900 p-3 text-white">
+      {/*
+        Every trip except the one the pinned row is already driving.
+        
+        The pinned row carries the next stop and its action — the same trip, the
+        same button, the same fare — and this block repeated all of it directly
+        underneath, in the same colours, so a rider with one passenger saw the
+        card twice. It now lists what the pinned row cannot: the trips queued
+        behind the current one. With a single passenger there are none, and the
+        block disappears entirely.
+      */}
+      {routeOrderedRides.length > 1 && (
+        <div className="space-y-2.5 rounded-2xl bg-gray-900 p-3 text-white">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
-              Passengers Onboard
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              After this stop
             </h4>
             <span className="rounded-md bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-gray-900">
-              {acceptedPooledRides.length} active
+              {routeOrderedRides.length - 1} more
             </span>
           </div>
 
           <div className="space-y-2">
-            {routeOrderedRides.map((ride, idx) => {
+            {routeOrderedRides.slice(1).map((ride, idx) => {
               const nextStage = NEXT_STAGE[ride.status];
 
               return (
@@ -367,133 +398,69 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
       ) : (
         /* ONLINE REQUESTS QUEUE */
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Passenger Requests ({activeRequests.length}):</span>
+          <div className="mb-3 flex items-center gap-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              {activeRequests.length === 0
+                ? 'Waiting for requests'
+                : `${activeRequests.length} request${activeRequests.length > 1 ? 's' : ''}`}
             </h4>
+            {seatsFree === 0 && (
+              <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                Full
+              </span>
+            )}
           </div>
 
           {activeRequests.length === 0 ? (
-            <div className="p-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center text-gray-500 text-xs font-medium">
-              <p className="text-gray-900 font-bold text-sm">Searching for nearby Dumaguete passengers...</p>
-              <p className="text-gray-500 mt-1">
-                Popular zones: Silliman Portal, Boulevard, Public Market, and Robinsons.
+            /* The old empty state named Dumaguete and listed four Dumaguete
+               landmarks as "popular zones", which is wrong everywhere else and
+               was never true anywhere — nothing measured them. It now says only
+               what is actually known: whether there is room, and that the app is
+               listening. */
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
+              <span className="mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-xs">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+              </span>
+              <p className="text-sm font-bold text-gray-900">
+                {seatsFree === 0 ? 'No seats free' : 'Listening for nearby trips'}
+              </p>
+              <p className="mx-auto mt-1 max-w-[16rem] text-[11px] font-medium text-gray-500">
+                {seatsFree === 0
+                  ? 'Set a passenger down, or lower the walk-in count, to start receiving offers again.'
+                  : 'Offers appear here the moment a passenger books nearby. You do not need to keep this open.'}
               </p>
             </div>
           ) : (
-            /* One request per card, laid out top to bottom: where the trip
-               goes, what it is worth, then the two decisions. The previous
-               single-row layout truncated both place names to a few characters
-               and put Accept beside Decline at thumb width, which is the pair
-               you least want to mis-tap. */
-            <div className="space-y-3">
-              {activeRequests.map((req) => {
-                const isCharter = isExclusiveTrip(req.vehicleType);
-
-                return (
-                /* Kept deliberately short — a rider scans this list on a phone,
-                   so fitting three or four trips on screen matters more than
-                   breathing room. Route, price and both actions in three rows. */
+            /*
+              A stack, dealt one at a time.
+              
+              Nearest pickup first, because the trip a rider can reach soonest
+              is the one worth deciding on soonest. Swipe right to take it, left
+              to pass; the next card is already visible behind this one, so the
+              queue's depth is legible without a number.
+            */
+            <div className="relative pb-3">
+              {activeRequests.length > 1 && (
                 <div
-                  key={req.id}
-                  className={`rounded-xl border p-3 transition hover:shadow-md ${
-                    isCharter
-                      ? 'border-2 border-indigo-300 bg-indigo-50 hover:border-indigo-400'
-                      : 'border-gray-200 bg-white hover:border-amber-400 hover:bg-amber-50'
-                  }`}
-                >
-                  {/* A charter is a different deal, not just a different price:
-                      the fare is flat, the party hires the whole vehicle, and
-                      accepting it means taking no one else. Worth saying before
-                      a rider taps Accept, not after. */}
-                  {isCharter && (
-                    <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-white">
-                      <Users className="h-3 w-3 shrink-0" />
-                      <span>Pakyaw charter · whole vehicle, no other passengers</span>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2.5">
-                    <div className="flex flex-col items-center pt-1">
-                      <span className="h-2 w-2 rounded-full border-2 border-emerald-600" />
-                      <span className="my-0.5 w-px flex-1 bg-gray-300" />
-                      <span className="h-2 w-2 rounded-full bg-red-600" />
-                    </div>
-
-                    {/* Full names on two lines. Truncating to one word turned
-                        "Doctor Venancio Aldecoa Drive" into "Doctor". */}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold leading-snug text-gray-900">
-                        {req.pickupLocation.name}
-                      </p>
-                      <p className="truncate text-[13px] font-bold leading-snug text-gray-900">
-                        {req.dropoffLocation.name}
-                      </p>
-                    </div>
-
-                    <div className="shrink-0 text-right leading-none">
-                      <p className="text-lg font-extrabold text-gray-900">₱{req.totalFare}</p>
-                      <p className="mt-0.5 text-[9px] font-bold uppercase text-gray-400">
-                        {req.paymentMethod}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Plain text rather than chips — same information, roughly a
-                      third of the height. */}
-                  <p className="mt-1.5 truncate text-[11px] font-bold text-gray-500">
-                    {typeof req.detourKm === 'number' && (
-                      <span
-                        className={
-                          acceptedPooledRides.length === 0 || req.alongTheWay
-                            ? 'text-emerald-700'
-                            : 'text-amber-700'
-                        }
-                      >
-                        {acceptedPooledRides.length === 0
-                          ? `${Math.round((req.pickupDistanceKm ?? 0) * 1000)} m away`
-                          : req.alongTheWay
-                            ? `on route +${Math.round(req.detourKm * 1000)} m`
-                            : `+${Math.round(req.detourKm * 1000)} m off route`}
-                        {' · '}
-                      </span>
-                    )}
-                    {req.passengers} pax · {req.distanceKm} km
-                    {isCharter && ' · flat fare, not per passenger'}
-                    {req.notes ? ` · "${req.notes}"` : ''}
-                  </p>
-
-                  {/* 48px targets: larger touch targets for rapid driver decisions.
-                      Accept takes the remaining width so the destructive choice
-                      is never the easier tap. */}
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={() => onDeclineRequest(req.id)}
-                      className="flex h-12 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-sm font-bold text-rose-700 transition active:scale-95 hover:bg-rose-200 hover:border-rose-400 hover:shadow-sm"
-                    >
-                      <X className="h-4 w-4" />
-                      <span>Decline</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        // Earnings and trip count are credited on completion,
-                        // not on acceptance — otherwise every ride counts twice.
-                        onAcceptRequest(req.id);
-                      }}
-                      className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-lg text-base font-extrabold shadow-sm transition active:scale-95 hover:shadow-md ${
-                        isCharter
-                          ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                          : 'bg-amber-400 text-gray-900 hover:bg-amber-500'
-                      }`}
-                    >
-                      <Plus className="h-5 w-5" />
-                      <span>{isCharter ? `Accept charter · ₱${req.totalFare}` : 'Accept'}</span>
-                    </button>
-                  </div>
-                </div>
-                );
-              })}
+                  aria-hidden
+                  className="absolute inset-x-3 top-2 h-full rounded-2xl bg-gray-900/50 ring-1 ring-white/10"
+                />
+              )}
+              {activeRequests.length > 2 && (
+                <div
+                  aria-hidden
+                  className="absolute inset-x-6 top-4 h-full rounded-2xl bg-gray-900/30 ring-1 ring-white/5"
+                />
+              )}
+              <IncomingRequestCard
+                ride={nearestFirst[0]}
+                remaining={nearestFirst.length - 1}
+                onAccept={onAcceptRequest}
+                onDecline={onDeclineRequest}
+              />
             </div>
           )}
         </div>

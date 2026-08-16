@@ -15,6 +15,9 @@ interface RideCompleteModalProps {
  * screen instead of vanishing, so the passenger can still recognise who drove
  * them. Rating and reporting are both optional — closing is always allowed.
  */
+/** What each score means, so the stars are not five silent shapes. */
+const RATING_WORDS = ['Poor', 'Not great', 'Fine', 'Good', 'Excellent'];
+
 export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onClose }) => {
   const [stars, setStars] = useState(0);
   const [hovered, setHovered] = useState(0);
@@ -46,7 +49,7 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+      <div className="animate-fadeIn fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-sm">
         <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-200 text-gray-900 flex flex-col overflow-hidden animate-scaleUp">
           {/* Header */}
           <div className="bg-gray-900 text-white p-4 flex items-center justify-between">
@@ -80,7 +83,7 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
                 <div className="min-w-0">
                   <h4 className="font-bold text-sm truncate">{driver.name}</h4>
                   <p className="text-[11px] text-gray-600 font-medium truncate">
-                    {driver.unitNumber} • Plate {driver.plateNumber}
+                    {driver.unitNumber}
                   </p>
                 </div>
                 <span className="ml-auto text-lg font-extrabold shrink-0">
@@ -93,12 +96,24 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
               {ride.pickupLocation.name} ➔ {ride.dropoffLocation.name} • {ride.distanceKm} km
             </p>
 
-            {/* Star rating */}
-            <div className="text-center space-y-2">
-              <p className="text-xs font-bold text-gray-700">
-                How was your ride? <span className="font-medium text-gray-400">(optional)</span>
-              </p>
-              <div className="flex items-center justify-center gap-1.5">
+            {/* Star rating.
+                The gradient is defined once and referenced by every lit star,
+                so the row reads as one band of light rather than five separate
+                yellow shapes. Each lights with a small pop as it is passed. */}
+            <div className="gt-star-row space-y-2 text-center">
+              <svg width="0" height="0" aria-hidden className="absolute">
+                <defs>
+                  <linearGradient id="gt-star-gradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--gt-star-from)" />
+                    <stop offset="55%" stopColor="var(--gt-star-via)" />
+                    <stop offset="100%" stopColor="var(--gt-star-to)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+
+              <p className="text-sm font-semibold text-gray-900">How was your ride?</p>
+
+              <div className="flex items-center justify-center gap-1">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
@@ -106,25 +121,28 @@ export const RideCompleteModal: React.FC<RideCompleteModalProps> = ({ ride, onCl
                     onMouseEnter={() => setHovered(n)}
                     onMouseLeave={() => setHovered(0)}
                     disabled={saved}
-                    className="p-1 transition active:scale-90 disabled:cursor-default"
+                    className={`p-1.5 transition-transform active:scale-90 disabled:cursor-default ${
+                      n <= shown ? 'gt-star-lit' : 'gt-star-dim'
+                    }`}
+                    style={{ animationDelay: `${(n - 1) * 40}ms` }}
                     aria-label={`${n} star${n > 1 ? 's' : ''}`}
                   >
-                    <Star
-                      className={`w-8 h-8 transition ${
-                        n <= shown
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'fill-gray-100 text-gray-300'
-                      }`}
-                    />
+                    <Star className="h-9 w-9" />
                   </button>
                 ))}
               </div>
+
+              {/* Says what the score means, so the choice is not five silent
+                  shapes the passenger has to interpret. */}
+              <p className="h-4 text-[11px] font-medium text-gray-400">
+                {shown > 0 ? RATING_WORDS[shown - 1] : 'Tap to rate — optional'}
+              </p>
               {saved && (
-                <p className="text-xs font-bold text-emerald-700">
+                <p className="text-xs font-semibold text-emerald-700">
                   Salamat! Your rating was recorded.
                 </p>
               )}
-              {error && <p className="text-xs font-bold text-rose-700">{error}</p>}
+              {error && <p className="text-xs font-semibold text-rose-700">{error}</p>}
             </div>
 
             {/* Actions — every one of these is optional */}

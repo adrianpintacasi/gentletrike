@@ -128,6 +128,16 @@ export const submitActivationRequest = (identifier: string, password: string, re
 export const getMe = () =>
   request<{ user: User }>('/auth/me').then((r) => r.user);
 
+/** Change the signed-in user's contact number. */
+export const updateContactNumber = (contactNumber: string) =>
+  patch<{ user: User }>('/auth/me', { contactNumber }).then((r) => r.user);
+
+/** Change the signed-in user's password. Requires the current one. */
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  post<{ ok: boolean }>('/auth/change-password', { currentPassword, newPassword }).then(
+    (r) => r.ok
+  );
+
 export const listUsers = () =>
   request<{ users: User[] }>('/auth/users').then((r) => r.users);
 
@@ -191,7 +201,13 @@ export const claimDriver = (driverId?: string) =>
 
 export const updateDriver = (
   driverId: string,
-  update: { lat?: number; lng?: number; isOnline?: boolean }
+  update: {
+    lat?: number;
+    lng?: number;
+    isOnline?: boolean;
+    walkInSeats?: number;
+    seatCapacity?: number;
+  }
 ) => patch<{ driver: Driver }>(`/drivers/${driverId}`, update).then((r) => r.driver);
 
 export const listDriverRides = (driverId: string) =>
@@ -211,10 +227,27 @@ export interface GeocodeResult {
  * Returns an empty list rather than throwing when the provider is unreachable,
  * so the curated pickup points remain usable offline.
  */
-export const searchPlaces = (q: string) =>
-  request<{ results: GeocodeResult[] }>(`/geocode/search?q=${encodeURIComponent(q)}`)
+/**
+ * Search places, near wherever the passenger is standing.
+ *
+ * `near` is what makes "the terminal" mean the one down the road. Without it
+ * Google resolves the words alone, and a search made in Cebu can answer with a
+ * place in Dumaguete purely because the name matched better.
+ */
+export const searchPlaces = (q: string, near?: { lat: number; lng: number }) => {
+  const at = near ? `&lat=${near.lat}&lng=${near.lng}` : '';
+  return request<{ results: GeocodeResult[] }>(
+    `/geocode/search?q=${encodeURIComponent(q)}${at}`
+  )
     .then((r) => r.results)
     .catch(() => [] as GeocodeResult[]);
+};
+
+/** The nearest place a trike can actually stop, when the raw fix is unreachable. */
+export const accessiblePoint = (lat: number, lng: number) =>
+  request<{ suggestion: GeocodeResult | null; walkMetres: number | null }>(
+    `/geocode/accessible?lat=${lat}&lng=${lng}`
+  );
 
 /** Turn a dropped pin or a GPS fix into a street or place name. */
 export const reverseGeocode = (lat: number, lng: number) =>
@@ -264,6 +297,50 @@ export const listOpenRides = (driverId: string) =>
   request<{ rides: OpenRide[] }>(
     `/rides/open?driverId=${encodeURIComponent(driverId)}`
   ).then((r) => r.rides);
+
+/** A finished trip, plus which side of it you were on. */
+export interface HistoryRide extends RideBooking {
+  role: 'driver' | 'passenger';
+}
+
+export interface MyReport {
+  referenceCode: string;
+  violationType: string;
+  severity: string;
+  status: string;
+  details: string | null;
+  adminNotes: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+/** Today's totals, derived from completed trips rather than a running counter. */
+export interface TodayTotals {
+  day: string;
+  driver: { trips: number; earnings: number; distanceKm: number };
+  passenger: { trips: number; spent: number; distanceKm: number };
+}
+
+export const listMyHistory = () =>
+  request<{ rides: HistoryRide[] }>('/me/history').then((r) => r.rides);
+
+export const listMyReports = () =>
+  request<{ reports: MyReport[] }>('/me/reports').then((r) => r.reports);
+
+export const getTodayTotals = () => request<TodayTotals>('/me/today');
+
+/** Where on-duty riders are clustered, for when a request goes unanswered. */
+export interface RiderHint {
+  riders: number;
+  street: string | null;
+  distanceKm: number | null;
+  driversOnline: number;
+}
+
+export const getRiderHint = (lat: number, lng: number, vehicleType?: string) =>
+  request<RiderHint>(
+    `/me/rider-hint?lat=${lat}&lng=${lng}${vehicleType ? `&vehicleType=${vehicleType}` : ''}`
+  );
 
 export const listMyRides = () =>
   request<{ rides: RideBooking[] }>('/me/rides').then((r) => r.rides);
@@ -332,6 +409,15 @@ export const askAssistant = (body: {
   pickup?: string;
   dropoff?: string;
   vehicleType?: string;
+  /**
+   * Where the passenger is standing.
+   *
+   * Gently resolves place names through a position-biased search, so without
+   * this "the university" is answered from the words alone and can land in a
+   * different province from the person asking.
+   */
+  lat?: number;
+  lng?: number;
   /**
    * Prior turns, oldest first, excluding the prompt being sent. Without these
    * Gently cannot resolve follow-ups like "how much for that one?" — the server

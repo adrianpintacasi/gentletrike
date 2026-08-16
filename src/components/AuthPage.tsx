@@ -6,11 +6,14 @@ import { ApiError, submitActivationRequest } from '../api';
 
 type AuthMode = 'login' | 'register';
 
-const VEHICLE_OPTIONS = [
-  { value: 'pedicab_standard', label: 'Pedicab' },
-  { value: 'habal_habal', label: 'Motorcycle (Habal-Habal)' },
-  { value: 'multicab', label: 'EasyRide (Multicab)' },
-];
+/*
+ * One vehicle, so nothing to choose.
+ *
+ * Kept as a list rather than inlined: the moment a second vehicle comes back —
+ * habal-habal is the obvious next one — this is the only place that changes,
+ * and the select below starts offering a real choice again on its own.
+ */
+const VEHICLE_OPTIONS = [{ value: 'pedicab_standard', label: 'Pedicab' }];
 
 // Shrink the chosen photo to a small JPEG data URL so it stays well under the
 // upload limit and doesn't bloat the database.

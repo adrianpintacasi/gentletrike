@@ -45,6 +45,29 @@ services:
       # Without it that box still answers the built-in statistics queries.
       - key: GEMINI_API_KEY
         sync: false
+      # ---------------------------------------------------------------------
+      # Build-time variables. These two are baked into the browser bundle by
+      # Vite during `npm run build`, NOT read at runtime — so they must exist
+      # when the build runs, and changing them later needs a fresh deploy, not
+      # a restart.
+      #
+      # Missing them fails silently and looks like a bug in the app: the map
+      # container renders, stays grey, and no pins appear. Worth checking first
+      # whenever a deployed map is blank while localhost is fine.
+      # ---------------------------------------------------------------------
+      # Browser-side Maps key. Restrict it by HTTP referrer to the Render URL —
+      # it ships inside the bundle and is readable by anyone.
+      - key: VITE_GOOGLE_MAPS_BROWSER_KEY
+        sync: false
+      # Vector Map ID. Advanced markers refuse to render without one, so an
+      # absent value costs every pin on the map.
+      - key: VITE_GOOGLE_MAPS_MAP_ID
+        sync: false
+      # Server-side Maps key, for routing, geocoding and place search. Separate
+      # from the browser key so it can stay unrestricted by referrer while the
+      # public one cannot.
+      - key: GOOGLE_MAPS_SERVER_KEY
+        sync: false
 # ---------------------------------------------------------------------------
 # Persistence
 #

@@ -1,19 +1,29 @@
 import { DUMAGUETE_BOUNDARY } from './dumagueteBoundary';
-import { DUMAGUETE_LOCATIONS } from '../src/data/dumagueteData';
 import type { LatLng } from './geo';
 
 /**
- * Where GentleTrike will actually take you.
+ * Where GentleTrike knows the official fare.
  *
- * Free-text place search can return anywhere on earth — Cebu, Manila,
- * Valencia. The fare table and the rider network are Dumaguete-only, so a
- * result outside the city is not a trip we can price or serve, and quoting one
- * repeats the Valencia bug through a different door.
+ * This used to be a gate: anything outside the Dumaguete city polygon was
+ * refused outright, because the fare table and the rider network were
+ * Dumaguete-only and quoting a trip we could not price was worse than refusing
+ * it. That was the right call when there was exactly one fare table.
  *
- * The boundary is the real OpenStreetMap administrative polygon rather than a
- * bounding box: a rectangle around Dumaguete swallows chunks of Sibulan,
- * Valencia and Bacong, which are separate municipalities with their own
- * transport.
+ * It is the wrong call now, because it conflated two different questions:
+ *
+ *   1. Can a rider and a passenger find each other here?   — always yes
+ *   2. Do we know what the local council says this costs?  — sometimes
+ *
+ * Matching works anywhere two people have phones. Only the *official* fare is
+ * jurisdictional. So this no longer refuses anything; it reports which fare
+ * authority applies, and the booking screen shows an ordinance-backed rate or a
+ * clearly-labelled estimate accordingly.
+ *
+ * The Dumaguete polygon survives as the first entry in what is meant to become
+ * a registry of many. It is the real OpenStreetMap administrative boundary
+ * rather than a bounding box, because a rectangle around Dumaguete swallows
+ * chunks of Sibulan, Valencia and Bacong — separate municipalities with their
+ * own ordinances.
  */
 
 /** Bounding box of the polygon — a cheap reject before the precise test. */
@@ -28,19 +38,6 @@ const BBOX = DUMAGUETE_BOUNDARY.reduce(
 );
 
 export const DUMAGUETE_BBOX = BBOX;
-
-/**
- * Places outside the city limits that GentleTrike serves anyway.
- *
- * Sibulan Airport is the city's airport and already a bookable point in the
- * app, but it sits in Sibulan and the polygon rightly excludes it. Rather than
- * loosening the boundary — which would also let in unrelated parts of Sibulan —
- * the app's own pickup points are trusted explicitly.
- */
-const ALLOWED_OUTSIDE: LatLng[] = DUMAGUETE_LOCATIONS.map((l) => ({ lat: l.lat, lng: l.lng }));
-
-/** Anything within this of an allowed point counts as that point. */
-const ALLOWANCE_DEGREES = 0.004; // roughly 400 m
 
 /**
  * Ray casting. Counts how many times a ray east from the point crosses the
@@ -63,14 +60,37 @@ function insidePolygon(lat: number, lng: number): boolean {
 }
 
 export interface ServiceAreaResult {
+  /**
+   * Whether a trip here can be booked at all.
+   *
+   * Always true. Kept on the result because every caller reads it, and because
+   * the day GentleTrike genuinely cannot serve somewhere — a different island,
+   * a country with no riders — this is where that answer belongs.
+   */
   inside: boolean;
-  reason: 'inside' | 'known-pickup-point' | 'outside-city';
+  /** The fare authority whose ordinance applies, when one is on file. */
+  authority: string | null;
+  /**
+   * Whether the fare shown here is an official rate or an estimate.
+   *
+   * The whole credibility of the fare screen rests on "rates set by local
+   * ordinance, not GentleTrike". Somewhere without an ordinance on file gets an
+   * honest estimate and a note saying so — never a confident number no council
+   * ever passed.
+   */
+  faresKnown: boolean;
+  reason: 'ordinance-on-file' | 'no-ordinance-on-file';
 }
 
 export function checkServiceArea(lat: number, lng: number): ServiceAreaResult {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return { inside: false, reason: 'outside-city' };
-  }
+  const unknown: ServiceAreaResult = {
+    inside: true,
+    authority: null,
+    faresKnown: false,
+    reason: 'no-ordinance-on-file',
+  };
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return unknown;
 
   if (
     lat >= BBOX.minLat &&
@@ -79,17 +99,30 @@ export function checkServiceArea(lat: number, lng: number): ServiceAreaResult {
     lng <= BBOX.maxLng &&
     insidePolygon(lat, lng)
   ) {
-    return { inside: true, reason: 'inside' };
+    return {
+      inside: true,
+      authority: 'Dumaguete City',
+      faresKnown: true,
+      reason: 'ordinance-on-file',
+    };
   }
 
-  const nearKnown = ALLOWED_OUTSIDE.some(
-    (p) =>
-      Math.abs(p.lat - lat) <= ALLOWANCE_DEGREES && Math.abs(p.lng - lng) <= ALLOWANCE_DEGREES
-  );
-  if (nearKnown) return { inside: true, reason: 'known-pickup-point' };
-
-  return { inside: false, reason: 'outside-city' };
+  return unknown;
 }
 
-export const isInServiceArea = (lat: number, lng: number): boolean =>
-  checkServiceArea(lat, lng).inside;
+/** Whether the official rate applies here, rather than an estimate. */
+export const hasFareAuthority = (lat: number, lng: number): boolean =>
+  checkServiceArea(lat, lng).faresKnown;
+
+/**
+ * Retained so existing callers keep compiling.
+ *
+ * Now always true — nowhere is refused. Prefer {@link hasFareAuthority} when
+ * the real question is "can I quote an official price here".
+ */
+export const isInServiceArea = (_lat: number, _lng: number): boolean => true;
+
+/** Unused now that nothing is refused; kept so the type still resolves. */
+export type ServiceAreaReason = ServiceAreaResult['reason'];
+
+export type { LatLng };

@@ -123,6 +123,15 @@ function ageFrom(birthdate?: string | null): string {
   return String(age);
 }
 
+/**
+ * Retired vehicle types stay here on purpose.
+ *
+ * Only the pedicab can be registered now, but rows written before that still
+ * say `habal_habal` or `multicab`, and this is an administrative record — a
+ * screen whose job is to show what is actually in the database. Dropping the
+ * old labels would print the raw enum at an officer reviewing a real rider's
+ * file, which is worse than naming a vehicle the app no longer signs up.
+ */
 const VEHICLE_LABELS: Record<string, string> = {
   pedicab_standard: 'Pedicab',
   habal_habal: 'Motorcycle (Habal-Habal)',

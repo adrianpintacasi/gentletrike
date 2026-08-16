@@ -324,6 +324,72 @@ authRoutes.get(
   })
 );
 
+/**
+ * PATCH /auth/me — change the contact number.
+ *
+ * The number is how a rider reaches a passenger who is not where they said they
+ * would be, so it has to be changeable without an admin. Digits only, and it
+ * must stay unique: sign-in accepts either the email or the number.
+ */
+authRoutes.patch(
+  "/me",
+  requireAuth,
+  wrap(async (req, res) => {
+    const raw = String(req.body?.contactNumber ?? "").trim();
+    const digits = raw.replace(/[^\d+]/g, "");
+
+    if (digits.length < 7 || digits.length > 15) {
+      return res.status(400).json({ error: "Enter a valid contact number." });
+    }
+
+    const taken = await selectOne<{ id: string }>(
+      "SELECT id FROM users WHERE contact_number = ? AND id <> ?",
+      digits,
+      req.user!.id
+    );
+    if (taken) {
+      return res.status(409).json({ error: "That number is already used by another account." });
+    }
+
+    await run("UPDATE users SET contact_number = ? WHERE id = ?", digits, req.user!.id);
+    res.json({ user: { ...req.user!, contact_number: digits } });
+  })
+);
+
+/**
+ * POST /auth/change-password
+ *
+ * The current password is required even though the session already proves who
+ * they are: a borrowed unlocked phone should not be able to lock the owner out
+ * of their own account.
+ */
+authRoutes.post(
+  "/change-password",
+  requireAuth,
+  wrap(async (req, res) => {
+    const current = String(req.body?.currentPassword ?? "");
+    const next = String(req.body?.newPassword ?? "");
+
+    if (next.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters." });
+    }
+
+    const row = await findUserById(req.user!.id);
+    if (!row) return res.status(404).json({ error: "Account not found." });
+
+    if (!(await verifyPassword(current, row.password_hash))) {
+      return res.status(403).json({ error: "Your current password is incorrect." });
+    }
+
+    await run(
+      "UPDATE users SET password_hash = ? WHERE id = ?",
+      await hashPassword(next),
+      req.user!.id
+    );
+    res.json({ ok: true });
+  })
+);
+
 authRoutes.get(
   "/users",
   requireAuth,

@@ -2,6 +2,8 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import type { PoolClient } from "@neondatabase/serverless";
 import ws from "ws";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { SEARCH_STALL_MINUTES } from "../shared/dispatch";
+import { VEHICLE_DETAILS, type TransportMode } from "../shared/transport";
 
 // GentleTrike stores its data in a cloud Postgres database (Neon). We use Neon's
 // serverless driver, which connects over WebSocket/HTTPS (port 443) — the SAME
@@ -113,6 +115,16 @@ const SCHEMA = `
     claimed_by      TEXT,
     earnings_today  INTEGER NOT NULL DEFAULT 0,
     trips_today     INTEGER NOT NULL DEFAULT 0,
+    -- Passengers riding who did not book through the app: flagged down on the
+    -- road, or a family member along for the trip. Without somewhere to record
+    -- them the app keeps offering seats that are physically occupied, and the
+    -- rider has to decline every one of those offers by hand.
+    walk_in_seats   INTEGER NOT NULL DEFAULT 0,
+    -- How many this particular unit actually seats. The rate card's figure is
+    -- the legal ceiling for the vehicle class, not a measurement of any one
+    -- trike: a sidecar built for two and one built for six are both pedicabs.
+    -- NULL means "not set", and the ceiling is used.
+    seat_capacity   INTEGER,
     updated_at      TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
@@ -136,6 +148,9 @@ const SCHEMA = `
     updated_at           TEXT NOT NULL DEFAULT ${NOW_SQL}
   );
 
+  -- Existing deployments predate walk-in seats; CREATE TABLE only runs once.
+  ALTER TABLE drivers ADD COLUMN IF NOT EXISTS walk_in_seats INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE drivers ADD COLUMN IF NOT EXISTS seat_capacity INTEGER;
   ALTER TABLE rides ADD COLUMN IF NOT EXISTS started_at   TEXT;
   ALTER TABLE rides ADD COLUMN IF NOT EXISTS completed_at TEXT;
 
@@ -332,6 +347,8 @@ export interface DriverRow {
   claimed_by: string | null;
   earnings_today: number;
   trips_today: number;
+  walk_in_seats: number;
+  seat_capacity: number | null;
   updated_at: string;
   verification_status: string | null;
   registered_at: string | null;
@@ -376,6 +393,13 @@ export function toDriver(row: DriverRow) {
     isOnline: row.is_online === 1,
     earningsToday: row.earnings_today,
     tripsToday: row.trips_today,
+    /** Seats taken by passengers who did not book through the app. */
+    walkInSeats: row.walk_in_seats ?? 0,
+    /** What this unit seats. Falls back to the vehicle class's legal ceiling. */
+    seatCapacity:
+      row.seat_capacity ??
+      VEHICLE_DETAILS[row.vehicle_type as TransportMode]?.maxPassengers ??
+      1,
     // Sent so both screens can tell the truth about a rider: the passenger sees
     // a verified badge only when the TMO has actually verified them, and the
     // rider sees their own pending state instead of a badge they have not
@@ -388,7 +412,26 @@ export function toDriver(row: DriverRow) {
   };
 }
 
+/**
+ * How long this trip has been waiting for a rider to accept it, in seconds.
+ *
+ * Computed on the server so it does not depend on the passenger's phone clock
+ * being right. Null once a rider has it — the wait is over, whatever the clock
+ * says. Timestamps are stored as UTC text, so they are read as UTC.
+ */
+function searchingSeconds(row: RideRow): number | null {
+  if (row.status !== 'searching_driver' || row.driver_id) return null;
+
+  const raw = row.created_at;
+  const started = new Date(raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`).getTime();
+  if (Number.isNaN(started)) return null;
+
+  return Math.max(0, Math.round((Date.now() - started) / 1000));
+}
+
 export function toRide(row: RideRow, driver?: DriverRow | null) {
+  const searching = searchingSeconds(row);
+
   return {
     id: row.id,
     passengerId: row.passenger_id,
@@ -406,5 +449,12 @@ export function toRide(row: RideRow, driver?: DriverRow | null) {
     assignedDriver: driver ? toDriver(driver) : undefined,
     status: row.status,
     createdAt: row.created_at,
+    searchingSeconds: searching,
+    /**
+     * Long enough unaccepted that the passenger deserves to be told, rather than
+     * left watching "waiting for a rider" with no end in sight. Never cancels
+     * anything on its own — it only changes what the screen says.
+     */
+    searchStalled: searching !== null && searching >= SEARCH_STALL_MINUTES * 60,
   };
 }

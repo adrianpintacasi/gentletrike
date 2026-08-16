@@ -3,6 +3,8 @@ import { Router } from "express";
 import { authRoutes } from "./authRoutes";
 import { adminRoutes } from "./adminRoutes";
 import { geocodeRoutes } from "./geocode";
+import { routingRoutes } from "./routing";
+import { accountRoutes } from "./accountRoutes";
 import {
   attachUser,
   requireAuth,
@@ -23,7 +25,14 @@ import {
   tx,
 } from "./db";
 import type { DriverRow, RideRow } from "./db";
-import { rankCandidates, canServeTrip, isExclusiveTrip, type Stop } from "../shared/dispatch";
+import {
+  rankCandidates,
+  canServeTrip,
+  isExclusiveTrip,
+  sequenceStops,
+  DECLINE_COOLDOWN_MINUTES,
+  type Stop,
+} from "../shared/dispatch";
 import { VEHICLE_DETAILS, type TransportMode } from "../shared/transport";
 
 export const api = Router();
@@ -34,6 +43,10 @@ api.use((req, res, next) => {
 api.use("/auth", authRoutes);
 api.use("/admin", adminRoutes);
 api.use("/geocode", geocodeRoutes);
+api.use("/route", routingRoutes);
+// Mounted after the direct /me/rides handler below; Express matches in
+// registration order and the paths do not overlap.
+api.use("/me", accountRoutes);
 
 // Express 4 does not catch errors thrown from async handlers, so every async
 // handler is wrapped: a rejected promise becomes a clean 500 instead of a
@@ -69,9 +82,95 @@ const findDriver = (id: string) =>
 const findRide = (id: string) =>
   selectOne<RideRow>("SELECT * FROM rides WHERE id = ?", id);
 
+/**
+ * How many this unit seats.
+ *
+ * The rate card's `maxPassengers` is the legal ceiling for the vehicle class,
+ * not a measurement of any one trike — a sidecar built for two and one built
+ * for six are both pedicabs. A rider sets their own figure in Settings; this is
+ * the single place that decides which number wins, so dispatch, the seat
+ * display and the walk-in clamp can never disagree about it.
+ */
+function seatsOf(driver: DriverRow): number {
+  const ceiling =
+    VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+  const declared = driver.seat_capacity;
+  if (declared == null || !Number.isFinite(declared)) return ceiling;
+  return Math.max(1, Math.min(ceiling, declared));
+}
+
+/** Statuses where a rider has committed to a trip, so it sits on their path. */
+const COMMITTED_STATUSES = ["driver_assigned", "driver_arriving", "in_transit"];
+
 async function rideWithDriver(row: RideRow) {
   const driver = row.driver_id ? await findDriver(row.driver_id) : null;
   return toRide(row, driver);
+}
+
+/**
+ * Attach the path the rider will actually drive to finish this trip.
+ *
+ * A pooled passenger's map otherwise draws a straight run from the rider to
+ * their own destination — a journey nobody is making. The rider has others to
+ * collect and set down along the way, and those detours are both the reason
+ * the fare is shared and the reason the arrival time is what it is. Showing a
+ * line that omits them makes the app look wrong every time the pedicab turns
+ * off the expected road.
+ *
+ * Two limits, both deliberate. The path stops at this passenger's own
+ * drop-off, because where the rider goes after that is not their business.
+ * And each stop is reduced to a coordinate and a kind: a shared trike stops
+ * where strangers get on and off, which is unavoidable and plainly visible
+ * from the seat, but who they are and where they are headed is not.
+ *
+ * Returns the ride untouched when the trip is not shared, so the direct route
+ * the map already draws stays the true one.
+ */
+async function withPoolPath<T extends object>(ride: T, row: RideRow): Promise<T> {
+  if (!row.driver_id || !COMMITTED_STATUSES.includes(row.status)) return ride;
+
+  const carried = await selectAll<RideRow>(
+    `SELECT * FROM rides
+      WHERE driver_id = ? AND status IN (${COMMITTED_STATUSES.map(() => "?").join(",")})`,
+    row.driver_id,
+    ...COMMITTED_STATUSES
+  );
+  if (carried.length < 2) return ride;
+
+  const driver = await findDriver(row.driver_id);
+  if (!driver) return ride;
+
+  const sequence = sequenceStops(
+    { lat: driver.current_lat, lng: driver.current_lng },
+    carried.map((r) => {
+      const pickup = JSON.parse(r.pickup) as { lat: number; lng: number };
+      const dropoff = JSON.parse(r.dropoff) as { lat: number; lng: number };
+      return {
+        rideId: r.id,
+        // Aboard already: that stop is behind the rider. Where they got on is
+        // still what their journey is measured against, so it goes in as the
+        // origin — without it they can be set down last to save a few hundred
+        // metres, which is exactly the unfairness the ordering exists to stop.
+        pickup:
+          r.status === "in_transit" ? null : { lat: pickup.lat, lng: pickup.lng },
+        dropoff: { lat: dropoff.lat, lng: dropoff.lng },
+        origin: { lat: pickup.lat, lng: pickup.lng },
+      };
+    })
+  );
+
+  const ends = sequence.findIndex((s) => s.rideId === row.id && s.kind === "dropoff");
+  if (ends === -1) return ride;
+
+  return {
+    ...ride,
+    poolPath: sequence.slice(0, ends + 1).map((s) => ({
+      lat: s.at.lat,
+      lng: s.at.lng,
+      kind: s.kind,
+      mine: s.rideId === row.id,
+    })),
+  };
 }
 
 /**
@@ -214,7 +313,7 @@ api.patch(
       return res.status(404).json({ error: "Driver not found" });
     }
 
-    const { lat, lng, isOnline } = req.body ?? {};
+    const { lat, lng, isOnline, walkInSeats, seatCapacity } = req.body ?? {};
 
     // A rider may only go ONLINE once the TMO has verified them. Pending,
     // suspended, and declined riders are blocked here with a clear reason.
@@ -246,6 +345,41 @@ api.patch(
       sets.push("is_online = ?");
       values.push(isOnline ? 1 : 0);
     }
+    /*
+     * Passengers the rider picked up off the app.
+     *
+     * Clamped to the vehicle's own capacity rather than trusted: this figure
+     * decides whether dispatch offers any more trips, so an unbounded value
+     * from a client would silently take a rider out of circulation.
+     */
+    if (walkInSeats !== undefined) {
+      const seats = seatsOf(driver);
+      const wanted = Number(walkInSeats);
+      if (!Number.isFinite(wanted)) {
+        return res.status(400).json({ error: "walkInSeats must be a number" });
+      }
+      sets.push("walk_in_seats = ?");
+      values.push(Math.max(0, Math.min(seats, Math.round(wanted))));
+    }
+
+    /*
+     * What this unit seats, bounded by the class ceiling.
+     *
+     * Clamped rather than trusted for the same reason as walk-ins, and for one
+     * more: the ceiling is the franchise limit. A rider cannot declare twelve
+     * seats on a trike and have the app dispatch parties of twelve to it.
+     */
+    if (seatCapacity !== undefined) {
+      const ceiling =
+        VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+      const wanted = Number(seatCapacity);
+      if (!Number.isFinite(wanted)) {
+        return res.status(400).json({ error: "seatCapacity must be a number" });
+      }
+      sets.push("seat_capacity = ?");
+      values.push(Math.max(1, Math.min(ceiling, Math.round(wanted))));
+    }
+
     if (sets.length === 0) {
       return res.status(400).json({ error: "Nothing to update" });
     }
@@ -347,11 +481,18 @@ api.get(
   wrap(async (req, res) => {
     const driverId = typeof req.query.driverId === "string" ? req.query.driverId : null;
 
+    // A decline hides a trip from this rider for a while, not forever. Permanent
+    // declines meant that once every nearby rider had passed on a trip it was
+    // invisible to all of them while the passenger was still told to wait.
     const rows = await selectAll<RideRow>(
       `SELECT * FROM rides
         WHERE status = 'searching_driver'
           AND driver_id IS NULL
-          AND (?::text IS NULL OR id NOT IN (SELECT ride_id FROM ride_declines WHERE driver_id = ?))
+          AND (?::text IS NULL OR id NOT IN (
+                SELECT ride_id FROM ride_declines
+                 WHERE driver_id = ?
+                   AND created_at::timestamp >= ((now() AT TIME ZONE 'UTC') - interval '${DECLINE_COOLDOWN_MINUTES} minutes')
+              ))
         ORDER BY created_at ASC
         LIMIT 50`,
       driverId,
@@ -399,14 +540,25 @@ api.get(
         ...(r.status === "in_transit"
           ? []
           : [{ at: { lat: pickup.lat, lng: pickup.lng }, kind: "pickup" as const, rideId: r.id }]),
-        { at: { lat: dropoff.lat, lng: dropoff.lng }, kind: "dropoff" as const, rideId: r.id },
+        {
+          at: { lat: dropoff.lat, lng: dropoff.lng },
+          kind: "dropoff" as const,
+          rideId: r.id,
+          // Carried even when the pickup is still a stop above: it costs nothing
+          // and it is the only record of the trip this passenger agreed to once
+          // they are aboard and that stop disappears.
+          origin: { lat: pickup.lat, lng: pickup.lng },
+        },
       ];
     });
 
-    const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
+    // Booked passengers plus anyone flagged down on the road. Leaving walk-ins
+    // out is how a full trike keeps being offered trips it has no room for.
+    const seatsTaken =
+      active.reduce((n, r) => n + (r.passengers || 1), 0) + (driver.walk_in_seats ?? 0);
     const seatsAvailable = Math.max(
       0,
-      (VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1) - seatsTaken
+      seatsOf(driver) - seatsTaken
     );
 
     const riderAt = { lat: driver.current_lat, lng: driver.current_lng };
@@ -459,7 +611,11 @@ api.get(
       req.user!.id,
       ...LIVE_STATUSES
     );
-    res.json({ rides: await Promise.all(rows.map(rideWithDriver)) });
+    res.json({
+      rides: await Promise.all(
+        rows.map(async (row) => withPoolPath(await rideWithDriver(row), row))
+      ),
+    });
   })
 );
 
@@ -478,7 +634,11 @@ api.get(
       req.params.id,
       ...LIVE_STATUSES
     );
-    res.json({ rides: await Promise.all(rows.map(rideWithDriver)) });
+    res.json({
+      rides: await Promise.all(
+        rows.map(async (row) => withPoolPath(await rideWithDriver(row), row))
+      ),
+    });
   })
 );
 
@@ -487,7 +647,16 @@ api.get(
   wrap(async (req, res) => {
     const row = await findRide(req.params.id);
     if (!row) return res.status(404).json({ error: "Ride not found" });
-    res.json({ ride: await rideWithDriver(row) });
+
+    const ride = await rideWithDriver(row);
+    // This route carries no auth middleware — a ride id alone opens it — so the
+    // pooled path is attached only when the caller is provably the passenger it
+    // describes. `attachUser` has already resolved any bearer token by here.
+    // Everyone else gets exactly what they got before.
+    if (req.user?.id === row.passenger_id) {
+      return res.json({ ride: await withPoolPath(ride, row) });
+    }
+    res.json({ ride });
   })
 );
 
@@ -541,7 +710,7 @@ api.post(
     }
 
     const seatsTaken = active.reduce((n, r) => n + (r.passengers || 1), 0);
-    const seats = VEHICLE_DETAILS[driver.vehicle_type as TransportMode]?.maxPassengers ?? 1;
+    const seats = seatsOf(driver);
 
     if (seatsTaken + (wanted.passengers || 1) > seats) {
       return res.status(409).json({
@@ -795,7 +964,35 @@ api.post(
       comment ? String(comment).slice(0, 500) : null
     );
 
-    res.status(201).json({ ok: true, stars: value });
+    /**
+     * Fold the new score into the driver's average.
+     *
+     * Ratings were being written to their own table and never read back, so
+     * `drivers.rating` stayed at the 5.0 every row is seeded with — the star on
+     * the driver card was a default wearing the appearance of a reputation.
+     * Recomputed from the table so it always reflects what passengers actually
+     * submitted.
+     */
+    const summary = await selectOne<{ average: number | null; count: number }>(
+      `SELECT AVG(stars)::float AS average, COUNT(*)::int AS count
+         FROM ratings WHERE driver_id = ?`,
+      ride.driver_id
+    );
+
+    if (summary?.average != null) {
+      await run(
+        "UPDATE drivers SET rating = ? WHERE id = ?",
+        Math.round(summary.average * 10) / 10,
+        ride.driver_id
+      );
+    }
+
+    res.status(201).json({
+      ok: true,
+      stars: value,
+      driverRating: summary?.average != null ? Math.round(summary.average * 10) / 10 : null,
+      ratingCount: summary?.count ?? 0,
+    });
   })
 );
 
