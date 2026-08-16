@@ -1,7 +1,7 @@
-# GentleTrike — Team Onboarding
+# GentleTrike — Developer Setup & Contributing Guide
 
-Everything a new groupmate needs to run the project and collaborate without
-breaking the live site. Read it top to bottom the first time.
+Everything you need to run the project locally and contribute to the codebase.
+Read it top to bottom to get started.
 
 For *what the project is and why*, see [NOTES.md](NOTES.md). This file is only
 about **getting set up and working together**.
@@ -15,7 +15,7 @@ about **getting set up and working together**.
 | **Node.js 24 or newer** | We target modern Node APIs. Older Node versions are not officially supported. | https://nodejs.org (pick "24 LTS" or newer) |
 | **Git** | To download the code and share changes. | https://git-scm.com |
 | **VS Code** | Recommended editor. | https://code.visualstudio.com |
-| A **GitHub account** | So the owner can give you access. | https://github.com |
+| A **GitHub account** | To fork the repository and open Pull Requests. | https://github.com |
 
 Check Node is new enough — this must say v24 or higher:
 
@@ -27,14 +27,13 @@ If it says v22, v20, etc., install Node 24 first. Nothing else will work until t
 
 ---
 
-## 2. Get the code (each person, once)
+## 2. Get the code
 
-1. Ask the owner (Adrian) to add you as a **collaborator** on GitHub.
-2. Accept the email invite from GitHub.
-3. Open a terminal in the folder where you keep projects and run:
+1. Fork the repository on GitHub if you plan to contribute.
+2. Open a terminal in your workspace and run:
 
 ```bash
-git clone https://github.com/adrianpintacasi/gentletrike.git
+git clone https://github.com/<your-username>/gentletrike.git
 cd gentletrike
 npm install
 ```
@@ -59,13 +58,13 @@ each person supplies their own local copy.
    cp .env.example .env
    ```
 
-2. Open `.env` and paste a Gemini key between the quotes:
+2. Open `.env` and paste an API key between the quotes:
 
    ```
-   GEMINI_API_KEY="your-key-here"
+   OPENAI_API_KEY="your-key-here"
    ```
 
-   Get a **free** key at https://aistudio.google.com/apikey (use your own Google account).
+
 
 > The AI key is **optional**. Without it the app still runs — the assistant just
 > gives canned fare answers instead of live AI replies. So you can skip this and
@@ -92,17 +91,16 @@ is treated as a separate person.
 
 ---
 
-## 5. How we work together (READ THIS — it protects the live site)
+## 5. How to contribute
 
-The live site auto-deploys **every time something lands on the `main` branch.**
-So we **never** commit straight to `main`. We use branches + Pull Requests.
+We use a standard Pull Request (PR) workflow. Please **never** commit straight to `main`. 
 
 **Every time you start a piece of work:**
 
 ```bash
 git checkout main
-git pull                       # get everyone's latest work
-git checkout -b your-name/what-youre-doing   # e.g. maria/login-form
+git pull                       # get the latest code
+git checkout -b feature/your-feature-name
 ```
 
 **While working, save your progress:**
@@ -110,48 +108,38 @@ git checkout -b your-name/what-youre-doing   # e.g. maria/login-form
 ```bash
 git add .
 git commit -m "Short description of what you changed"
-git push                       # first push: git push -u origin HEAD
+git push -u origin feature/your-feature-name
 ```
 
 **When the piece is done:**
 
-1. Go to the repo on GitHub → it will offer to open a **Pull Request** from your branch.
-2. Open the PR, write what you changed, and ask a groupmate to review.
-3. Once approved, **Merge** it. That merge is what updates the live site.
+1. Go to your fork on GitHub and open a **Pull Request** against the main repository.
+2. Write a clear description of what you changed and why.
+3. Once reviewed and approved, it will be merged.
 
 **Rules of thumb**
-- One branch = one task. Small and focused is easier to review.
-- `git pull` on `main` **before** starting anything new, so you don't build on stale code.
-- If Git says "conflict," don't panic and don't force anything — ask the group; we resolve it together.
-- Never run `git push --force` on `main`.
-
----
-
-## 6. Editing the same file at the same time (optional)
-
-For live pair-programming (like Google Docs for code), install the
-**VS Code Live Share** extension. One person hosts, shares the link, others join.
-This is for working *sessions* — Git is still where the real, saved code lives.
+- One branch = one task. Small, focused PRs are much easier to review.
+- Always run `git pull` on `main` **before** starting anything new.
+- If you encounter merge conflicts, resolve them locally before updating your PR.
+- Never run `git push --force` on the `main` branch.
 
 ---
 
 
-
----
 
 ## Quick reference
 
 ```bash
 node -v                        # must be >= v24
-git clone https://github.com/adrianpintacasi/gentletrike.git
+git clone https://github.com/<your-username>/gentletrike.git
 cd gentletrike
 npm install
-cp .env.example .env           # then paste your Gemini key (optional)
+cp .env.example .env           # then paste your OpenAI key (optional)
 npm run dev                    # open http://localhost:3000
 
 # daily flow
 git checkout main && git pull
-git checkout -b your-name/task
+git checkout -b feature/task
 # ...work...
 git add . && git commit -m "..." && git push
 # then open a Pull Request on GitHub
