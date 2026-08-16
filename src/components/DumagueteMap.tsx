@@ -45,6 +45,47 @@ const mercatorY = (lat: number): number => {
   return Math.log((1 + s) / (1 - s)) / 2;
 };
 
+/**
+ * Where the vehicle sits in the visible strip of map, top to bottom.
+ *
+ * Not the middle. Centring it wastes half the screen on road already driven —
+ * the useful half is what is coming. Roughly two-thirds down is what every
+ * navigation view settles on, and it leaves the pin clear of the sheet.
+ */
+const FOLLOW_ANCHOR = 0.64;
+
+/** Metres per pixel at a given zoom and latitude, for screen-to-world offsets. */
+const metresPerPixel = (lat: number, zoom: number): number =>
+  (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
+
+/**
+ * Move `km` from a point along a compass bearing.
+ *
+ * Used to look ahead of the vehicle rather than at it. Doing the offset in world
+ * coordinates along the map's own heading is what makes it survive rotation —
+ * a pixel offset would have to be un-rotated by hand, and would drift every
+ * time the map turned.
+ */
+function pointAhead(from: LatLng, bearingDeg: number, km: number): LatLng {
+  const R = 6371;
+  const d = km / R;
+  const b = (bearingDeg * Math.PI) / 180;
+  const lat1 = (from.lat * Math.PI) / 180;
+  const lng1 = (from.lng * Math.PI) / 180;
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b)
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(b) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+
+  return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
+}
+
 /** Slow at both ends, quick through the middle — a camera, not a cut. */
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -1369,13 +1410,42 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     // somewhere neither wanted; the next fix picks following back up.
     if (frameAnimationRef.current !== null) return;
 
-    moveMap((m) => m.panTo(selfLocation));
+    /*
+     * Look ahead of the vehicle, not at it.
+     *
+     * panTo centres the marker in the whole map element — but the bottom of
+     * that element is under the sheet, so the pin sat on the sheet's edge and
+     * vanished behind it whenever the sheet was dragged up. And centring is
+     * wrong even with no sheet: it spends half the screen on road already
+     * driven.
+     *
+     * The camera is offset forward along the map's own heading, which is what
+     * makes it correct at any rotation — a pixel offset would need un-rotating
+     * by hand and would drift each time the map turned.
+     */
+    moveMap((m) => {
+      const div = m.getDiv() as HTMLElement | null;
+      const height = div?.clientHeight ?? 0;
+      const visible = Math.max(140, height - bottomInset);
+      const shiftPx = height / 2 - visible * FOLLOW_ANCHOR;
+
+      if (height === 0 || shiftPx <= 1) {
+        m.panTo(selfLocation);
+        return;
+      }
+
+      const km = (shiftPx * metresPerPixel(selfLocation.lat, m.getZoom() ?? 17)) / 1000;
+      m.panTo(pointAhead(selfLocation, m.getHeading() ?? 0, km));
+    });
   }, [
     isReady,
     selfLocation?.lat,
     selfLocation?.lng,
     followHeading,
     hasWholeTrip,
+    // Dragging the sheet changes how much map is visible, which changes where
+    // in the world the camera has to sit for the pin to stay in view.
+    bottomInset,
   ]);
 
   /** Build bounds from a list of points; null when there is nothing to frame. */
