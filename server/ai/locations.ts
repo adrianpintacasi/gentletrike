@@ -329,6 +329,16 @@ const AMBIGUITY_MARGIN = 0.75;
 /** Closer than this, two hits are the same place described twice. */
 const SAME_PLACE_KM = 0.15;
 
+/**
+ * How much further a rival may be before it stops being a real alternative.
+ *
+ * Both a ratio and a floor, for the same reason the pooling cap has both: a
+ * ratio alone is meaningless when the nearest match is already next door, and a
+ * fixed distance alone is meaningless on a long trip.
+ */
+const NEARER_RIVAL_FACTOR = 2.5;
+const NEARER_RIVAL_KM = 3;
+
 export type PlaceResolution =
   | { kind: 'resolved'; location: LocationPoint; source: 'curated' | 'geocoded' }
   | { kind: 'ambiguous'; options: LocationPoint[] }
@@ -371,7 +381,15 @@ export async function resolvePlace(
       .filter(
         (c) =>
           curated[0].confidence - c.confidence < CURATED_TIE_MARGIN &&
-          haversineKm(curated[0].location, c.location) > SAME_PLACE_KM
+          haversineKm(curated[0].location, c.location) > SAME_PLACE_KM &&
+          // Same tiebreak as the geocoded path below: a match the passenger is
+          // standing beside is not in competition with one across the province.
+          (!near ||
+            haversineKm(near, c.location) <
+              Math.max(
+                haversineKm(near, curated[0].location) * NEARER_RIVAL_FACTOR,
+                haversineKm(near, curated[0].location) + NEARER_RIVAL_KM
+              ))
       );
 
     if (rivals.length) {
@@ -427,16 +445,54 @@ export async function resolvePlace(
 
   // Rivals are only genuine alternatives if they are somewhere else. Two hits
   // for the same mall entrance do not need a question.
+  /*
+   * Ask only when the choice is genuinely open.
+   *
+   * This compared candidates to each other and never to the passenger, so
+   * "Ayala Center" — asked from inside Cebu, with Ayala Center Cebu two
+   * kilometres away and another Ayala across the country — came back as a
+   * question. Every name in the Philippines belongs to several places; without
+   * distance as a tiebreak, almost everything is ambiguous and the assistant
+   * spends its turns interrogating instead of answering.
+   *
+   * A rival has to be both similarly worded AND not obviously further away. Two
+   * Ayalas twenty kilometres apart is a real question. One at two kilometres
+   * against one at four hundred is not — the passenger meant the near one, and
+   * asking makes the app look like it does not know where they are standing.
+   */
+  const distanceFrom = (p: LocationPoint) => (near ? haversineKm(near, p) : 0);
+  const topDistance = distanceFrom(ranked[0].point);
+
   const rivals = ranked
     .slice(1)
     .filter(
       (r) =>
         ranked[0].score - r.score < AMBIGUITY_MARGIN &&
-        haversineKm(ranked[0].point, r.point) > SAME_PLACE_KM
+        haversineKm(ranked[0].point, r.point) > SAME_PLACE_KM &&
+        // Comparable in distance too, when we know where they are.
+        (!near || distanceFrom(r.point) < Math.max(topDistance * NEARER_RIVAL_FACTOR, topDistance + NEARER_RIVAL_KM))
     );
 
-  if (rivals.length) {
-    return { kind: 'ambiguous', options: [ranked[0], ...rivals].slice(0, 3).map((r) => r.point) };
+  /*
+   * Only ask a question the passenger can answer.
+   *
+   * Google returns a large complex several times over — one entry per entrance
+   * or wing — and those sit far enough apart to clear the same-place radius. So
+   * "Ayala Center" produced "which one: Ayala Center Cebu, Ayala Center Cebu,
+   * or Ayala Center Cebu?", which is not a choice, it is a stall.
+   *
+   * An ambiguity is only real if the options are told apart by name. Where they
+   * are not, the nearest carries it — they are the same place, and the passenger
+   * meant the one they can walk to.
+   */
+  const distinct = new Map<string, LocationPoint>();
+  for (const r of [ranked[0], ...rivals]) {
+    const key = normalize(r.point.name);
+    if (!distinct.has(key)) distinct.set(key, r.point);
+  }
+
+  if (rivals.length && distinct.size > 1) {
+    return { kind: 'ambiguous', options: [...distinct.values()].slice(0, 3) };
   }
 
   return { kind: 'resolved', location: ranked[0].point, source: 'geocoded' };

@@ -854,8 +854,20 @@ function MainApp({
   // In rider mode the device's own GPS wins over the server's copy: it is the
   // same pedicab, but local fixes arrive immediately rather than after a poll.
   const driverLocation = useMemo(() => {
-    if (isDriverMode && myPosition) {
-      return { lat: myPosition.lat, lng: myPosition.lng };
+    /*
+     * A rider's own fix, or nothing — never the server's copy of it.
+     *
+     * This fell back to `trackedDriver.currentLat/Lng`, which for a rider is
+     * their own row in the database: a position the server last heard about,
+     * and for a freshly claimed unit the seeded one. So signing in as a driver
+     * dropped the map on Dumaguete and held it there until the first GPS fix
+     * overwrote it — on a phone in Cebu, showing a city 250 km away.
+     *
+     * Returning null instead means the map simply waits, which is honest, and
+     * the fix arrives within a second or two.
+     */
+    if (isDriverMode) {
+      return myPosition ? { lat: myPosition.lat, lng: myPosition.lng } : null;
     }
     return trackedDriver
       ? { lat: trackedDriver.currentLat, lng: trackedDriver.currentLng }

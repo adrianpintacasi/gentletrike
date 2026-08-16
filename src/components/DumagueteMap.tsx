@@ -386,6 +386,8 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   onOpenMessages,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  /** Best-known position at the moment the map is built. See the init effect. */
+  const openingCentreRef = useRef<LatLng | null>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Record<string, google.maps.marker.AdvancedMarkerElement>>({});
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
@@ -641,6 +643,10 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
    */
   const mapFollowsCompass = isDriverMode && routeStreetCoords.length < 2;
 
+  if (!mapInstanceRef.current && rawSelfLocation) {
+    openingCentreRef.current = rawSelfLocation;
+  }
+
   /** Both ends known and the road geometry in — there is a whole trip to show. */
   const hasWholeTrip = !!pickup && !!dropoff && routeStreetCoords.length >= 2;
 
@@ -735,7 +741,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
         const map = new google.maps.Map(mapContainerRef.current, {
-          center: DUMAGUETE_CENTRE,
+          /*
+           * Open on the user if their fix has landed, otherwise Dumaguete.
+           *
+           * Read from a ref, not the prop, because this effect runs exactly
+           * once and must not re-run when a position arrives — rebuilding the
+           * map bills another load. The follow camera moves it the moment a fix
+           * exists; this only decides what is on screen for the second before
+           * that, and Dumaguete was the wrong answer for anyone who is not
+           * there.
+           */
+          center: openingCentreRef.current ?? DUMAGUETE_CENTRE,
           zoom: 15,
           // Advanced markers require a Map ID; styling now lives in the cloud
           // console rather than in a tile URL.
