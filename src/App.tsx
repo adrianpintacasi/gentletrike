@@ -1400,8 +1400,17 @@ function MainApp({
    * is where their trip has got to. Both exist so the sheet can sit at `peek`
    * over a full-height map without hiding the thing the user came here for.
    */
+  /*
+   * No pinned row while off duty.
+   *
+   * It carried its own black "Off duty — Start shift" card, directly above the
+   * panel's duty control saying the same thing — two identical answers to one
+   * question, stacked. The row exists so a rider driving does not have to open
+   * the sheet; a rider who is off duty is parked, and the panel's icon is the
+   * single control.
+   */
   const pinnedRow = isDriverMode ? (
-    myDriver ? (
+    myDriver && myDriver.isOnline ? (
       <DriverPinned
         driver={myDriver}
         acceptedPooledRides={acceptedPooledRides}

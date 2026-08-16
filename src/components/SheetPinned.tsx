@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Power, Radar, Navigation, MessageSquare, Phone } from 'lucide-react';
+import { CheckCircle, Radar, Navigation, MessageSquare, Phone } from 'lucide-react';
 import type { Driver, RideBooking } from '../types';
 import { NEXT_STAGE } from './DriverModePanel';
 import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
@@ -47,25 +47,9 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
   const ordered = useRouteOrderedRides(driver, acceptedPooledRides);
   const next = ordered[0];
 
-  if (!driver.isOnline) {
-    return (
-      <button
-        onClick={() => onToggleOnline?.(true)}
-        className="flex w-full items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-left transition active:scale-[0.99]"
-      >
-        <Power className="h-5 w-5 shrink-0 text-rose-400" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-white">Off duty</p>
-          <p className="truncate text-[11px] font-semibold text-gray-400">
-            You are not receiving trips
-          </p>
-        </div>
-        <span className="shrink-0 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white">
-          Start shift
-        </span>
-      </button>
-    );
-  }
+  // Off duty is handled by not rendering this row at all — see App. Kept as a
+  // guard so the component is safe to mount in any state.
+  if (!driver.isOnline) return null;
 
   /*
    * Online, nothing accepted yet.

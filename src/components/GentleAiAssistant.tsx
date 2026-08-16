@@ -306,17 +306,17 @@ export const GentleAiAssistant: React.FC<GentleAiAssistantProps> = ({
   };
 
   /*
-   * A sheet on a phone, a dialog on a desktop.
+   * A floating dialog, centred at every width.
    *
-   * It was 85vh of a centred card at every width, so on a phone it covered the
-   * map, the booking, and everything else the question was probably about — you
-   * could not read your own fare while asking about it. Anchored to the bottom
-   * it behaves like every other sheet in the app and leaves the top of the
-   * screen showing whatever you were looking at.
+   * It used to be 85vh, which on a phone covered the map, the booking, and
+   * whatever the question was actually about — you could not read your own fare
+   * while asking about it. The answer was not to move it to the bottom but to
+   * make it smaller: centred, inset from all four edges, with the screen it
+   * belongs to visible around it.
    */
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs animate-fadeIn sm:items-center sm:p-4">
-      <div className="flex h-[72dvh] max-h-[620px] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl sm:h-[80vh] sm:rounded-3xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fadeIn">
+      <div className="flex h-[68dvh] max-h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white text-gray-900 shadow-2xl">
         {/* Header */}
         <div className="gt-gently-header relative flex items-center justify-between overflow-hidden p-4 text-amber-400">
           <div className="flex items-center gap-3">
