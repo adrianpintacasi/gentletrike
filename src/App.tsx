@@ -810,6 +810,9 @@ function MainApp({
     } catch (err) {
       reportError(err, 'Could not decline that trip.');
     }
+    // Refresh immediately, as accepting does. Without it the queue sat stale
+    // for a whole poll interval and the next offer looked three seconds late.
+    void pollDriverQueues();
   };
 
   const handleAdvanceRideStatus = async (

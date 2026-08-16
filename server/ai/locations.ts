@@ -121,7 +121,31 @@ export interface OutOfCoverage {
  * Returns null when the passenger clearly means the in-city terminal
  * ("Valencia terminal"), which IS bookable.
  */
-export function detectOutOfCoverage(input: string): OutOfCoverage | null {
+export function detectOutOfCoverage(
+  input: string,
+  /** Where the passenger is. Omit only where position is genuinely unknown. */
+  near?: { lat: number; lng: number }
+): OutOfCoverage | null {
+  /*
+   * This list is Dumaguete's local knowledge, and only Dumaguete's.
+   *
+   * It exists to stop one real bug: "Valencia" fuzzy-matching the Valencia
+   * Jeepney Terminal on Colon Street in downtown Dumaguete, and quoting a
+   * 1 km fare for a trip 9 km up a mountain. That is worth keeping.
+   *
+   * But it is a keyword list, so it fired on the words wherever they were
+   * typed — and "cebu" is on it. A passenger standing in Cebu asking to go
+   * somewhere in Cebu was told the app could not price a trip there, because
+   * of a list written when the app served one city. Out of range it no longer
+   * runs, and the standard rate prices the trip like anywhere else.
+   */
+  if (
+    near &&
+    haversineKm(near, DUMAGUETE_CENTRE) > CURATED_RELEVANCE_KM
+  ) {
+    return null;
+  }
+
   if (!input?.trim() || TERMINAL_WORDS.test(input)) return null;
 
   for (const token of tokens(input)) {

@@ -150,7 +150,7 @@ async function resolvePair(
   // downtown "Valencia Jeepney & Bus Terminal" and produce a confident fare for
   // entirely the wrong trip.
   for (const [which, value] of [['pickup', pickup], ['destination', dropoff]] as const) {
-    const outside = detectOutOfCoverage(value);
+    const outside = detectOutOfCoverage(value, near);
     if (outside) {
       return {
         error: {

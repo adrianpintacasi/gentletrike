@@ -300,6 +300,44 @@ export const HomePassenger: React.FC<HomePassengerProps> = ({
         </div>
       </div>
 
+      {/*
+        The unit itself.
+
+        Not decoration for its own sake: it is the one thing on this screen that
+        says what is coming to collect you. A passenger who has never used the
+        app has been asked for a destination and shown two numbers — the vehicle
+        is the missing half of that sentence.
+
+        The plate reads as a real MTOP number because it is the shape of a real
+        one. Anyone in the Philippines recognises that line under a windscreen,
+        and recognising it is the point.
+      */}
+      <figure className="gt-rise m-0 overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-b from-amber-50 via-white to-white shadow-xs" style={{ animationDelay: '160ms' }}>
+        <img
+          src="/pedicab.png"
+          alt="A GentleTrike pedicab"
+          loading="lazy"
+          width={1024}
+          height={847}
+          className="mx-auto block w-full max-w-[22rem] select-none"
+          draggable={false}
+          onError={(event) => {
+            // The render has not been added yet. Fall back to the mark rather
+            // than leaving a broken-image icon on the home screen.
+            const img = event.currentTarget;
+            if (img.dataset.fellBack) return;
+            img.dataset.fellBack = 'true';
+            img.src = '/GentleTrike.png';
+            img.className = 'mx-auto block w-40 py-6 select-none opacity-80';
+          }}
+        />
+        <figcaption className="border-t border-gray-100 px-4 py-3">
+          <p className="text-sm font-bold text-gray-900">Share a trike, split the fare</p>
+          <p className="mt-0.5 text-[11px] font-medium text-gray-500">
+            Seats up to six. You pay for yours, not the whole vehicle.
+          </p>
+        </figcaption>
+      </figure>
     </div>
   );
 };

@@ -400,6 +400,10 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   const arrowElRef = useRef<HTMLElement | null>(null);
   const arrowRotationRef = useRef(0); // accumulated degrees (may exceed 360)
   const compassActiveRef = useRef(false);
+  /** Live compass bearing, 0-360 from north. Null until the sensor reports. */
+  const compassHeadingRef = useRef<number | null>(null);
+  /** Bumped on each compass reading so the map's heading effect re-runs. */
+  const [compassTick, setCompassTick] = useState(0);
 
   const [routeStreetCoords, setRouteStreetCoords] = useState<LatLng[]>([]);
 
@@ -622,6 +626,20 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     pickup?.lat, pickup?.lng, pickup?.pickedOnMap,
     dropoff?.lat, dropoff?.lng, dropoff?.pickedOnMap,
   ].join('|');
+
+  /**
+   * Whether the map itself turns with the phone.
+   *
+   * Only for a rider, and only when there is no route to steer by. A route is
+   * the better source while one exists — it knows a bend is coming before the
+   * rider reaches it, where the compass only ever reports where the handlebars
+   * are pointing right now. But most of a shift has no route, and that is
+   * exactly when a north-up map is hardest to read against the road.
+   *
+   * The trade-off is real and worth knowing: on a mount this is excellent, and
+   * held in the hand the map turns as the wrist does.
+   */
+  const mapFollowsCompass = isDriverMode && routeStreetCoords.length < 2;
 
   /** Both ends known and the road geometry in — there is a whole trip to show. */
   const hasWholeTrip = !!pickup && !!dropoff && routeStreetCoords.length >= 2;
@@ -1288,12 +1306,22 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
      * sideways across the screen. The GPS course is the fallback: coarser and
      * always a step behind, and far better than a map that does not turn.
      */
+    /*
+     * Three sources, best first.
+     *
+     * A route knows the road ahead. Failing that, the compass reports where the
+     * phone is pointing and works while standing still — the case GPS cannot
+     * serve at all, since a stationary vehicle has no course. GPS course is the
+     * last resort, for devices with no magnetometer.
+     */
     const source =
       routeStreetCoords.length >= 2
         ? courseAhead(routeStreetCoords, LOOK_AHEAD_KM)
-        : isDriverMode
-          ? driverHeading ?? null
-          : null;
+        : mapFollowsCompass && compassHeadingRef.current !== null
+          ? compassHeadingRef.current
+          : isDriverMode
+            ? driverHeading ?? null
+            : null;
 
     if (!followHeading && !isDriverMode) {
       if (appliedHeadingRef.current !== null) {
@@ -1325,7 +1353,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       map.setHeading(((eased % 360) + 360) % 360);
     }
 
-  }, [isReady, followHeading, isDriverMode, driverHeading, routeStreetCoords]);
+  }, [isReady, followHeading, isDriverMode, driverHeading, routeStreetCoords, compassTick, mapFollowsCompass]);
 
 
 
@@ -1368,8 +1396,25 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         arrowRotationRef.current = current + delta;
       }
 
+      compassHeadingRef.current = target;
+
+      /*
+       * The arrow only turns while the map does not.
+       *
+       * Once the map itself is rotated to the way the phone is pointing, "the
+       * way the phone is pointing" is straight up the screen — so a rotating
+       * arrow on a rotating map turns twice and reads as spinning.
+       */
       const el = arrowElRef.current;
-      if (el) el.style.transform = `rotate(${arrowRotationRef.current}deg)`;
+      if (el) {
+        el.style.transform = mapFollowsCompass
+          ? 'rotate(0deg)'
+          : `rotate(${arrowRotationRef.current}deg)`;
+      }
+
+      // Coarse: the map eases toward this, so a degree of jitter costs nothing
+      // and re-rendering on every raw sensor event costs a great deal.
+      setCompassTick((n) => (n + 1) % 1000);
     };
 
     // deviceorientationabsolute is the reliable compass feed on Android/Chrome;
@@ -1384,7 +1429,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       window.removeEventListener(eventName, handleOrientation as EventListener, true);
       compassActiveRef.current = false;
     };
-  }, [isDriverMode]);
+  }, [isDriverMode, mapFollowsCompass]);
 
   /**
    * Follow the user.
