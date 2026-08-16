@@ -442,25 +442,54 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
               </h4>
             </div>
 
-            <div className="relative pb-3">
-              {activeRequests.length > 1 && (
-                <div
-                  aria-hidden
-                  className="absolute inset-x-3 top-2 h-full rounded-card bg-cream-300/60 ring-1 ring-cream-400"
-                />
-              )}
-              {activeRequests.length > 2 && (
-                <div
-                  aria-hidden
-                  className="absolute inset-x-6 top-4 h-full rounded-card bg-cream-300/40 ring-1 ring-cream-400"
-                />
-              )}
+            <div className="space-y-2.5 pb-3">
               <IncomingRequestCard
                 ride={nearestFirst[0]}
                 remaining={nearestFirst.length - 1}
                 onAccept={onAcceptRequest}
                 onDecline={onDeclineRequest}
               />
+
+              {nearestFirst.length > 1 && (
+                <>
+                  <p className="px-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Also waiting
+                  </p>
+                  <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200">
+                    {nearestFirst.slice(1).map((req) => (
+                      <div key={req.id} className="flex items-center gap-3 px-3.5 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[11px] font-semibold text-gray-500">
+                            {req.pickupLocation.name}
+                          </p>
+                          <p className="truncate text-sm font-bold text-gray-900">
+                            {req.dropoffLocation.name}
+                          </p>
+                          <p className="mt-0.5 text-[11px] font-semibold text-gray-400 tabular-nums">
+                            ₱{req.totalFare} · {req.distanceKm} km · {req.passengers} pax
+                            {isExclusiveTrip(req.vehicleType) ? ' · pakyaw' : ''}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => onDeclineRequest(req.id)}
+                          aria-label="Decline this trip"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-400 transition active:scale-95 hover:bg-gray-50"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => onAcceptRequest(req.id)}
+                          className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-white transition active:scale-95 hover:bg-emerald-600"
+                        >
+                          <Check className="h-4 w-4" />
+                          Accept
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )

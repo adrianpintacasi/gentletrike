@@ -119,9 +119,10 @@ export default function App() {
     );
   }
 
+  const path = window.location.pathname.replace(/\/+$/, '');
+
   if (!user) {
     // Admins/staff have their own isolated door at /staff.
-    const path = window.location.pathname.replace(/\/+$/, '');
     return path === '/staff' ? <StaffLoginPage /> : <AuthPage />;
   }
 
@@ -129,6 +130,12 @@ export default function App() {
   // no passenger/rider chrome or app navbar).
   if (user.role === 'admin') {
     return <AdminDashboard />;
+  }
+
+  // If a passenger/rider navigates directly to the staff portal, let them see
+  // the login page rather than swallowing the route and showing them the map.
+  if (path === '/staff') {
+    return <StaffLoginPage />;
   }
 
   return <MainApp user={user} onLogout={() => void logout()} />;
@@ -423,6 +430,71 @@ function MainApp({
     }
   }, [user.role, myDriver, enterDriverMode]);
 
+
+  /*
+   * Ask iOS for the compass, on the first tap anywhere.
+   *
+   * Safari only delivers orientation events after an explicit grant, and the
+   * request must originate in a user gesture — so it was wired to the tap that
+   * enters rider mode. A passenger never makes that tap, which meant their
+   * arrow could not turn on an iPhone no matter what the map did with it.
+   *
+   * A one-shot listener on the first pointer down is a real gesture and costs
+   * the passenger nothing: on Android and desktop the API does not exist and
+   * this does nothing at all.
+   */
+  useEffect(() => {
+    const OrientationEvent = window.DeviceOrientationEvent as unknown as {
+      requestPermission?: () => Promise<'granted' | 'denied'>;
+    };
+    if (typeof OrientationEvent?.requestPermission !== 'function') return;
+
+    const ask = () => {
+      window.removeEventListener('pointerdown', ask);
+      OrientationEvent.requestPermission?.().catch(() => {
+        /* declined — the arrow falls back to GPS course, which still works */
+      });
+    };
+
+    window.addEventListener('pointerdown', ask, { once: true });
+    return () => window.removeEventListener('pointerdown', ask);
+  }, []);
+
+  /*
+   * A fast, coarse fix the moment the app opens.
+   *
+   * `watchPosition` runs with enableHighAccuracy, which asks the GPS chip for a
+   * precise fix and takes one to three seconds cold — long enough that the map
+   * has already opened on its fallback centre and has to jump afterwards.
+   *
+   * This asks the opposite question first: any fix, however rough, including a
+   * cached one from the last few minutes. It comes back near-instantly from
+   * wi-fi or cell positioning, which is more than good enough to decide which
+   * city to open on. The accurate watch overwrites it seconds later.
+   */
+  useEffect(() => {
+    if (simulatedLocation) return;
+    if (!('geolocation' in navigator)) return;
+
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const seed = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: null };
+        // Seeds only what is still empty — never overwrites a live fix.
+        if (isDriverMode) setMyPosition((cur) => cur ?? seed);
+        else setPassengerPosition((cur) => cur ?? seed);
+      },
+      () => {
+        /* denied or unavailable — the accurate watch will report it properly */
+      },
+      { enableHighAccuracy: false, maximumAge: 300000, timeout: 8000 }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isDriverMode]);
 
   // Publish this phone's real GPS while on duty, so passengers watching the map
   // see the actual pedicab move rather than a scripted animation.
@@ -812,6 +884,9 @@ function MainApp({
     } catch (err) {
       reportError(err, 'Could not decline that trip.');
     }
+    // Refresh immediately, as accepting does. Without it the queue sat stale
+    // for a whole poll interval and the next offer looked three seconds late.
+    void pollDriverQueues();
   };
 
   const handleAdvanceRideStatus = async (
@@ -846,8 +921,20 @@ function MainApp({
   // In rider mode the device's own GPS wins over the server's copy: it is the
   // same pedicab, but local fixes arrive immediately rather than after a poll.
   const driverLocation = useMemo(() => {
-    if (isDriverMode && myPosition) {
-      return { lat: myPosition.lat, lng: myPosition.lng };
+    /*
+     * A rider's own fix, or nothing — never the server's copy of it.
+     *
+     * This fell back to `trackedDriver.currentLat/Lng`, which for a rider is
+     * their own row in the database: a position the server last heard about,
+     * and for a freshly claimed unit the seeded one. So signing in as a driver
+     * dropped the map on Dumaguete and held it there until the first GPS fix
+     * overwrote it — on a phone in Cebu, showing a city 250 km away.
+     *
+     * Returning null instead means the map simply waits, which is honest, and
+     * the fix arrives within a second or two.
+     */
+    if (isDriverMode) {
+      return myPosition ? { lat: myPosition.lat, lng: myPosition.lng } : null;
     }
     return trackedDriver
       ? { lat: trackedDriver.currentLat, lng: trackedDriver.currentLng }

@@ -140,17 +140,28 @@ async function resolvePair(
   pickup: string,
   dropoff: string,
   /** Where the passenger is, so both ends resolve near them rather than by name alone. */
-  near?: { lat: number; lng: number }
+  near?: { lat: number; lng: number },
+  /** That position's name, used when the passenger names no pickup. */
+  nearName?: string | null
 ) {
-  // Nothing to look up is not the same as nothing found.
-  if (!pickup.trim()) return { error: missingPlace('pickup') };
+  /*
+   * A blank pickup is not a missing answer — the app already knows it.
+   *
+   * The model is told the pickup defaults to where the passenger is standing,
+   * but a prompt is a request and this is a guarantee. Resolving it here means
+   * "how much to SM Seaside" cannot come back as "where should I pick you up?"
+   * however the model chooses to phrase its tool call.
+   */
+  const from = pickup.trim() || (near ? '__CURRENT_POSITION__' : '');
+
+  if (!from) return { error: missingPlace('pickup') };
   if (!dropoff.trim()) return { error: missingPlace('destination') };
 
   // Coverage first. A place like "Valencia" would otherwise fuzzy-match the
   // downtown "Valencia Jeepney & Bus Terminal" and produce a confident fare for
   // entirely the wrong trip.
   for (const [which, value] of [['pickup', pickup], ['destination', dropoff]] as const) {
-    const outside = detectOutOfCoverage(value);
+    const outside = detectOutOfCoverage(value, near);
     if (outside) {
       return {
         error: {
@@ -172,23 +183,37 @@ async function resolvePair(
     }
   }
 
-  const [from, to] = await Promise.all([
-    resolvePlace(pickup, near),
+  const [fromResolved, to] = await Promise.all([
+    from === '__CURRENT_POSITION__'
+      ? Promise.resolve({
+          kind: 'resolved' as const,
+          source: 'geocoded' as const,
+          location: {
+            id: `here_${near!.lat.toFixed(5)}_${near!.lng.toFixed(5)}`,
+            name: nearName || 'Your current location',
+            address: 'Where you are now',
+            lat: near!.lat,
+            lng: near!.lng,
+            isCustomPinned: true,
+          },
+        })
+      : resolvePlace(from, near),
     resolvePlace(dropoff, near),
   ]);
 
-  if (from.kind !== 'resolved') return { error: unresolved('pickup', pickup, from) };
+  if (fromResolved.kind !== 'resolved')
+    return { error: unresolved('pickup', pickup, fromResolved) };
   if (to.kind !== 'resolved') return { error: unresolved('destination', dropoff, to) };
 
-  if (from.location.id === to.location.id) {
+  if (fromResolved.location.id === to.location.id) {
     return {
       error: {
-        content: `Pickup and destination resolved to the same place (${from.location.name}). Ask the passenger to clarify.`,
+        content: `Pickup and destination resolved to the same place (${fromResolved.location.name}). Ask the passenger to clarify.`,
       } as ToolResult,
     };
   }
 
-  return { from: from.location, to: to.location };
+  return { from: fromResolved.location, to: to.location };
 }
 
 /** Explain a failed resolution to the model in terms of what it should do next. */
@@ -222,6 +247,8 @@ export interface ToolContext {
    * gets quoted a fare to a mall in Negros.
    */
   near?: { lat: number; lng: number };
+  /** That position's name, so a blank pickup resolves to somewhere with a name. */
+  nearName?: string | null;
 }
 
 export async function executeTool(
@@ -248,7 +275,7 @@ export async function executeTool(
 
     case 'plan_route':
     case 'estimate_fare': {
-      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''), ctx.near);
+      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''), ctx.near, ctx.nearName);
       if ('error' in pair) return pair.error!;
 
       const route = await getStreetRoute([
@@ -288,7 +315,7 @@ export async function executeTool(
     }
 
     case 'draft_booking': {
-      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''), ctx.near);
+      const pair = await resolvePair(String(args.pickup ?? ''), String(args.dropoff ?? ''), ctx.near, ctx.nearName);
       if ('error' in pair) return pair.error!;
 
       const route = await getStreetRoute([

@@ -388,6 +388,10 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
 }) => {
   const [trafficOn, setTrafficOn] = useState(showTraffic);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  /** Best-known position at the moment the map is built. See the init effect. */
+  const openingCentreRef = useRef<LatLng | null>(null);
+  /** Whether the camera has reached the user yet. See the follow effect. */
+  const hasCentredOnSelfRef = useRef(false);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Record<string, google.maps.marker.AdvancedMarkerElement>>({});
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
@@ -402,6 +406,10 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   const arrowElRef = useRef<HTMLElement | null>(null);
   const arrowRotationRef = useRef(0); // accumulated degrees (may exceed 360)
   const compassActiveRef = useRef(false);
+  /** Live compass bearing, 0-360 from north. Null until the sensor reports. */
+  const compassHeadingRef = useRef<number | null>(null);
+  /** Bumped on each compass reading so the map's heading effect re-runs. */
+  const [compassTick, setCompassTick] = useState(0);
 
   const [routeStreetCoords, setRouteStreetCoords] = useState<LatLng[]>([]);
 
@@ -622,6 +630,24 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     dropoff?.lat, dropoff?.lng, dropoff?.pickedOnMap,
   ].join('|');
 
+  /**
+   * Whether the map itself turns with the phone.
+   *
+   * Only for a rider, and only when there is no route to steer by. A route is
+   * the better source while one exists — it knows a bend is coming before the
+   * rider reaches it, where the compass only ever reports where the handlebars
+   * are pointing right now. But most of a shift has no route, and that is
+   * exactly when a north-up map is hardest to read against the road.
+   *
+   * The trade-off is real and worth knowing: on a mount this is excellent, and
+   * held in the hand the map turns as the wrist does.
+   */
+  const mapFollowsCompass = isDriverMode && routeStreetCoords.length < 2;
+
+  if (!mapInstanceRef.current && rawSelfLocation) {
+    openingCentreRef.current = rawSelfLocation;
+  }
+
   /** Both ends known and the road geometry in — there is a whole trip to show. */
   const hasWholeTrip = !!pickup && !!dropoff && routeStreetCoords.length >= 2;
 
@@ -716,7 +742,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
         const map = new google.maps.Map(mapContainerRef.current, {
-          center: DUMAGUETE_CENTRE,
+          /*
+           * Open on the user if their fix has landed, otherwise Dumaguete.
+           *
+           * Read from a ref, not the prop, because this effect runs exactly
+           * once and must not re-run when a position arrives — rebuilding the
+           * map bills another load. The follow camera moves it the moment a fix
+           * exists; this only decides what is on screen for the second before
+           * that, and Dumaguete was the wrong answer for anyone who is not
+           * there.
+           */
+          center: openingCentreRef.current ?? DUMAGUETE_CENTRE,
           zoom: 15,
           minZoom: 13.5,
           maxZoom: 19,
@@ -1012,9 +1048,21 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     // 4. The rider's own device: a heading arrow, not a trike badge. It turns
     //    with them so they can read it like a navigation cursor.
     if (isDriverMode) {
-      if (driverLocation || activeDriver) {
-        const lat = driverLocation ? driverLocation.lat : activeDriver ? activeDriver.currentLat : DUMAGUETE_CENTRE.lat;
-        const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : DUMAGUETE_CENTRE.lng;
+      /*
+       * No position, no marker.
+       *
+       * This fell back to the city centre, so a rider whose first fix had not
+       * landed saw their own chevron sitting in Dumaguete — a vehicle drawn at
+       * a coordinate nobody was at, which is worse than drawing nothing for the
+       * second before the fix arrives.
+       */
+      const here = driverLocation ?? (activeDriver
+        ? { lat: activeDriver.currentLat, lng: activeDriver.currentLng }
+        : null);
+
+      if (here) {
+        const lat = here.lat;
+        const lng = here.lng;
         const rotation = typeof driverHeading === 'number' ? driverHeading : 0;
 
         // A navigation chevron in the Waze / Google Maps idiom, in solid black.
@@ -1172,10 +1220,26 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           `;
 
         // Below the pickup and rider pins — useful context, not the subject.
-        upsertMarker(markersRef.current, 'my_passenger', map,
+        const meMarker = upsertMarker(markersRef.current, 'my_passenger', map,
           { lat: passengerLocation.lat, lng: passengerLocation.lng },
           meHtml, 'centre', { zIndex: -100, title: 'You are here' });
         live.add('my_passenger');
+
+        /*
+         * Hand this arrow to the compass, exactly as the rider's is.
+         *
+         * The listener writes to whatever element this ref holds, and it only
+         * ever held the rider's chevron — so ungating the listener alone left
+         * the passenger's arrow still turning from GPS course, which is null
+         * while standing still. This effect rebuilds the element, so it is
+         * re-grabbed and any accumulated rotation restored.
+         */
+        const meContent = meMarker.content as HTMLElement | null;
+        const meEl = meContent?.querySelector('.gt-me-arrow') as HTMLElement | null;
+        arrowElRef.current = meEl;
+        if (meEl && compassActiveRef.current) {
+          meEl.style.transform = `rotate(${arrowRotationRef.current}deg)`;
+        }
       }
     }
 
@@ -1297,12 +1361,22 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
      * sideways across the screen. The GPS course is the fallback: coarser and
      * always a step behind, and far better than a map that does not turn.
      */
+    /*
+     * Three sources, best first.
+     *
+     * A route knows the road ahead. Failing that, the compass reports where the
+     * phone is pointing and works while standing still — the case GPS cannot
+     * serve at all, since a stationary vehicle has no course. GPS course is the
+     * last resort, for devices with no magnetometer.
+     */
     const source =
       routeStreetCoords.length >= 2
         ? courseAhead(routeStreetCoords, LOOK_AHEAD_KM)
-        : isDriverMode
-          ? driverHeading ?? null
-          : null;
+        : mapFollowsCompass && compassHeadingRef.current !== null
+          ? compassHeadingRef.current
+          : isDriverMode
+            ? driverHeading ?? null
+            : null;
 
     if (!followHeading && !isDriverMode) {
       if (appliedHeadingRef.current !== null) {
@@ -1334,15 +1408,25 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       map.setHeading(((eased % 360) + 360) % 360);
     }
 
-  }, [isReady, followHeading, isDriverMode, driverHeading, routeStreetCoords]);
+  }, [isReady, followHeading, isDriverMode, driverHeading, routeStreetCoords, compassTick, mapFollowsCompass]);
 
 
 
 
-  // Rotate the rider's arrow from the phone's compass, in real time, so it
-  // points where the device faces even while standing still — like Waze.
+  /*
+   * Turn the self marker from the phone's compass, for both roles.
+   *
+   * It was gated to riders, so a passenger's arrow turned only from GPS course
+   * — which is null whenever they are not moving, which is the entire time they
+   * are standing on a road waiting to be collected. Their arrow pointed
+   * wherever they last walked, which is worse than not drawing one.
+   *
+   * Only the marker. A passenger's map stays north-up: they are reading it, not
+   * steering by it, and a map that swings while you are trying to check a pin
+   * is harder to use rather than easier. The rider's map still turns, because
+   * they are driving.
+   */
   useEffect(() => {
-    if (!isDriverMode) return;
     if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
 
     const readHeading = (e: DeviceOrientationEvent): number | null => {
@@ -1377,8 +1461,27 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         arrowRotationRef.current = current + delta;
       }
 
+      compassHeadingRef.current = target;
+
+      /*
+       * The arrow only turns while the map does not.
+       *
+       * Once the map itself is rotated to the way the phone is pointing, "the
+       * way the phone is pointing" is straight up the screen — so a rotating
+       * arrow on a rotating map turns twice and reads as spinning.
+       */
+      // When the map itself is turning to match, the marker must not: both
+      // rotating means it turns twice and reads as spinning.
       const el = arrowElRef.current;
-      if (el) el.style.transform = `rotate(${arrowRotationRef.current}deg)`;
+      if (el) {
+        el.style.transform = mapFollowsCompass
+          ? 'rotate(0deg)'
+          : `rotate(${arrowRotationRef.current}deg)`;
+      }
+
+      // Coarse: the map eases toward this, so a degree of jitter costs nothing
+      // and re-rendering on every raw sensor event costs a great deal.
+      setCompassTick((n) => (n + 1) % 1000);
     };
 
     // deviceorientationabsolute is the reliable compass feed on Android/Chrome;
@@ -1393,7 +1496,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       window.removeEventListener(eventName, handleOrientation as EventListener, true);
       compassActiveRef.current = false;
     };
-  }, [isDriverMode]);
+  }, [mapFollowsCompass]);
 
   /**
    * Follow the user.
@@ -1432,6 +1535,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
      * makes it correct at any rotation — a pixel offset would need un-rotating
      * by hand and would drift each time the map turned.
      */
+    /*
+     * The first fix jumps; every one after it glides.
+     *
+     * Where the map opened on the fallback centre and the passenger is in
+     * another province, panTo animates the camera across the sea — several
+     * seconds of ocean that reads as the app being lost. Only the first move
+     * has that problem, and only because the starting point was a guess.
+     */
+    const firstFix = !hasCentredOnSelfRef.current;
+    hasCentredOnSelfRef.current = true;
+
     moveMap((m) => {
       const div = m.getDiv() as HTMLElement | null;
       const height = div?.clientHeight ?? 0;
@@ -1439,12 +1553,15 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       const shiftPx = height / 2 - visible * FOLLOW_ANCHOR;
 
       if (height === 0 || shiftPx <= 1) {
-        m.panTo(selfLocation);
+        if (firstFix) m.setCenter(selfLocation);
+        else m.panTo(selfLocation);
         return;
       }
 
       const km = (shiftPx * metresPerPixel(selfLocation.lat, m.getZoom() ?? 17)) / 1000;
-      m.panTo(pointAhead(selfLocation, m.getHeading() ?? 0, km));
+      const target = pointAhead(selfLocation, m.getHeading() ?? 0, km);
+      if (firstFix) m.setCenter(target);
+      else m.panTo(target);
     });
   }, [
     isReady,
@@ -1556,10 +1673,19 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       return;
     }
 
+    /*
+     * No fix and no trip: stay put.
+     *
+     * This fell through to the city centre, so pressing "my location" in Cebu
+     * with the GPS still warming up threw the view 250 km across the sea — the
+     * one button whose entire promise is "show me where I am".
+     */
     const single = pickup ?? dropoff;
+    if (!single) return;
+
     moveMap((map) => {
-      map.setCenter(single ? { lat: single.lat, lng: single.lng } : DUMAGUETE_CENTRE);
-      map.setZoom(single ? 16 : 15);
+      map.setCenter({ lat: single.lat, lng: single.lng });
+      map.setZoom(16);
     });
   };
 

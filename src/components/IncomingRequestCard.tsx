@@ -38,6 +38,14 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
 
   // A fresh offer must never inherit the previous card's drag position — the
   // next request would slide in already half-accepted.
+  /*
+   * Reset when the card becomes a different trip.
+   *
+   * `committing` fades the card to nothing on the way out. If the next request
+   * arrives before this fires the swap is invisible; if it does not, the rider
+   * is left looking at an empty box where an offer used to be. Keying the reset
+   * on the ride means a new offer always arrives fully opaque.
+   */
   React.useEffect(() => {
     setDragX(0);
     setCommitting(null);

@@ -336,6 +336,32 @@ export const HomePassenger: React.FC<HomePassengerProps> = ({
           </div>
         </div>
       )}
+
+      {/* The unit illustration & shared ride explainer */}
+      <figure className="gt-rise m-0 overflow-hidden rounded-card border border-cream-300 bg-gradient-to-b from-cream-100 via-cream-50 to-cream-50 shadow-xs" style={{ animationDelay: '160ms' }}>
+        <img
+          src="/pedicab.png"
+          alt="A GentleTrike pedicab"
+          loading="lazy"
+          width={1024}
+          height={847}
+          className="mx-auto block w-full max-w-[20rem] select-none"
+          draggable={false}
+          onError={(event) => {
+            const img = event.currentTarget;
+            if (img.dataset.fellBack) return;
+            img.dataset.fellBack = 'true';
+            img.src = '/GentleTrike.png';
+            img.className = 'mx-auto block w-32 py-4 select-none opacity-80';
+          }}
+        />
+        <figcaption className="border-t border-cream-200 px-4 py-3 bg-cream-50">
+          <p className="text-sm font-display font-bold text-trust-slate">Share a trike, split the fare</p>
+          <p className="mt-0.5 text-xs font-sans text-cream-600">
+            Seats up to six. You pay for yours, not the whole vehicle.
+          </p>
+        </figcaption>
+      </figure>
     </div>
   );
 };
