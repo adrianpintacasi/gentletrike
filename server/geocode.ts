@@ -336,19 +336,20 @@ function nameFromComponents(components: any[]): string | undefined {
 /**
  * What the passenger just tapped.
  *
- * Deliberately the opposite of {@link describePosition}, because the two answer
- * different questions.
+ * The pin names the nearest labelled place, widening only when nothing is
+ * close. That is the rule because it is the one the passenger is already using:
+ * they can see the map's labels, and they put the pin on one of them.
  *
- * "Where am I" wants the nearest thing — you are standing in a specific
- * building and that building is the answer. "What did I just pin" wants the
- * *destination*: tap the middle of Ayala Center and you meant Ayala Center, not
- * the boutique whose doorway happened to be closest to your thumb. Ranked by
- * distance it returned "Lounge area", which is a real place and not one a rider
- * can be sent to.
+ * This has been wrong in both directions. Ranked by distance in a tight circle
+ * it returned "Lounge area" for a pin inside Ayala Center — a real place, and
+ * not one a rider can be sent to. Ranked by prominence in a 150m circle it
+ * returned "Cebu Institute of Technology - University" for a pin dropped on 58
+ * Avenue, swallowing the thing under the pin into the campus beside it.
  *
- * So prominence over a mall-sized radius first, and only then the nearest
- * doorway — which is what still makes a standalone McDonald's resolve to
- * McDonald's, since at that point it is the prominent thing near itself.
+ * Nearest wins, because the alternative overrides a choice the passenger made
+ * deliberately, and because the card already prints the address underneath —
+ * so a unit inside a mall still reads "…, Ayala Center Cebu" and the passenger
+ * can see where it is. Losing the name they pointed at is the worse failure.
  */
 export async function placeAtPoint(lat: number, lng: number): Promise<GeocodeResult | null> {
   const googleKey = apiKey();
@@ -379,7 +380,13 @@ export async function placeAtPoint(lat: number, lng: number): Promise<GeocodeRes
     }
   };
 
-  return (await search(150, "POPULARITY")) ?? (await search(40, "DISTANCE"));
+  // Tight, then wider, then anything notable. Never a landmark while something
+  // closer exists.
+  return (
+    (await search(40, "DISTANCE")) ??
+    (await search(120, "DISTANCE")) ??
+    (await search(250, "POPULARITY"))
+  );
 }
 
 /** Street-level address for a coordinate, or null. The fallback for "where am I". */
