@@ -234,6 +234,15 @@ const LOOK_AHEAD_KM = 0.06;
 const HEADING_EASING = 0.35;
 
 /**
+ * How long the drawn position takes to reach a new fix.
+ *
+ * Slightly longer than the ~1s the browser takes to deliver the next one, so
+ * the marker is still moving when it arrives and never visibly stalls between
+ * updates. Too long and it lags behind the road; this is close to the interval.
+ */
+const SELF_EASE_MS = 1100;
+
+/**
  * Bearing from the start of the path to a point a fixed *distance* along it.
  *
  * Walking by distance rather than by vertex count is the whole point: the
@@ -370,11 +379,77 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
    * answer the same question — where is the person holding this phone — and the
    * camera needs one answer, not two.
    */
-  const selfLocation = isDriverMode
+  const rawSelfLocation = isDriverMode
     ? driverLocation ?? null
     : passengerLocation
       ? { lat: passengerLocation.lat, lng: passengerLocation.lng }
       : null;
+
+  /*
+   * The position drawn on screen, eased between fixes.
+   *
+   * We are not using a Google positioning SDK — there is no such thing for the
+   * web. Position comes from the browser's own `navigator.geolocation`, which
+   * delivers a discrete fix roughly once a second. The Google Maps app looks
+   * smooth because it fuses GPS with the accelerometer and gyroscope and draws
+   * an interpolated position sixty times a second; a web page gets neither
+   * sensor fusion nor those callbacks.
+   *
+   * What a web page can do is interpolate. Rather than teleporting the marker a
+   * whole second's travel at a time, this walks it from the last drawn point to
+   * the newest fix over the interval between them. Same data, same accuracy —
+   * it simply stops arriving as a series of jumps.
+   */
+  const [smoothSelf, setSmoothSelf] = useState<LatLng | null>(rawSelfLocation);
+  const easeFromRef = useRef<LatLng | null>(null);
+  const easeToRef = useRef<LatLng | null>(null);
+  const easeStartRef = useRef(0);
+  const easeRafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!rawSelfLocation) {
+      setSmoothSelf(null);
+      return;
+    }
+
+    const from = easeToRef.current ?? rawSelfLocation;
+    const jumpKm = haversineKm(from, rawSelfLocation);
+
+    // A teleport is not motion: a first fix, a simulated location, or a jump no
+    // vehicle could have made is adopted outright rather than slid to.
+    if (jumpKm > 0.25) {
+      easeFromRef.current = null;
+      easeToRef.current = rawSelfLocation;
+      setSmoothSelf(rawSelfLocation);
+      return;
+    }
+
+    easeFromRef.current = from;
+    easeToRef.current = rawSelfLocation;
+    easeStartRef.current = performance.now();
+
+    if (easeRafRef.current !== null) cancelAnimationFrame(easeRafRef.current);
+
+    const step = () => {
+      const a = easeFromRef.current;
+      const b = easeToRef.current;
+      if (!a || !b) return;
+
+      const t = Math.min(1, (performance.now() - easeStartRef.current) / SELF_EASE_MS);
+      setSmoothSelf({
+        lat: a.lat + (b.lat - a.lat) * t,
+        lng: a.lng + (b.lng - a.lng) * t,
+      });
+      easeRafRef.current = t < 1 ? requestAnimationFrame(step) : null;
+    };
+
+    easeRafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (easeRafRef.current !== null) cancelAnimationFrame(easeRafRef.current);
+    };
+  }, [rawSelfLocation?.lat, rawSelfLocation?.lng]);
+
+  const selfLocation = smoothSelf ?? rawSelfLocation;
 
   /**
    * Padding that keeps a framed route clear of the sheet and the top pills.
@@ -1098,7 +1173,15 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     const map = mapInstanceRef.current;
     if (!map || !isReady) return;
 
-    const navigating = followHeading || (isDriverMode && pooledRides.length > 0);
+    /*
+     * A rider's map is a navigation view whether or not anyone is aboard.
+     *
+     * Tilt used to require an accepted trip, so a rider cruising for work — the
+     * state they spend most of a shift in — got a flat north-up map, then had it
+     * tip over the moment they accepted. The view should not change character
+     * because a booking arrived; it is the same road either way.
+     */
+    const navigating = isDriverMode || followHeading;
     map.setTilt(navigating ? NAVIGATION_TILT : 0);
 
     /*
@@ -1135,7 +1218,24 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     const map = mapInstanceRef.current;
     if (!map || !isReady) return;
 
-    if (!followHeading) {
+    /*
+     * Two sources, in order of quality.
+     *
+     * A route is better: it knows the road bends before the rider reaches the
+     * bend, so the map turns into a corner rather than after it. But a rider
+     * cruising for work has no route, and this effect used to give up there and
+     * leave the map pointing north — which is why the arrow appeared to travel
+     * sideways across the screen. The GPS course is the fallback: coarser and
+     * always a step behind, and far better than a map that does not turn.
+     */
+    const source =
+      routeStreetCoords.length >= 2
+        ? courseAhead(routeStreetCoords, LOOK_AHEAD_KM)
+        : isDriverMode
+          ? driverHeading ?? null
+          : null;
+
+    if (!followHeading && !isDriverMode) {
       if (appliedHeadingRef.current !== null) {
         appliedHeadingRef.current = null;
         map.setHeading(0);
@@ -1143,10 +1243,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       return;
     }
 
-    const path = routeStreetCoords;
-    if (path.length < 2) return;
-
-    const target = courseAhead(path, LOOK_AHEAD_KM);
+    const target = source;
     if (target === null) return;
 
     const previous = appliedHeadingRef.current;
@@ -1168,7 +1265,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       map.setHeading(((eased % 360) + 360) % 360);
     }
 
-  }, [isReady, followHeading, routeStreetCoords]);
+  }, [isReady, followHeading, isDriverMode, driverHeading, routeStreetCoords]);
 
 
 

@@ -416,7 +416,9 @@ function MainApp({
       () => {
         showToast('Location permission denied — passengers cannot see you move.');
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+      // maximumAge 0: a five-second-old fix is fifty metres behind a moving
+      // trike, which is most of why the marker trailed the road.
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
@@ -1403,14 +1405,18 @@ function MainApp({
   /*
    * No pinned row while off duty.
    *
-   * It carried its own black "Off duty — Start shift" card, directly above the
-   * panel's duty control saying the same thing — two identical answers to one
-   * question, stacked. The row exists so a rider driving does not have to open
-   * the sheet; a rider who is off duty is parked, and the panel's icon is the
-   * single control.
+   * The row said "Off duty — Start shift", then "On duty — End shift", directly
+   * above a panel control saying the same thing both times. Two identical
+   * answers to one question, stacked, on the smallest screen in the app — and
+   * the pair together pushed the queue underneath the floating tab bar.
+   *
+   * It exists for one situation: a rider mid-trip who must not have to open the
+   * sheet to advance a stage. With no trip there is nothing it can offer that
+   * the panel below does not, so it does not render, and the duty control it
+   * was duplicating becomes the first thing on screen.
    */
   const pinnedRow = isDriverMode ? (
-    myDriver && myDriver.isOnline ? (
+    myDriver && acceptedPooledRides.length > 0 ? (
       <DriverPinned
         driver={myDriver}
         acceptedPooledRides={acceptedPooledRides}

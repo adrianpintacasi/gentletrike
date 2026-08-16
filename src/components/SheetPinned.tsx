@@ -52,34 +52,15 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
   if (!driver.isOnline) return null;
 
   /*
-   * Online, nothing accepted yet.
+   * Nothing accepted, nothing to pin.
    *
-   * This said "Online — searching" over "Tap for the full queue", which the map
-   * was already saying in its own chip a few centimetres above. Two labels for
-   * one state, on the smallest screen in the app. What is left is the only
-   * thing this row can offer that the map cannot: the way off duty, and a count
-   * when something is actually waiting.
+   * This showed a black "On duty — End shift" card directly above the panel's
+   * duty control, which says the same thing with the same two options. The row
+   * exists for one purpose: the next action on a trip that is under way. With
+   * no trip there is no next action, and the map's own chip already reports
+   * whether the app is listening.
    */
-  if (!next) {
-    return (
-      <div className="flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-3">
-        <button onClick={onExpand} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-          <Radar className="h-4 w-4 shrink-0 animate-pulse text-emerald-400" />
-          <span className="truncate text-sm font-semibold text-white">
-            {pendingRequestCount > 0
-              ? `${pendingRequestCount} request${pendingRequestCount > 1 ? 's' : ''} waiting`
-              : 'On duty'}
-          </span>
-        </button>
-        <button
-          onClick={() => onToggleOnline?.(false)}
-          className="shrink-0 rounded-xl border border-white/15 px-3.5 py-2 text-xs font-bold text-gray-300 transition active:scale-95 hover:bg-white/10"
-        >
-          End shift
-        </button>
-      </div>
-    );
-  }
+  if (!next) return null;
 
   const stage = NEXT_STAGE[next.status];
   const unreadHere = unread[next.id] ?? 0;
