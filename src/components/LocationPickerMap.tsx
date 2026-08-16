@@ -143,7 +143,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     const target = latestFix.current;
     if (target && mapRef.current) {
       mapRef.current.panTo(target);
-      mapRef.current.setZoom(17);
+      mapRef.current.setZoom(16);
     }
   }, [mode]);
 
@@ -158,7 +158,10 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
         center: centre,
         // Close enough to tell one street corner from the next; picking a pickup
         // at city zoom is picking a neighbourhood, not a place to stand.
-        zoom: 17,
+        // 16, not 17. A pin dropped at 17 fills the screen with one junction,
+        // so a passenger cannot tell whether it landed on the right street —
+        // which is the only question this screen exists to answer.
+        zoom: 16,
         mapId: MAP_ID,
         disableDefaultUI: true,
         zoomControl: true,
@@ -191,7 +194,7 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
 
   const moveTo = (lat: number, lng: number) => {
     mapRef.current?.panTo({ lat, lng });
-    mapRef.current?.setZoom(17);
+    mapRef.current?.setZoom(16);
   };
 
   const confirm = (chosen?: api.GeocodeResult) => {
@@ -208,7 +211,16 @@ export const LocationPickerMap: React.FC<LocationPickerMapProps> = ({
     });
   };
 
-  const results = [...curated, ...found];
+  /*
+   * Nothing until they type.
+   *
+   * This listed every curated point the moment the field opened — thirteen
+   * Dumaguete places, shown to a passenger who might be in Cebu, as the first
+   * and easiest thing to tap. Same rule as the other two search fields in the
+   * app: their own words first, suggestions after.
+   */
+  const typed = query.trim().length >= 3;
+  const results = typed ? [...curated, ...found] : [];
 
   return (
     <div

@@ -333,35 +333,53 @@ function nameFromComponents(components: any[]): string | undefined {
  * widen it and a pin on the road starts being named after whichever shop
  * happens to be nearest, which is a different and worse kind of wrong.
  */
+/**
+ * What the passenger just tapped.
+ *
+ * Deliberately the opposite of {@link describePosition}, because the two answer
+ * different questions.
+ *
+ * "Where am I" wants the nearest thing — you are standing in a specific
+ * building and that building is the answer. "What did I just pin" wants the
+ * *destination*: tap the middle of Ayala Center and you meant Ayala Center, not
+ * the boutique whose doorway happened to be closest to your thumb. Ranked by
+ * distance it returned "Lounge area", which is a real place and not one a rider
+ * can be sent to.
+ *
+ * So prominence over a mall-sized radius first, and only then the nearest
+ * doorway — which is what still makes a standalone McDonald's resolve to
+ * McDonald's, since at that point it is the prominent thing near itself.
+ */
 export async function placeAtPoint(lat: number, lng: number): Promise<GeocodeResult | null> {
   const googleKey = apiKey();
   if (!googleKey) return null;
 
-  try {
-    const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": googleKey,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
-      },
-      body: JSON.stringify({
-        locationRestriction: {
-          circle: { center: { latitude: lat, longitude: lng }, radius: 40 },
+  const search = async (radius: number, rank: "DISTANCE" | "POPULARITY") => {
+    try {
+      const response = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": googleKey,
+          "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
         },
-        rankPreference: "DISTANCE",
-        maxResultCount: 1,
-        languageCode: "en",
-      }),
-    });
+        body: JSON.stringify({
+          locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius } },
+          rankPreference: rank,
+          maxResultCount: 1,
+          languageCode: "en",
+        }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return (data?.places ?? []).map(fromPlace).find((p: GeocodeResult | null) => !!p) ?? null;
+    } catch (err) {
+      console.error("place-at-point lookup failed:", (err as Error).message);
+      return null;
+    }
+  };
 
-    if (!response.ok) return null;
-    const data = await response.json();
-    return (data?.places ?? []).map(fromPlace).find((p: GeocodeResult | null) => !!p) ?? null;
-  } catch (err) {
-    console.error("place-at-point lookup failed:", (err as Error).message);
-    return null;
-  }
+  return (await search(150, "POPULARITY")) ?? (await search(40, "DISTANCE"));
 }
 
 /** Street-level address for a coordinate, or null. The fallback for "where am I". */

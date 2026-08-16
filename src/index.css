@@ -304,6 +304,7 @@
 
 @media (max-width: 640px) {
   .gt-field,
+  input:not([type]),
   input[type='text'],
   input[type='search'],
   input[type='email'],
