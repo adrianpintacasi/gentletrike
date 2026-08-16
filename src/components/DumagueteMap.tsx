@@ -388,6 +388,8 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   /** Best-known position at the moment the map is built. See the init effect. */
   const openingCentreRef = useRef<LatLng | null>(null);
+  /** Whether the camera has reached the user yet. See the follow effect. */
+  const hasCentredOnSelfRef = useRef(false);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<Record<string, google.maps.marker.AdvancedMarkerElement>>({});
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
@@ -1044,9 +1046,21 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     // 4. The rider's own device: a heading arrow, not a trike badge. It turns
     //    with them so they can read it like a navigation cursor.
     if (isDriverMode) {
-      if (driverLocation || activeDriver) {
-        const lat = driverLocation ? driverLocation.lat : activeDriver ? activeDriver.currentLat : DUMAGUETE_CENTRE.lat;
-        const lng = driverLocation ? driverLocation.lng : activeDriver ? activeDriver.currentLng : DUMAGUETE_CENTRE.lng;
+      /*
+       * No position, no marker.
+       *
+       * This fell back to the city centre, so a rider whose first fix had not
+       * landed saw their own chevron sitting in Dumaguete — a vehicle drawn at
+       * a coordinate nobody was at, which is worse than drawing nothing for the
+       * second before the fix arrives.
+       */
+      const here = driverLocation ?? (activeDriver
+        ? { lat: activeDriver.currentLat, lng: activeDriver.currentLng }
+        : null);
+
+      if (here) {
+        const lat = here.lat;
+        const lng = here.lng;
         const rotation = typeof driverHeading === 'number' ? driverHeading : 0;
 
         // A navigation chevron in the Waze / Google Maps idiom, in solid black.
@@ -1484,6 +1498,17 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
      * makes it correct at any rotation — a pixel offset would need un-rotating
      * by hand and would drift each time the map turned.
      */
+    /*
+     * The first fix jumps; every one after it glides.
+     *
+     * Where the map opened on the fallback centre and the passenger is in
+     * another province, panTo animates the camera across the sea — several
+     * seconds of ocean that reads as the app being lost. Only the first move
+     * has that problem, and only because the starting point was a guess.
+     */
+    const firstFix = !hasCentredOnSelfRef.current;
+    hasCentredOnSelfRef.current = true;
+
     moveMap((m) => {
       const div = m.getDiv() as HTMLElement | null;
       const height = div?.clientHeight ?? 0;
@@ -1491,12 +1516,15 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       const shiftPx = height / 2 - visible * FOLLOW_ANCHOR;
 
       if (height === 0 || shiftPx <= 1) {
-        m.panTo(selfLocation);
+        if (firstFix) m.setCenter(selfLocation);
+        else m.panTo(selfLocation);
         return;
       }
 
       const km = (shiftPx * metresPerPixel(selfLocation.lat, m.getZoom() ?? 17)) / 1000;
-      m.panTo(pointAhead(selfLocation, m.getHeading() ?? 0, km));
+      const target = pointAhead(selfLocation, m.getHeading() ?? 0, km);
+      if (firstFix) m.setCenter(target);
+      else m.panTo(target);
     });
   }, [
     isReady,
@@ -1608,10 +1636,19 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       return;
     }
 
+    /*
+     * No fix and no trip: stay put.
+     *
+     * This fell through to the city centre, so pressing "my location" in Cebu
+     * with the GPS still warming up threw the view 250 km across the sea — the
+     * one button whose entire promise is "show me where I am".
+     */
     const single = pickup ?? dropoff;
+    if (!single) return;
+
     moveMap((map) => {
-      map.setCenter(single ? { lat: single.lat, lng: single.lng } : DUMAGUETE_CENTRE);
-      map.setZoom(single ? 16 : 15);
+      map.setCenter({ lat: single.lat, lng: single.lng });
+      map.setZoom(16);
     });
   };
 
