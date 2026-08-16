@@ -114,19 +114,42 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   const pinnedRef = React.useRef<HTMLDivElement>(null);
   const [pinnedH, setPinnedH] = React.useState(0);
 
-  // Layout effect, not effect: the first measurement has to land before paint,
-  // or the sheet opens at the fallback height and visibly snaps to the real one.
+  /*
+   * Layout effect, not effect: the first measurement has to land before paint,
+   * or the sheet opens at the fallback height and visibly snaps to the real one.
+   *
+   * Two things here are load-bearing, and getting either wrong makes the sheet
+   * shiver in place.
+   *
+   * The dependency is `!!pinned`, not `pinned`. The prop is a JSX element —
+   * a fresh object every render — so depending on it tore the observer down and
+   * rebuilt it on every pass, re-measuring each time. The boolean only changes
+   * when a pinned row appears or goes.
+   *
+   * And the height is rounded and compared before it is stored. `contentRect`
+   * reports sub-pixel floats that wobble by hundredths as the layout settles;
+   * storing each one is a state change, a re-render, a new measurement, and
+   * round it goes.
+   */
   React.useLayoutEffect(() => {
     const el = pinnedRef.current;
-    if (!el) return;
-    setPinnedH(el.getBoundingClientRect().height);
+    if (!el) {
+      setPinnedH(0);
+      return;
+    }
+
+    const measure = (raw: number) => {
+      const next = Math.round(raw);
+      setPinnedH((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+    };
+
+    measure(el.getBoundingClientRect().height);
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(([entry]) => {
-      setPinnedH(entry.contentRect.height);
-    });
+
+    const observer = new ResizeObserver(([entry]) => measure(entry.contentRect.height));
     observer.observe(el);
     return () => observer.disconnect();
-  }, [pinned]);
+  }, [!!pinned]);
 
   const available = viewportH;
 

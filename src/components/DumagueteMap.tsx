@@ -479,6 +479,9 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     apply(map);
   };
 
+  /** The facing currently applied to the map, so framing can preserve it. */
+  const appliedHeadingRef = useRef<number | null>(null);
+
   /** In-flight framing animation, so a new one or a user gesture can stop it. */
   const frameAnimationRef = useRef<number | null>(null);
 
@@ -519,7 +522,19 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     // honest fallback is the instant fit. It is abrupt, but it is correct, and
     // a correct frame beats a smooth move to the wrong place.
     if (!target || !projection || !start || fromZoom == null || prefersReducedMotion()) {
-      moveMap((m) => m.fitBounds(bounds, padding));
+      /*
+       * fitBounds resets heading to zero — and it is reached most often exactly
+       * when the projection is not ready yet, which is the moment a route first
+       * arrives. So the map framed the new trip north-up and the heading effect,
+       * whose inputs had not changed, never re-ran to correct it. That is why
+       * the route sat diagonally across the screen instead of ahead of the
+       * rider. Whatever facing was applied is restored on top of the fit.
+       */
+      const facing = appliedHeadingRef.current;
+      moveMap((m) => {
+        m.fitBounds(bounds, padding);
+        if (facing !== null) m.setHeading(((facing % 360) + 360) % 360);
+      });
       return;
     }
 
@@ -545,6 +560,12 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         m.moveCamera({
           ...(centre ? { center: centre } : {}),
           zoom: fromZoom + (target.zoom - fromZoom) * eased,
+          // Carried explicitly. Omitting it relies on moveCamera merging rather
+          // than replacing, and a heading silently lost here is invisible until
+          // somebody is following a road by it.
+          ...(appliedHeadingRef.current !== null
+            ? { heading: ((appliedHeadingRef.current % 360) + 360) % 360 }
+            : {}),
         })
       );
 
@@ -1198,8 +1219,6 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
       map.setZoom(BUILDINGS_MIN_ZOOM);
     }
   }, [isReady, isDriverMode, followHeading, pooledRides.length]);
-
-  const appliedHeadingRef = useRef<number | null>(null);
 
   /**
    * Follow the route: keep the traveller centred, facing the way they are going.
