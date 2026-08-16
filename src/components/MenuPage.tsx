@@ -8,12 +8,9 @@ import {
   LogOut,
   UserCheck,
   CreditCard,
-  Plus,
   Phone,
   KeyRound,
-  Moon,
-  Sun,
-  Check,  Wallet,
+  Wallet,
 } from 'lucide-react';
 import * as api from '../api';
 import type { Driver } from '../types';
@@ -44,8 +41,6 @@ interface MenuPageProps {
   isDriverMode: boolean;
   onToggleDriverMode: () => void;
   onLogout: () => void;
-  theme: 'light' | 'dark';
-  onThemeChange: (theme: 'light' | 'dark') => void;
   /** Lets the rest of the app show the new number without a reload. */
   onContactChanged?: (contactNumber: string) => void;
   initialScreen?: MenuScreen;
@@ -79,21 +74,6 @@ const REPORT_STATUS: Record<string, { label: string; className: string }> = {
   dismissed: { label: 'Dismissed', className: 'bg-gray-200 text-gray-700' },
 };
 
-/**
- * Payment methods, drawn as cards because that is the shape people already
- * recognise from GCash and their banking apps.
- *
- * Cash is the only one that actually settles today — GCash is arranged directly
- * with the driver, and nothing here is connected to a payment processor. The UI
- * says so rather than implying money moves through GentleTrike, which would be
- * a promise the app cannot keep.
- */
-const WALLETS = [
-  { key: 'gcash', name: 'GCash', tint: 'from-sky-500 to-blue-600', glyph: 'G' },
-  { key: 'maya', name: 'Maya', tint: 'from-emerald-500 to-green-600', glyph: 'M' },
-  { key: 'bank', name: 'Bank account', tint: 'from-gray-700 to-gray-900', glyph: '₱' },
-];
-
 export const MenuPage: React.FC<MenuPageProps> = ({
   user,
   driver,
@@ -105,8 +85,6 @@ export const MenuPage: React.FC<MenuPageProps> = ({
   isDriverMode,
   onToggleDriverMode,
   onLogout,
-  theme,
-  onThemeChange,
   onContactChanged,
   initialScreen = 'root',
   onScreenChange,
@@ -404,28 +382,16 @@ export const MenuPage: React.FC<MenuPageProps> = ({
       <div className="space-y-3 pb-2">
         <Header title="Settings" />
 
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          <p className="border-b border-gray-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            Appearance
-          </p>
-          <div className="flex gap-2 p-3">
-            {(['light', 'dark'] as const).map((option) => (
-              <button
-                key={option}
-                onClick={() => onThemeChange(option)}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-xs font-semibold transition ${
-                  theme === option
-                    ? 'bg-gray-900 text-white'
-                    : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {option === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                {option === 'light' ? 'Light' : 'Dark'}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/*
+          Appearance used to sit here: a Light/Dark pair that toggled a `dark`
+          class on <html>. Nothing in the app reads that class — there is not one
+          `dark:` utility in the codebase — so the control changed a stylesheet
+          hook and no pixels. A switch that does nothing is worse than no switch,
+          and it is the first thing anyone taps in a Settings screen.
 
+          The hook that stores the preference is left in place, so the day the
+          palette exists this is a UI change and nothing more.
+        */}
         {/*
           How many this unit seats.
           

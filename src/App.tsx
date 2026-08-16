@@ -101,7 +101,10 @@ function MainApp({
   // in a sheet over it; at `lg` and above the original two-column layout is
   // still the right shape, so both trees exist and exactly one is mounted.
   const isDesktop = useIsDesktop();
-  const [theme, setTheme] = useTheme();
+  // Kept although nothing reads the class it sets yet: it holds the stored
+  // preference, so shipping a dark palette becomes a styling job rather than a
+  // re-plumbing one. See the note in MenuPage's Settings screen.
+  useTheme();
   /**
    * The number, kept locally so Settings can update it without a reload.
    * Seeded from the session and overwritten when the user changes it.
@@ -1503,8 +1506,6 @@ function MainApp({
         isDriverMode={isDriverMode}
         initialScreen={menuScreen}
         onScreenChange={setMenuScreen}
-        theme={theme}
-        onThemeChange={setTheme}
         onContactChanged={setContactNumber}
         onToggleDriverMode={() => {
           if (isDriverMode) setIsDriverMode(false);
