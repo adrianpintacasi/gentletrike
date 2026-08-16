@@ -61,31 +61,31 @@ export const SearchTimeoutCard: React.FC<SearchTimeoutCardProps> = ({
   }, [pickup.lat, pickup.lng, vehicleType]);
 
   return (
-    <div className="rounded-card border-2 border-amber-400/40 bg-cream-100 p-4">
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
       <div className="mb-2 flex items-center gap-2">
-        <Clock className="h-4 w-4 shrink-0 text-amber-600" />
-        <p className="text-sm font-display font-bold text-trust-slate">Still looking for a driver</p>
+        <Clock className="h-4 w-4 shrink-0 text-amber-700" />
+        <p className="text-sm font-bold text-amber-950">Still looking for a rider</p>
       </div>
 
-      <p className="text-xs font-sans font-medium text-cream-700">
+      <p className="text-xs font-medium text-amber-900">
         Nobody has accepted this trip yet. You can keep waiting, or try a different
         pickup point.
       </p>
 
       {isLoading && (
-        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-sans font-bold text-cream-600">
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-trike-gold" />
-          Checking where drivers are…
+        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-amber-800">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Checking where riders are…
         </p>
       )}
 
       {/* The advice, only when the data actually supports it. */}
       {!isLoading && hint && hint.riders > 0 && hint.street && (
-        <div className="mt-3 flex items-start gap-2 rounded-card border border-cream-300 bg-cream-50 p-3">
-          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-sampaguita-green" />
-          <p className="text-[11px] font-sans font-semibold text-trust-slate">
-            <span className="font-display font-bold text-trust-slate">
-              {hint.riders} driver{hint.riders > 1 ? 's are' : ' is'} around {hint.street}
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-white p-3">
+          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          <p className="text-[11px] font-semibold text-gray-700">
+            <span className="font-bold text-gray-900">
+              {hint.riders} rider{hint.riders > 1 ? 's are' : ' is'} around {hint.street}
             </span>
             {hint.distanceKm !== null && (
               <>
@@ -99,16 +99,16 @@ export const SearchTimeoutCard: React.FC<SearchTimeoutCardProps> = ({
       )}
 
       {!isLoading && hint && hint.driversOnline === 0 && (
-        <p className="mt-3 rounded-card border border-cream-300 bg-cream-50 p-3 text-[11px] font-sans font-semibold text-cream-700">
-          <span className="font-display font-bold text-trust-slate">No drivers are on duty right now.</span>{' '}
+        <p className="mt-3 rounded-xl border border-amber-300 bg-white p-3 text-[11px] font-semibold text-gray-700">
+          <span className="font-bold text-gray-900">No riders are on duty right now.</span>{' '}
           Trips are unlikely to be accepted until someone goes online.
         </p>
       )}
 
       {!isLoading && hint && hint.driversOnline > 0 && hint.riders > 0 && !hint.street && (
-        <p className="mt-3 rounded-card border border-cream-300 bg-cream-50 p-3 text-[11px] font-sans font-semibold text-cream-700">
-          <span className="font-display font-bold text-trust-slate">
-            {hint.driversOnline} driver{hint.driversOnline > 1 ? 's' : ''} on duty
+        <p className="mt-3 rounded-xl border border-amber-300 bg-white p-3 text-[11px] font-semibold text-gray-700">
+          <span className="font-bold text-gray-900">
+            {hint.driversOnline} rider{hint.driversOnline > 1 ? 's' : ''} on duty
           </span>{' '}
           , but none close enough to suggest a better pickup point.
         </p>
@@ -117,13 +117,13 @@ export const SearchTimeoutCard: React.FC<SearchTimeoutCardProps> = ({
       <div className="mt-3 flex gap-2">
         <button
           onClick={onKeepWaiting}
-          className="h-11 flex-1 rounded-pill border border-cream-300 bg-cream-50 text-xs font-display font-semibold text-trust-slate hover:bg-cream-200 transition active:scale-[0.99]"
+          className="h-11 flex-1 rounded-xl border border-amber-300 bg-white text-xs font-semibold text-amber-900 transition active:scale-[0.99]"
         >
           Keep waiting
         </button>
         <button
           onClick={onRebook}
-          className="btn-primary flex h-11 flex-1 items-center justify-center gap-1.5 text-xs font-display font-semibold shadow-xs"
+          className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-900 text-xs font-semibold text-amber-400 transition active:scale-[0.99]"
         >
           <RotateCcw className="h-3.5 w-3.5" />
           Change pickup

@@ -1,15 +1,6 @@
 @import "tailwindcss";
-@import "./gentletrike-theme.css";
 
 @layer utilities {
-  /* Explicit font families ensuring Baloo 2 and Plus Jakarta Sans are always used */
-  .font-display {
-    font-family: var(--font-display);
-  }
-  .font-sans {
-    font-family: var(--font-sans);
-  }
-
   /* Hide scrollbars for clean chip rows */
   .scrollbar-none::-webkit-scrollbar {
     display: none;

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Driver, LocationPoint, PooledStop, RideBooking } from '../types';
 import { bearingDegrees, getStreetRoute, haversineKm, LatLng } from '../utils/dumagueteRouting';
 import { sequenceStops } from '../../shared/dispatch';
-import { Crosshair, MapPinOff, MessageSquare, Layers, ShieldCheck } from 'lucide-react';
+import { Crosshair, MapPinOff, MessageSquare } from 'lucide-react';
 import { DUMAGUETE_LOCATIONS } from '../data/dumagueteData';
 import { loadGoogleMaps, MAP_ID } from '../utils/loadGoogleMaps';
 
@@ -18,7 +18,7 @@ const getCategoryStyles = (category?: string) => {
     case 'bridge': return { bg: 'bg-stone-500', svg: `<path d="M22 2v20"/><path d="M2 2v20"/><path d="M2 12h20"/><path d="M8 12v6"/><path d="M16 12v6"/><path d="M2 12c4-8 16-8 20 0"/>` };
     case 'sports': return { bg: 'bg-rose-600', svg: `<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>` };
     case 'landmark':
-    default: return { bg: 'bg-trust-slate', svg: `<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>` };
+    default: return { bg: 'bg-blue-600', svg: `<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>` };
   }
 };
 
@@ -28,11 +28,12 @@ const DUMAGUETE_CENTRE = { lat: 9.3082, lng: 123.3075 };
 const FRAME_ANIMATION_MS = 700;
 
 /**
- * The closest and furthest the framing camera will go.
- * Clamping zoom between 14.5 and 16.5 guarantees local street-level clarity
- * and strictly prevents zooming out to multi-island regional archipelago view.
+ * The closest the framing camera will go.
+ *
+ * A 700m hop fits at a zoom of nearly 18, which fills the screen with two pins
+ * and one street and tells the passenger nothing about where in the city they
+ * are. Stopping short leaves the surrounding blocks in frame.
  */
-const MIN_FRAME_ZOOM = 14.5;
 const MAX_FRAME_ZOOM = 16.5;
 
 /** Tile size the Maps projection is defined against. */
@@ -113,25 +114,25 @@ function cameraForBounds(
   const div = map.getDiv() as HTMLElement | null;
   if (!projection || !div) return null;
 
-  const width = Math.max(120, div.clientWidth - padding.left - padding.right);
-  const height = Math.max(120, div.clientHeight - padding.top - padding.bottom);
+  const width = div.clientWidth - padding.left - padding.right;
+  const height = div.clientHeight - padding.top - padding.bottom;
+  if (width <= 0 || height <= 0) return null;
 
   const ne = bounds.getNorthEast();
   const sw = bounds.getSouthWest();
 
-  const latFraction = Math.max(0.00005, (mercatorY(ne.lat()) - mercatorY(sw.lat())) / (2 * Math.PI));
+  const latFraction = (mercatorY(ne.lat()) - mercatorY(sw.lat())) / (2 * Math.PI);
   let lngSpan = ne.lng() - sw.lng();
   if (lngSpan < 0) lngSpan += 360;
-  const lngFraction = Math.max(0.00005, lngSpan / 360);
+  const lngFraction = lngSpan / 360;
+  if (latFraction <= 0 && lngFraction <= 0) return null;
 
-  const calculatedZoom = Math.min(
-    Math.log2(height / WORLD_PX / latFraction),
-    Math.log2(width / WORLD_PX / lngFraction)
+  const zoom = Math.min(
+    latFraction > 0 ? Math.log2(height / WORLD_PX / latFraction) : Infinity,
+    lngFraction > 0 ? Math.log2(width / WORLD_PX / lngFraction) : Infinity,
+    MAX_FRAME_ZOOM
   );
-
-  const zoom = Number.isFinite(calculatedZoom)
-    ? Math.max(MIN_FRAME_ZOOM, Math.min(calculatedZoom, MAX_FRAME_ZOOM))
-    : 15.5;
+  if (!Number.isFinite(zoom)) return null;
 
   // Padding is not symmetric — the bottom sheet eats the lower half of a phone
   // screen — so the trip's centre is not the camera's centre. Shift by half the
@@ -351,6 +352,7 @@ interface DumagueteMapProps {
    * the roads for when a trip is actually happening; on the idle home map it is
    * decoration that competes with the route line for the same pixels.
    */
+  showTraffic?: boolean;
   /**
    * Draw the saved pickup points as pins.
    *
@@ -359,8 +361,6 @@ interface DumagueteMapProps {
    * Kept for the desktop column, where there is room.
    */
   showLandmarks?: boolean;
-  /** Opens the emergency safety assistance modal with hotline dialers */
-  onOpenSafetyModal?: () => void;
 }
 
 export const DumagueteMap: React.FC<DumagueteMapProps> = ({
@@ -384,9 +384,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
   followHeading = false,
   unreadMessages = 0,
   onOpenMessages,
-  onOpenSafetyModal,
 }) => {
-  const [trafficOn, setTrafficOn] = useState(showTraffic);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   /** Best-known position at the moment the map is built. See the init effect. */
   const openingCentreRef = useRef<LatLng | null>(null);
@@ -510,16 +508,12 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
    * another 60px of a phone's usable strip on nothing — and that strip is the
    * scarcest thing on the screen.
    */
-  const framePadding = () => {
-    const div = mapInstanceRef.current?.getDiv() as HTMLElement | null;
-    const maxBottom = div ? Math.min(bottomInset, div.clientHeight * 0.42) : Math.min(bottomInset, 220);
-    return {
-      top: 72,
-      right: 48,
-      bottom: (maxBottom > 0 ? 16 : 48) + maxBottom,
-      left: 48,
-    };
-  };
+  const framePadding = () => ({
+    top: 72,
+    right: 60,
+    bottom: (bottomInset > 0 ? 16 : 60) + bottomInset,
+    left: 60,
+  });
 
   /** Wrap a view change so the zoom change it raises is not read as user input. */
   const moveMap = (apply: (map: google.maps.Map) => void) => {
@@ -574,13 +568,20 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     const start = from && projection ? projection.fromLatLngToPoint(from) : null;
 
     // Anything missing — no projection yet, a zero-sized container — and the
-    // honest fallback is street scale centering.
+    // honest fallback is the instant fit. It is abrupt, but it is correct, and
+    // a correct frame beats a smooth move to the wrong place.
     if (!target || !projection || !start || fromZoom == null || prefersReducedMotion()) {
+      /*
+       * fitBounds resets heading to zero — and it is reached most often exactly
+       * when the projection is not ready yet, which is the moment a route first
+       * arrives. So the map framed the new trip north-up and the heading effect,
+       * whose inputs had not changed, never re-ran to correct it. That is why
+       * the route sat diagonally across the screen instead of ahead of the
+       * rider. Whatever facing was applied is restored on top of the fit.
+       */
       const facing = appliedHeadingRef.current;
       moveMap((m) => {
-        const center = bounds.getCenter();
-        m.setCenter(center);
-        m.setZoom(15.5);
+        m.fitBounds(bounds, padding);
         if (facing !== null) m.setHeading(((facing % 360) + 360) % 360);
       });
       return;
@@ -754,8 +755,6 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
            */
           center: openingCentreRef.current ?? DUMAGUETE_CENTRE,
           zoom: 15,
-          minZoom: 13.5,
-          maxZoom: 19,
           // Advanced markers require a Map ID; styling now lives in the cloud
           // console rather than in a tile URL.
           mapId: MAP_ID,
@@ -837,9 +836,8 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
     if (!trafficLayerRef.current) {
       trafficLayerRef.current = new google.maps.TrafficLayer({ autoRefresh: true });
     }
-    const isEnabled = trafficOn ?? showTraffic;
-    trafficLayerRef.current.setMap(isEnabled ? map : null);
-  }, [isReady, trafficOn, showTraffic]);
+    trafficLayerRef.current.setMap(showTraffic ? map : null);
+  }, [isReady, showTraffic]);
 
   // Fetch street routing coordinates (Routes API geometry, via /api/route)
   useEffect(() => {
@@ -1180,18 +1178,11 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         upsertMarker(markersRef.current, driverKey, map, { lat, lng },
           `
             <div class="relative flex flex-col items-center">
-              <div class="w-11 h-11 bg-trust-slate text-trike-gold rounded-full shadow-lg border-2 border-trike-gold flex items-center justify-center filter drop-shadow-md">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 17h16" />
-                  <path d="M9 17v-4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v4" />
-                  <circle cx="7" cy="17" r="2" fill="#F0A830" stroke="#123B3D" stroke-width="1.5" />
-                  <circle cx="17" cy="17" r="2" fill="#F0A830" stroke="#123B3D" stroke-width="1.5" />
-                  <path d="M7 11V7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v4" />
-                  <circle cx="12" cy="7" r="1.5" fill="#F0A830" />
-                </svg>
+              <div class="w-10 h-10 bg-gray-900 text-amber-400 rounded-full shadow-lg border border-amber-400 flex items-center justify-center text-lg">
+                🛺
               </div>
-              <div class="mt-1 bg-trust-slate text-trike-gold text-[9px] font-display font-black px-2 py-0.5 rounded-full shadow-md whitespace-nowrap border border-cream-400/30">
-                ${isInTransit ? 'ONBOARD' : activeDriver.unitNumber || 'UNIT #104'}
+              <div class="mt-1 bg-gray-900 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
+                ${isInTransit ? 'ONBOARD' : activeDriver.unitNumber}
               </div>
             </div>
           `, 'centre', { zIndex: 300 });
@@ -1695,7 +1686,7 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
         fullBleed ? '' : 'min-h-[420px] rounded-2xl border border-gray-200 shadow-md'
       } ${nextPinTarget ? 'cursor-crosshair' : ''}`}
     >
-      <div ref={mapContainerRef} className="w-full h-full bg-white" />
+      <div ref={mapContainerRef} className="w-full h-full bg-gray-100" />
 
       {/* A missing browser key or Map ID fails silently otherwise: the container
           renders, stays grey, and looks like a layout bug rather than config. */}
@@ -1723,118 +1714,101 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
           field in the sheet already say it, and on a phone the banner was one
           more thing covering the map. */}
 
-      {/* Right-Hand Floating Stack: My Location, Traffic Layers, Safety Shield, Messages */}
-      <div className="absolute right-4 top-20 z-10 flex flex-col items-center gap-2">
-        {/* Centering / My Location Button */}
+      {/* Messages, over the map. A badge inside a sheet the passenger has
+          collapsed to watch the road is a badge nobody sees. */}
+      {onOpenMessages && (
+        <button
+          onClick={onOpenMessages}
+          aria-label={unreadMessages > 0 ? `${unreadMessages} unread messages` : 'Messages'}
+          className="absolute right-4 top-32 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md backdrop-blur-sm transition active:scale-95 hover:bg-gray-50"
+        >
+          <MessageSquare className="h-4 w-4" />
+          {unreadMessages > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white shadow">
+              {unreadMessages > 9 ? '9+' : unreadMessages}
+            </span>
+          )}
+        </button>
+      )}
+
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         <button
           onClick={handleCenterDumaguete}
-          title="Center on my location"
-          aria-label="Center on my location"
-          className="flex h-11 w-11 items-center justify-center rounded-full glass-pill text-trust-slate shadow-md transition active:scale-95 hover:bg-cream-100 border border-cream-300"
+          title="Centre the map on my location"
+          aria-label="Centre the map on my location"
+          className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white/95 px-3.5 py-2.5 text-xs font-bold text-gray-900 shadow-md backdrop-blur-sm transition active:scale-95 hover:bg-gray-50"
         >
-          <Crosshair className="h-5 w-5 text-trust-slate" />
+          <Crosshair className="h-3.5 w-3.5 text-amber-600" />
+          <span className="hidden sm:inline">My location</span>
         </button>
-
-        {/* Traffic Layer Toggle Button */}
-        <button
-          onClick={() => setTrafficOn((prev) => !prev)}
-          title={trafficOn ? 'Hide live traffic' : 'Show live traffic'}
-          aria-label={trafficOn ? 'Hide live traffic' : 'Show live traffic'}
-          className={`flex h-11 w-11 items-center justify-center rounded-full shadow-md transition active:scale-95 border ${
-            trafficOn
-              ? 'bg-trust-slate text-cream-50 border-trust-slate shadow-sm'
-              : 'glass-pill text-trust-slate hover:bg-cream-100 border-cream-300'
-          }`}
-        >
-          <Layers className="h-5 w-5" />
-        </button>
-
-        {/* Safety & Emergency Toolkit Button (Permanently Accessible) */}
-        {onOpenSafetyModal && (
-          <button
-            onClick={onOpenSafetyModal}
-            title="Safety & Emergency Toolkit"
-            aria-label="Safety & Emergency Toolkit"
-            className="flex h-11 w-11 items-center justify-center rounded-full glass-pill text-sampaguita-green shadow-md transition active:scale-95 hover:bg-cream-100 border border-cream-300"
-          >
-            <ShieldCheck className="h-5 w-5" />
-          </button>
-        )}
-
-        {/* Unread Messages Floating Button */}
-        {onOpenMessages && (
-          <button
-            onClick={onOpenMessages}
-            aria-label={unreadMessages > 0 ? `${unreadMessages} unread messages` : 'Messages'}
-            className="relative flex h-11 w-11 items-center justify-center rounded-full glass-pill text-trust-slate shadow-md transition active:scale-95 hover:bg-cream-100 border border-cream-300"
-          >
-            <MessageSquare className="h-5 w-5" />
-            {unreadMessages > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-sunset-coral px-1 text-[10px] font-bold text-white shadow-xs">
-                {unreadMessages > 9 ? '9+' : unreadMessages}
-              </span>
-            )}
-          </button>
-        )}
       </div>
 
-      {/* Bottom-Left Driver Status Chip */}
+      {/* The passenger's trip status used to be repeated here, on the sheet's
+          pinned row, and inside the black card — three copies of one sentence.
+          The card is the one with the ETA and the controls, so it is the one
+          that survives. Only the rider's own queue state is left, because a
+          rider has no such card. */}
       {isDriverMode && (
         <div
-          className="absolute left-4 z-10 flex max-w-[calc(100%-6rem)] items-center gap-2"
+          className="absolute left-4 z-10 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-xl border border-gray-800 bg-gray-900/90 px-3.5 py-2 text-[11px] font-medium text-white shadow-lg backdrop-blur-sm transition-all duration-200"
           style={{ bottom: bottomInset + 16 }}
         >
-          <div className="flex items-center gap-2 rounded-pill glass-pill-dark px-3.5 py-2 text-xs font-display font-bold text-cream-50 shadow-lg transition-all duration-200 truncate">
-            {(() => {
-              if (riderStatus && !riderStatus.online) {
-                return (
-                  <>
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-cream-500" />
-                    <span className="truncate text-cream-300">Off duty</span>
-                  </>
-                );
-              }
-              if (pooledRides.length > 0) {
-                return (
-                  <>
-                    <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-trike-gold" />
-                    <span className="truncate text-cream-50">
-                      {pooledRides.length} passenger{pooledRides.length > 1 ? 's' : ''} on your route
-                    </span>
-                  </>
-                );
-              }
-              if (riderStatus && riderStatus.seatsFree === 0) {
-                return (
-                  <>
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-sunset-coral" />
-                    <span className="truncate text-cream-50">Full — no seats free</span>
-                  </>
-                );
-              }
-              if (riderStatus && riderStatus.waiting > 0) {
-                return (
-                  <>
-                    <span className="relative flex h-2.5 w-2.5 shrink-0">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-trike-gold opacity-75" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-trike-gold" />
-                    </span>
-                    <span className="truncate text-trike-gold">
-                      {riderStatus.waiting} request{riderStatus.waiting > 1 ? 's' : ''} waiting
-                    </span>
-                  </>
-                );
-              }
+          {(() => {
+            /* One chip, four truths, in the order that matters to a rider:
+               off duty beats everything, then a full trike, then work waiting,
+               then quiet. Each gets its own mark — a steady dot, a bar, a
+               pulse — so the state is readable before the words are. */
+            if (riderStatus && !riderStatus.online) {
+              return (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-gray-500" />
+                  <span className="truncate text-gray-300">Off duty</span>
+                </>
+              );
+            }
+            if (pooledRides.length > 0) {
+              return (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
+                  <span className="truncate">
+                    {pooledRides.length} passenger{pooledRides.length > 1 ? 's' : ''} on your route
+                  </span>
+                </>
+              );
+            }
+            if (riderStatus && riderStatus.seatsFree === 0) {
+              return (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
+                  <span className="truncate">Full — no seats free</span>
+                </>
+              );
+            }
+            if (riderStatus && riderStatus.waiting > 0) {
               return (
                 <>
                   <span className="relative flex h-2.5 w-2.5 shrink-0">
-                    <span className="status-pulse h-2.5 w-2.5" />
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
                   </span>
-                  <span className="truncate text-cream-200">Listening for trips</span>
+                  <span className="truncate">
+                    {riderStatus.waiting} request{riderStatus.waiting > 1 ? 's' : ''} waiting
+                  </span>
                 </>
               );
-            })()}
-          </div>
+            }
+            return (
+              <>
+                {/* A radar sweep, not a spinner: nothing is loading — the app is
+                    listening, and may listen for a long time. */}
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                </span>
+                <span className="truncate text-gray-300">Listening for trips</span>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

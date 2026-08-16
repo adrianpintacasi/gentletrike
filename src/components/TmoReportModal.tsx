@@ -93,24 +93,26 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
 
   return (
     <Portal>
-    <div className="animate-fadeIn fixed inset-0 z-[100] flex items-center justify-center bg-trust-slate/80 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-[28px] bg-cream-50 text-trust-slate shadow-2xl border border-cream-300">
-        {/* Header */}
-        <div className="flex shrink-0 items-center justify-between bg-sunset-coral px-5 py-4 text-white">
+    <div className="animate-fadeIn fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/70 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white text-gray-900 shadow-2xl">
+        {/* One name. The office a complaint reaches depends on where the trip
+            happened, and this app is meant to travel past one city, so naming
+            a specific one in the title would go stale the moment it does. */}
+        <div className="flex shrink-0 items-center justify-between bg-rose-700 px-5 py-4 text-white">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-card bg-white/20">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20">
               <ShieldAlert className="h-5 w-5" />
             </span>
             <div>
-              <h3 className="font-display font-bold text-base leading-tight">Complaint Portal</h3>
-              <p className="text-[11px] font-sans text-white/80">Filed with your local transport office</p>
+              <h3 className="text-base font-bold leading-tight">Complaint Portal</h3>
+              <p className="text-[11px] text-white/70">Filed with your local transport office</p>
             </div>
           </div>
 
           <button
             onClick={handleResetAndClose}
             aria-label="Close"
-            className="rounded-full p-1.5 text-white/80 transition hover:bg-white/20 hover:text-white"
+            className="rounded-full p-1.5 text-white/70 transition hover:bg-white/15 hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
@@ -119,34 +121,34 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
         {submittedReference ? (
           /* Confirmation View */
           <div className="gt-scroll min-h-0 flex-1 space-y-5 overflow-y-auto p-5 text-center">
-            <div className="w-16 h-16 bg-sampaguita-green/20 text-sampaguita-green rounded-full flex items-center justify-center mx-auto border-2 border-sampaguita-green/40 shadow-sm">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300 shadow-sm">
               <CheckCircle className="w-9 h-9" />
             </div>
 
             <div>
-              <span className="text-xs font-display font-bold uppercase tracking-widest text-sampaguita-green bg-sampaguita-green/10 px-3 py-1 rounded-pill border border-sampaguita-green/30 inline-block mb-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 inline-block mb-2">
                 Complaint Successfully Logged
               </span>
-              <h4 className="text-xl font-display font-extrabold text-trust-slate">Reference: {submittedReference}</h4>
-              <p className="text-xs font-sans text-cream-700 mt-2 font-medium max-w-md mx-auto">
-                Your report against Motorcab <strong className="text-trust-slate">{driver?.unitNumber || 'Unit'}</strong> has been submitted to your local transport office.
+              <h4 className="text-xl font-extrabold text-gray-900">Reference: {submittedReference}</h4>
+              <p className="text-xs text-gray-600 mt-2 font-medium max-w-md mx-auto">
+                Your report against Motorcab <strong className="text-gray-900">{driver?.unitNumber || 'Unit'}</strong> has been submitted to your local transport office.
               </p>
             </div>
 
-            <div className="bg-cream-100 p-4 rounded-card border border-cream-300 text-left text-xs space-y-2">
-              <div className="flex items-center gap-2 font-display font-bold text-trust-slate">
-                <AlertTriangle className="w-4 h-4 text-trike-gold shrink-0" />
+            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 text-left text-xs space-y-2">
+              <div className="flex items-center gap-2 font-bold text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>Summary of Flagged Incident:</span>
               </div>
-              <p className="text-cream-700 font-sans">
+              <p className="text-gray-800">
                 • <strong>Category:</strong> {violationType.toUpperCase()}
               </p>
               {demandedFare && (
-                <p className="text-cream-700 font-sans">
+                <p className="text-gray-800">
                   • <strong>Overcharge Claim:</strong> Demanded ₱{demandedFare} vs. Auto-Calculated ₱{ride.totalFare}
                 </p>
               )}
-              <p className="text-cream-700 font-sans">
+              <p className="text-gray-800">
                 • <strong>Route & Distance:</strong> {ride.pickupLocation.name} ➔ {ride.dropoffLocation.name} ({ride.distanceKm} km)
               </p>
             </div>
@@ -154,14 +156,14 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
             <div className="pt-2 space-y-2">
               <a
                 href="tel:0352251662"
-                className="btn-primary w-full py-3 flex items-center justify-center gap-2 text-xs font-display font-bold shadow-xs"
+                className="w-full bg-gray-900 hover:bg-black text-amber-400 font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 text-xs shadow-xs"
               >
                 <Phone className="w-4 h-4" />
                 <span>Call Dumaguete TMO Hotline: (035) 225-1662</span>
               </a>
               <button
                 onClick={handleResetAndClose}
-                className="w-full bg-cream-50 hover:bg-cream-200 text-trust-slate font-display font-bold py-2.5 rounded-pill transition text-xs border border-cream-300 shadow-2xs"
+                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-2.5 rounded-xl transition text-xs border border-gray-200"
               >
                 Back to Active Trip
               </button>
@@ -171,39 +173,42 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
           /* Complaint Form View */
           <form onSubmit={handleSubmit} className="gt-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {/* Driver Identity Card */}
-            <div className="bg-trust-slate text-cream-50 p-4 rounded-card border border-cream-400/20 flex items-center justify-between gap-3 shadow-sm">
+            <div className="bg-gray-900 text-white p-4 rounded-xl border border-gray-800 flex items-center justify-between gap-3 shadow-sm">
               <div className="flex items-center gap-3 min-w-0">
                 {driver?.avatar && (
                   <img
                     src={driver.avatar}
                     alt={driver.name}
-                    className="w-11 h-11 rounded-card object-cover border border-trike-gold shrink-0 shadow-xs"
+                    className="w-11 h-11 rounded-xl object-cover border border-amber-400 shrink-0"
                   />
                 )}
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="bg-trike-gold text-trust-slate font-display font-extrabold text-[11px] px-2 py-0.5 rounded-pill">
+                    <span className="bg-amber-400 text-gray-900 font-extrabold text-[11px] px-2 py-0.5 rounded-md">
                       {driver?.unitNumber || 'Motorcab'}
                     </span>
-                    <span className="text-xs text-cream-300 font-sans font-bold truncate">
+                    <span className="text-xs text-gray-300 font-bold truncate">
                       {driver?.vehicleType ? VEHICLE_DETAILS[driver.vehicleType]?.title ?? 'Motorcab' : 'Motorcab'}
                     </span>
                   </div>
-                  <h4 className="font-display font-bold text-sm text-cream-50 truncate mt-0.5">
-                    Driver: {driver?.name || 'Assigned Driver'}
+                  <h4 className="font-bold text-sm text-white truncate mt-0.5">
+                    Rider: {driver?.name || 'Assigned Driver'}
                   </h4>
                 </div>
               </div>
 
               <div className="text-right shrink-0">
-                <span className="text-[10px] uppercase text-cream-300 block kicker-label font-bold">Standard Fare</span>
-                <span className="text-lg font-display font-extrabold text-trike-gold">₱{ride.totalFare}</span>
-                <span className="text-[10px] font-sans text-cream-300 block">({ride.distanceKm} km)</span>
+                <span className="text-[10px] uppercase text-gray-400 block font-bold">Standard Fare</span>
+                <span className="text-lg font-extrabold text-amber-400">₱{ride.totalFare}</span>
+                <span className="text-[10px] text-gray-400 block">({ride.distanceKm} km)</span>
               </div>
             </div>
 
+            {/* What happened. Two columns of short labels; the sentences that
+                used to sit under each one were reading material between the
+                passenger and the form. */}
             <div>
-              <label className="kicker-label mb-2 block">
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                 What happened?
               </label>
               <div className="grid grid-cols-2 gap-2">
@@ -212,10 +217,10 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
                     key={v.key}
                     type="button"
                     onClick={() => setViolationType(v.key)}
-                    className={`flex items-center gap-2 rounded-card border p-3 text-left transition-all active:scale-[0.98] ${
+                    className={`flex items-center gap-2 rounded-xl border p-3 text-left transition-all active:scale-[0.98] ${
                       violationType === v.key
-                        ? 'border-sunset-coral bg-sunset-coral/15 text-sunset-coral font-display font-bold shadow-xs'
-                        : 'border-cream-300 bg-cream-50 text-trust-slate font-sans hover:border-sunset-coral/50 hover:bg-sunset-coral/5'
+                        ? 'border-rose-500 bg-rose-50 text-rose-900 shadow-xs'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-rose-200 hover:bg-rose-50/40'
                     }`}
                   >
                     <span className="shrink-0 text-base leading-none">{v.glyph}</span>
@@ -227,22 +232,22 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
 
             {/* Overcharging Fare Input */}
             {violationType === 'overcharging' && (
-              <div className="bg-cream-100 p-3.5 rounded-card border border-sunset-coral/30 space-y-1.5">
-                <label className="text-xs font-display font-bold text-trust-slate block">
+              <div className="bg-rose-50 p-3.5 rounded-xl border border-rose-200 space-y-1.5">
+                <label className="text-xs font-bold text-rose-900 block">
                   How much fare did the rider ask or demand?
                 </label>
                 <div className="flex items-center gap-2">
-                  <span className="font-display font-extrabold text-base text-trust-slate">₱</span>
+                  <span className="font-extrabold text-base text-gray-900">₱</span>
                   <input
                     type="number"
                     value={demandedFare}
                     onChange={(e) => setDemandedFare(e.target.value)}
                     placeholder={`e.g. 50 (Calculated fare is ₱${ride.totalFare})`}
-                    className="flex-1 bg-cream-50 border border-cream-300 rounded-card px-3 py-1.5 text-xs font-sans font-bold text-trust-slate focus:outline-none focus:border-trike-gold"
+                    className="flex-1 bg-white border border-rose-300 rounded-lg px-3 py-1.5 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
                     required
                   />
                 </div>
-                <p className="text-[10px] text-cream-600 font-sans font-medium">
+                <p className="text-[10px] text-rose-700 font-medium">
                   Official Ordinance Rate is ₱{ride.totalFare} for {ride.distanceKm} km. Charging above the published rate is a violation.
                 </p>
               </div>
@@ -250,7 +255,7 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
 
             {/* Incident Description */}
             <div>
-              <label className="kicker-label mb-2 block">
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                 Tell us what happened
               </label>
               <textarea
@@ -258,14 +263,14 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
                 onChange={(e) => setIncidentDetails(e.target.value)}
                 placeholder="What was said or done, and where"
                 rows={3}
-                className="w-full rounded-card border border-cream-300 bg-cream-50 p-3 text-xs font-sans text-trust-slate outline-none focus:border-trike-gold"
+                className="w-full rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-900 outline-none focus:border-rose-400"
                 required
               />
             </div>
 
             {/* Passenger Contact Number */}
             <div>
-              <label className="kicker-label mb-2 block">
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                 Your contact number
               </label>
               <input
@@ -273,7 +278,7 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
                 value={contactNumber}
                 onChange={(e) => setContactNumber(e.target.value)}
                 placeholder="So the office can reach you"
-                className="w-full rounded-card border border-cream-300 bg-cream-50 px-3 py-2.5 text-xs font-sans font-semibold text-trust-slate outline-none focus:border-trike-gold"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs font-semibold text-gray-900 outline-none focus:border-rose-400"
                 required
               />
             </div>
@@ -281,14 +286,14 @@ export const TmoReportModal: React.FC<TmoReportModalProps> = ({ isOpen, onClose,
             {/* Submit Action CTA */}
             <div className="pt-2 space-y-2">
               {submitError && (
-                <p className="text-[11px] font-sans font-bold text-sunset-coral bg-sunset-coral/15 border border-sunset-coral/30 rounded-card px-3 py-2">
+                <p className="text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                   {submitError}
                 </p>
               )}
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-pill bg-sunset-coral hover:bg-sunset-coral/90 text-sm font-display font-bold text-white shadow-sm transition active:scale-[0.99] disabled:opacity-50"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 text-sm font-semibold text-white shadow-sm transition active:scale-[0.99] hover:bg-rose-700 disabled:bg-gray-300 disabled:text-gray-500"
               >
                 <FileText className="h-4 w-4" />
                 {isSubmitting ? 'Filing report...' : 'Submit report'}

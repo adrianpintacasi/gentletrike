@@ -61,7 +61,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
     {
       id: 'audit',
       label: 'Audit Log',
-      icon: <ShieldCheck className="w-5 h-5 shrink-0 text-sampaguita-green" />,
+      icon: <ShieldCheck className="w-5 h-5 shrink-0 text-blue-400" />,
       superOnly: true,
     },
   ];
@@ -76,11 +76,11 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-cream-100 font-sans text-trust-slate antialiased animate-fadeIn">
+    <div className="flex min-h-screen w-full bg-gray-50/50 font-sans antialiased animate-fadeIn">
       {/* ========================================================================= */}
       {/* MOBILE TOP BAR (< md) */}
       {/* ========================================================================= */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-30 bg-cream-50 border-b border-cream-300 px-4 py-3 flex items-center justify-between shadow-xs">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-3">
           <img
             src="/GentleTrike.png"
@@ -88,12 +88,18 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             onError={(e) => {
               (e.target as HTMLElement).style.display = 'none';
             }}
-            className="w-9 h-9 object-contain rounded-card border border-cream-300 bg-cream-50 shrink-0"
+            className="w-9 h-9 object-contain rounded-xl border border-amber-200 bg-white shrink-0"
           />
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-display font-black text-trust-slate tracking-tight">GentleTrike</h2>
-              <span className="px-2 py-0.5 rounded-pill text-[10px] font-display font-extrabold uppercase tracking-wider bg-trike-gold/20 text-trust-slate border border-trike-gold/40">
+              <h2 className="text-base font-black text-gray-900 tracking-tight">GentleTrike</h2>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                  subRole === 'super_admin'
+                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                    : 'bg-blue-100 text-blue-800 border border-blue-200'
+                }`}
+              >
                 {subRole === 'super_admin' ? 'Super Admin' : 'Staff'}
               </span>
             </div>
@@ -103,7 +109,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         <div className="flex items-center gap-1">
           <button
             onClick={() => void logout()}
-            className="p-2 rounded-card text-sunset-coral hover:bg-sunset-coral/10 transition"
+            className="p-2 rounded-xl text-gray-600 hover:text-red-600 hover:bg-red-50 transition"
             title="Sign out"
             aria-label="Sign out"
           >
@@ -111,7 +117,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           </button>
           <button
             onClick={() => setIsMobileOpen(!isMobileOpen)}
-            className="p-2 rounded-card text-trust-slate hover:bg-cream-200 transition focus:outline-none"
+            className="p-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             aria-label={isMobileOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
           >
             {isMobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -122,21 +128,21 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       {/* MOBILE DRAWER BACKDROP & MENU */}
       {isMobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-trust-slate/60 backdrop-blur-xs transition-opacity"
+          className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-xs transition-opacity"
           onClick={() => setIsMobileOpen(false)}
           aria-hidden="true"
         />
       )}
 
       <aside
-        className={`md:hidden fixed top-14 left-0 bottom-0 z-50 w-72 bg-cream-50 border-r border-cream-300 shadow-2xl flex flex-col transition-transform duration-300 ${
+        className={`md:hidden fixed top-14 left-0 bottom-0 z-50 w-72 bg-white border-r border-gray-200 shadow-2xl flex flex-col transition-transform duration-300 ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-label="Mobile Admin Navigation"
       >
-        <div className="p-4 border-b border-cream-300 bg-cream-200/40">
-          <p className="kicker-label">Navigation</p>
-          <p className="text-[11px] font-sans text-cream-600 mt-0.5">Dumaguete TMO Operations</p>
+        <div className="p-4 border-b border-gray-100 bg-blue-50/50">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Navigation</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Dumaguete TMO Operations</p>
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto" aria-label="Mobile Navigation Menu">
@@ -147,10 +153,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-card text-xs font-display font-bold transition-all ${
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
                   isActive
-                    ? 'bg-trust-slate text-cream-50 shadow-sm'
-                    : 'text-cream-700 hover:text-trust-slate hover:bg-cream-200'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/80'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -159,8 +165,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 </div>
                 {item.badge && (
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-pill font-display font-black ${
-                      isActive ? 'bg-trike-gold text-trust-slate' : 'bg-trike-gold/30 text-trust-slate'
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      isActive ? 'bg-amber-400 text-blue-950' : 'bg-amber-100 text-amber-800'
                     }`}
                   >
                     {item.badge}
@@ -176,13 +182,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       {/* DESKTOP PERSISTENT LEFT SIDEBAR (>= md) */}
       {/* ========================================================================= */}
       <aside
-        className={`hidden md:flex flex-col bg-cream-50 border-r border-cream-300 shrink-0 transition-all duration-300 sticky top-0 h-screen z-20 ${
+        className={`hidden md:flex flex-col bg-white border-r border-gray-200 shrink-0 transition-all duration-300 sticky top-0 h-screen z-20 ${
           isCollapsed ? 'w-20' : 'w-64'
         }`}
         aria-label="Desktop Admin Navigation"
       >
         {/* SIDEBAR HEADER BRANDING */}
-        <div className="p-4 border-b border-cream-300">
+        <div className="p-4 border-b border-gray-100">
           <div className="flex items-center gap-3 overflow-hidden">
             <img
               src="/GentleTrike.png"
@@ -190,12 +196,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
               }}
-              className="w-10 h-10 object-contain rounded-card border border-cream-300 bg-cream-50 shrink-0"
+              className="w-10 h-10 object-contain rounded-xl border border-amber-200 bg-white shrink-0"
             />
             {!isCollapsed && (
               <div className="min-w-0 flex-1 animate-fadeIn">
-                <h2 className="text-base font-display font-black text-trust-slate tracking-tight truncate">GentleTrike</h2>
-                <p className="text-[11px] font-sans text-cream-600 font-medium truncate leading-tight">
+                <h2 className="text-base font-black text-gray-900 tracking-tight truncate">GentleTrike</h2>
+                <p className="text-[11px] text-gray-500 font-medium truncate leading-tight">
                   Management Portal
                 </p>
               </div>
@@ -215,10 +221,10 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 aria-current={isActive ? 'page' : undefined}
                 className={`w-full flex items-center ${
                   isCollapsed ? 'justify-center px-2' : 'justify-between px-3.5'
-                } py-2.5 rounded-card text-xs font-display font-bold transition-all group ${
+                } py-2.5 rounded-xl text-xs font-bold transition-all focus:outline-hidden focus:ring-2 focus:ring-blue-500 group ${
                   isActive
-                    ? 'bg-trust-slate text-cream-50 shadow-sm'
-                    : 'text-cream-700 hover:text-trust-slate hover:bg-cream-200'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/80'
                 }`}
               >
                 <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
@@ -228,8 +234,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
                 {!isCollapsed && item.badge && (
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-pill font-display font-black ${
-                      isActive ? 'bg-trike-gold text-trust-slate' : 'bg-trike-gold/30 text-trust-slate'
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      isActive ? 'bg-amber-400 text-blue-950' : 'bg-amber-100 text-amber-800'
                     }`}
                   >
                     {item.badge}
@@ -247,7 +253,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             title="Sign out"
             className={`w-full flex items-center ${
               isCollapsed ? 'justify-center px-2' : 'gap-3 px-3.5'
-            } py-2.5 rounded-card text-xs font-display font-bold text-sunset-coral hover:bg-sunset-coral/10 transition`}
+            } py-2.5 rounded-xl text-xs font-bold text-gray-600 hover:text-red-600 hover:bg-red-50 transition`}
           >
             <LogOut className="w-5 h-5 shrink-0" />
             {!isCollapsed && <span>Sign out</span>}
@@ -255,21 +261,21 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         </div>
 
         {/* SIDEBAR FOOTER & COLLAPSE TOGGLE */}
-        <div className="p-3 border-t border-cream-300 flex items-center justify-between bg-cream-200/40">
+        <div className="p-3 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
           {!isCollapsed && user && (
             <div className="min-w-0 pr-2 animate-fadeIn">
               <div className="flex items-center gap-1.5">
-                <p className="text-xs font-display font-bold text-trust-slate truncate">{user.name}</p>
-                <span className="shrink-0 px-2 py-0.5 rounded-pill text-[9px] font-display font-extrabold uppercase tracking-wide bg-trike-gold/20 text-trust-slate border border-trike-gold/40">
+                <p className="text-xs font-bold text-gray-900 truncate">{user.name}</p>
+                <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide bg-blue-100 text-blue-800 border border-blue-200">
                   {subRole === 'super_admin' ? 'Super Admin' : 'Staff'}
                 </span>
               </div>
-              <p className="text-[10px] font-sans text-cream-600 truncate">{user.email}</p>
+              <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
             </div>
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className={`p-2 rounded-card text-cream-600 hover:text-trust-slate hover:bg-cream-50 hover:shadow-xs border border-transparent hover:border-cream-300 transition ${
+            className={`p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-white hover:shadow-xs border border-transparent hover:border-gray-200 transition ${
               isCollapsed ? 'w-full flex justify-center' : ''
             }`}
             title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}

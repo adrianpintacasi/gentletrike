@@ -39,13 +39,12 @@ import { HomeRider } from './components/HomeRider';
 import { HomePassenger } from './components/HomePassenger';
 import { MenuPage } from './components/MenuPage';
 import { LocationPickerMap } from './components/LocationPickerMap';
+import { SearchTimeoutCard, SEARCH_TIMEOUT_MS } from './components/SearchTimeoutCard';
 import { FareMatrixPage } from './components/FareMatrixPage';
-import { SafetyToolkitModal } from './components/SafetyToolkitModal';
-import { RiderMenuDrawer } from './components/RiderMenuDrawer';
 import { useIsDesktop } from './hooks/useMediaQuery';
 import { useTheme } from './hooks/useTheme';
 import { useUnreadMessages } from './hooks/useUnreadMessages';
-import { Bell, X, ArrowLeft, Sparkles, Menu, ChevronDown } from 'lucide-react';
+import { Bell, X, ArrowLeft, Sparkles } from 'lucide-react';
 
 /** How often each role asks the server what changed. */
 /**
@@ -209,7 +208,7 @@ function MainApp({
    * throw the passenger back to Home with a half-filled trip behind them.
    */
   const [pickOrigin, setPickOrigin] = useState<'search' | 'details'>('search');
-  const [sheetSnap, setSheetSnap] = useState<SheetSnap>(user.role === 'rider' ? 'peek' : 'half');
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>('half');
   /** Sheet height in px, so the map can keep its route clear of the sheet. */
   const [sheetHeight, setSheetHeight] = useState(0);
   /** Thread opened from the pinned row, shown over everything else. */
@@ -404,7 +403,6 @@ function MainApp({
       const driver = await api.claimDriver();
       setMyDriver(driver);
       setIsDriverMode(true);
-      setSheetSnap('peek');
 
       // iOS only delivers compass events after an explicit permission grant,
       // and that request must come from a user gesture — which this tap is.
@@ -1007,9 +1005,6 @@ function MainApp({
   const [reports, setReports] = useState<api.MyReport[]>([]);
   const [todayTotals, setTodayTotals] = useState<api.TodayTotals | null>(null);
   const [isAccountLoading, setIsAccountLoading] = useState(true);
-  const [isEarningsExpanded, setIsEarningsExpanded] = useState(false);
-  const [isSafetyModalOpen, setIsSafetyModalOpen] = useState(false);
-  const [isRiderMenuDrawerOpen, setIsRiderMenuDrawerOpen] = useState(false);
 
   /**
    * Refetched whenever a trip finishes, because that is exactly when both the
@@ -1258,7 +1253,37 @@ function MainApp({
     return () => window.removeEventListener('popstate', onPop);
   }, [bookingStage, activeRide, dropoff, abandonBooking]);
 
+  /**
+   * How long this request has gone unanswered.
+   *
+   * Ticks once a second only while genuinely searching, so nothing runs during
+   * a trip that already has a rider.
+   */
+  const [searchTimedOut, setSearchTimedOut] = useState(false);
+  const [waitAcknowledged, setWaitAcknowledged] = useState(false);
 
+  useEffect(() => {
+    if (activeRide?.status !== 'searching_driver') {
+      setSearchTimedOut(false);
+      setWaitAcknowledged(false);
+      return;
+    }
+
+    const startedAt = new Date(
+      activeRide.createdAt.includes('T')
+        ? activeRide.createdAt
+        : `${activeRide.createdAt.replace(' ', 'T')}Z`
+    ).getTime();
+
+    const check = () => {
+      if (Number.isNaN(startedAt)) return;
+      setSearchTimedOut(Date.now() - startedAt >= SEARCH_TIMEOUT_MS);
+    };
+
+    check();
+    const timer = setInterval(check, 5000);
+    return () => clearInterval(timer);
+  }, [activeRide?.id, activeRide?.status, activeRide?.createdAt]);
 
   /** The passenger is mid-flow and must not be able to wander off. */
   const inBookingFlow =
@@ -1368,15 +1393,26 @@ function MainApp({
       Your account is set up as a rider. Switch to Rider Mode to accept trips.
     </div>
   ) : activeRide ? (
-    <ActiveRideView
-      ride={activeRide}
-      driverLocation={driverLocation}
-      onCancelRide={handleCancelRide}
-      onAdjustPickup={() => {
-        void handleCancelRide();
-        setBookingStage('pinPickup');
-      }}
-    />
+    <div className="space-y-3">
+      {searchTimedOut && !waitAcknowledged && (
+        <SearchTimeoutCard
+          pickup={activeRide.pickupLocation}
+          vehicleType={activeRide.vehicleType}
+          onKeepWaiting={() => setWaitAcknowledged(true)}
+          onRebook={() => {
+            // Cancel first: leaving the old request open would have two trips
+            // out for one passenger and a rider accepting the abandoned one.
+            void handleCancelRide();
+            setBookingStage('pinPickup');
+          }}
+        />
+      )}
+      <ActiveRideView
+        ride={activeRide}
+        driverLocation={driverLocation}
+        onCancelRide={handleCancelRide}
+      />
+    </div>
   ) : (
     <RideBookingPanel
       locations={locations}
@@ -1508,7 +1544,6 @@ function MainApp({
               }
             : undefined
       }
-      onOpenSafetyModal={() => setIsSafetyModalOpen(true)}
     />
   );
 
@@ -1638,7 +1673,6 @@ function MainApp({
         isDriverMode={isDriverMode}
         initialScreen={menuScreen}
         onScreenChange={setMenuScreen}
-        onBackToHome={() => setNavTab('home')}
         onContactChanged={setContactNumber}
         onToggleDriverMode={() => {
           if (isDriverMode) setIsDriverMode(false);
@@ -1729,7 +1763,7 @@ function MainApp({
                 <button
                   onClick={() => setIsAiGuideOpen(true)}
                   aria-label="Ask Gently"
-                  className="btn-primary flex h-[52px] shrink-0 items-center justify-center gap-1.5 px-4 text-xs font-display font-semibold shadow-xs"
+                  className="flex h-[52px] shrink-0 items-center justify-center gap-1.5 rounded-2xl gt-gently px-3.5 text-xs font-semibold text-gray-900 shadow-sm transition active:scale-95"
                 >
                   <Sparkles className="h-4 w-4 shrink-0" />
                   <span className="hidden xl:inline">Ask Gently</span>
@@ -1808,152 +1842,18 @@ function MainApp({
             {mapElement}
           </div>
 
-          {/* Dynamic Top Bar on Map Screen */}
-          <div className="absolute top-3 inset-x-3 sm:inset-x-4 z-20 flex items-center justify-between gap-2 pointer-events-none">
-            {isDriverMode ? (
-              <>
-                {/* Rider View: Left Circular Hamburger Menu Button */}
-                <button
-                  onClick={() => setIsRiderMenuDrawerOpen(true)}
-                  aria-label="Open Menu Drawer"
-                  className="pointer-events-auto relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full glass-pill text-trust-slate shadow-md transition active:scale-95 hover:bg-cream-100 border border-cream-300"
-                >
-                  <Menu className="h-5 w-5" />
-                  {incomingRequests.length > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sunset-coral ring-2 ring-cream-50" />
-                  )}
-                </button>
-
-                {/* Rider View: Top-Mid Earned Today Floating Pill (Dead Center in viewport) */}
-                <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-0">
-                  <button
-                    onClick={() => setIsEarningsExpanded((prev) => !prev)}
-                    className="flex items-center gap-1.5 rounded-2xl bg-trust-slate px-4 py-2 text-cream-50 shadow-xl border border-cream-400/20 transition-all duration-200 active:scale-95 hover:bg-trust-slate/95"
-                    aria-label="View Today's Earnings Summary"
-                  >
-                    <span className="text-base sm:text-lg font-display font-black tracking-tight text-cream-50">
-                      ₱{(todayTotals?.driver.earnings ?? 0).toLocaleString('en-PH', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                    <ChevronDown
-                      className={`h-4 w-4 text-cream-300 transition-transform duration-200 ${
-                        isEarningsExpanded ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {/* Expandable Daily Performance Summary Dropdown */}
-                  {isEarningsExpanded && (
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 rounded-card glass-pill p-4 shadow-2xl border border-cream-300 z-50 text-trust-slate gt-rise">
-                      <div className="flex items-center justify-between border-b border-cream-200 pb-2 mb-3">
-                        <span className="text-xs font-display font-extrabold text-trust-slate">
-                          Today's Shift Performance
-                        </span>
-                        <span className="text-[10px] font-sans font-bold text-cream-600 bg-cream-200 px-2 py-0.5 rounded-pill">
-                          {todayTotals?.day ||
-                            new Date().toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mb-3">
-                        <div className="p-2.5 rounded-card bg-cream-100 border border-cream-300 text-center">
-                          <span className="block text-[10px] font-sans font-bold text-cream-500 uppercase">
-                            Completed
-                          </span>
-                          <span className="text-base font-display font-black text-trust-slate">
-                            {todayTotals?.driver.trips ?? 0} trips
-                          </span>
-                        </div>
-                        <div className="p-2.5 rounded-card bg-cream-100 border border-cream-300 text-center">
-                          <span className="block text-[10px] font-sans font-bold text-cream-500 uppercase">
-                            Distance
-                          </span>
-                          <span className="text-base font-display font-black text-trust-slate">
-                            {(todayTotals?.driver.distanceKm ?? 0).toFixed(1)} km
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 pt-1 text-xs font-sans">
-                        <div className="flex justify-between items-center text-cream-700">
-                          <span>Gross Earnings:</span>
-                          <span className="font-display font-extrabold text-trust-slate text-sm">
-                            ₱{(todayTotals?.driver.earnings ?? 0).toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-cream-700">
-                          <span>Vehicle Franchise:</span>
-                          <span className="font-bold text-trust-slate">
-                            #{myDriver?.unitNumber || '104'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-cream-700">
-                          <span>Duty Status:</span>
-                          <span
-                            className={`font-bold ${
-                              myDriver?.isOnline ? 'text-sampaguita-green' : 'text-sunset-coral'
-                            }`}
-                          >
-                            {myDriver?.isOnline ? '● On Duty' : '○ Off Duty'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setIsEarningsExpanded(false);
-                          setNavTab('menu');
-                          setMenuScreen('transactions');
-                        }}
-                        className="mt-3 w-full py-2 rounded-pill bg-trike-gold text-trust-slate text-xs font-display font-bold text-center hover:bg-trike-gold-hover transition active:scale-95 shadow-xs"
-                      >
-                        View All Transactions
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Passenger View: Left Menu Button & Brand Pill */}
-                <div className="pointer-events-auto flex items-center gap-2">
-                  <button
-                    onClick={() => setIsRiderMenuDrawerOpen(true)}
-                    aria-label="Open Passenger Menu"
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full glass-pill text-trust-slate shadow-md transition active:scale-95 hover:bg-cream-100 border border-cream-300"
-                  >
-                    <Menu className="h-5 w-5" />
-                  </button>
-
-                  <div className="glass-pill px-3 py-1.5 rounded-pill flex items-center gap-2.5 shadow-md border border-cream-300 transition-all hover:shadow-lg">
-                    <img
-                      src="/GentleTrike.png"
-                      alt="GentleTrike"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                      className="w-7 h-7 object-contain rounded-full bg-cream-50 shrink-0 shadow-2xs border border-cream-300"
-                    />
-                    <div className="min-w-0 pr-1">
-                      <div className="flex items-center gap-1.5 leading-none">
-                        <span className="font-display font-black text-sm text-trust-slate tracking-tight">
-                          GentleTrike
-                        </span>
-                      </div>
-                      <p className="text-[11px] font-sans font-bold text-cream-700 truncate max-w-[140px] sm:max-w-[200px] mt-0.5">
-                        {user.name.split(' ')[0]} · Passenger
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          {/* Gently gets the one piece of permanent chrome on the map. The
+              app-name-and-user pill that used to sit here told the user two
+              things they already knew, in the space the map needed. */}
+          {showNavbar && (
+            <button
+              onClick={() => setIsAiGuideOpen(true)}
+              className="absolute left-4 top-4 z-20 flex items-center gap-1.5 rounded-xl gt-gently px-3.5 py-2.5 text-xs font-semibold text-gray-900 shadow-lg transition active:scale-95"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Ask Gently
+            </button>
+          )}
 
           {/*
             The offer card used to float here, over the map.
@@ -1967,16 +1867,16 @@ function MainApp({
           <BottomSheet
             snap={sheetSnap}
             onSnapChange={setSheetSnap}
-            bottomOffset={isDriverMode ? 0 : BOTTOM_NAV_HEIGHT}
+            bottomOffset={BOTTOM_NAV_HEIGHT}
             onHeightChange={setSheetHeight}
             pinned={pinnedRow}
           >
             {sheetContent}
           </BottomSheet>
 
-          {showNavbar && !isDriverMode && (
+          {showNavbar && (
             <BottomNav
-              variant="passenger"
+              variant={isDriverMode ? 'rider' : 'passenger'}
               tab={effectiveTab}
               onTabChange={(next) => {
                 setNavTab(next);
@@ -1985,7 +1885,7 @@ function MainApp({
                 if (!committed) setBookingStage('idle');
                 if (next !== 'menu') setMenuScreen('root');
               }}
-              badgeCount={0}
+              badgeCount={isDriverMode ? incomingRequests.length : 0}
             />
           )}
         </>
@@ -1996,7 +1896,7 @@ function MainApp({
         <>
           <div
             className="gt-scroll h-[100dvh] overflow-y-auto overscroll-contain px-5 pt-5 sm:px-6"
-            style={{ paddingBottom: (isDriverMode ? 0 : BOTTOM_NAV_HEIGHT) + 16 }}
+            style={{ paddingBottom: BOTTOM_NAV_HEIGHT + 16 }}
           >
             {sheetContent}
           </div>
@@ -2004,16 +1904,16 @@ function MainApp({
           {showNavbar && (
             <button
               onClick={() => setIsAiGuideOpen(true)}
-              className="btn-primary fixed right-4 top-4 z-30 flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-display font-semibold shadow-lg"
+              className="fixed right-4 top-4 z-30 flex items-center gap-1.5 rounded-xl gt-gently px-3.5 py-2.5 text-xs font-semibold text-gray-900 shadow-lg transition active:scale-95"
             >
               <Sparkles className="h-3.5 w-3.5" />
               Ask Gently
             </button>
           )}
 
-          {showNavbar && !isDriverMode && (
+          {showNavbar && (
             <BottomNav
-              variant="passenger"
+              variant={isDriverMode ? 'rider' : 'passenger'}
               tab={effectiveTab}
               onTabChange={(next) => {
                 setNavTab(next);
@@ -2022,7 +1922,7 @@ function MainApp({
                 if (!committed) setBookingStage('idle');
                 if (next !== 'menu') setMenuScreen('root');
               }}
-              badgeCount={0}
+              badgeCount={isDriverMode ? incomingRequests.length : 0}
             />
           )}
         </>
@@ -2079,39 +1979,6 @@ function MainApp({
       {completedRide && (
         <RideCompleteModal ride={completedRide} onClose={handleFinishTrip} />
       )}
-
-      <SafetyToolkitModal
-        isOpen={isSafetyModalOpen}
-        onClose={() => setIsSafetyModalOpen(false)}
-        onOpenReport={() => {
-          setNavTab('menu');
-          setMenuScreen('reports');
-        }}
-      />
-
-      <RiderMenuDrawer
-        isOpen={isRiderMenuDrawerOpen}
-        onClose={() => setIsRiderMenuDrawerOpen(false)}
-        user={menuUser}
-        driver={myDriver}
-        today={todayTotals}
-        history={history}
-        reports={reports}
-        isLoading={isAccountLoading}
-        canUseRiderMode={canUseRiderMode}
-        isDriverMode={isDriverMode}
-        onToggleDriverMode={() => {
-          setIsRiderMenuDrawerOpen(false);
-          if (isDriverMode) setIsDriverMode(false);
-          else void enterDriverMode();
-        }}
-        onLogout={() => {
-          setIsRiderMenuDrawerOpen(false);
-          onLogout();
-        }}
-        onContactChanged={setContactNumber}
-        onSeatCapacityChange={isDriverMode && myDriver ? handleSetSeatCapacity : undefined}
-      />
     </div>
   );
 }

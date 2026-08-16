@@ -66,22 +66,22 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
   const unreadHere = unread[next.id] ?? 0;
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-trust-slate border border-cream-400/20 shadow-md">
+    <div className="overflow-hidden rounded-2xl bg-gray-900">
       {/* Where the rider is headed, in one line. Tapping it opens the queue. */}
       <button
         onClick={onExpand}
         className="flex w-full items-center gap-2 px-4 pt-2.5 text-left"
         aria-label="Expand trip details"
       >
-        <Navigation className="h-3.5 w-3.5 shrink-0 text-trike-gold" />
-        <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-cream-300">
+        <Navigation className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+        <p className="min-w-0 flex-1 truncate text-[11px] font-bold text-gray-400">
           {next.status === 'in_transit' ? 'Dropping off' : 'Next pickup'}
-          <span className="ml-1 text-cream-50 font-display font-semibold">
+          <span className="ml-1 text-white">
             {next.status === 'in_transit' ? next.dropoffLocation.name : next.pickupLocation.name}
           </span>
         </p>
         {acceptedPooledRides.length > 1 && (
-          <span className="shrink-0 rounded-md bg-trike-gold px-1.5 py-0.5 text-[10px] font-display font-bold text-trust-slate">
+          <span className="shrink-0 rounded-md bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-gray-900">
             +{acceptedPooledRides.length - 1}
           </span>
         )}
@@ -94,7 +94,7 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
         {stage && (
           <button
             onClick={() => onAdvanceRideStatus(next.id, stage.status)}
-            className="btn-primary flex h-12 min-w-0 flex-1 items-center justify-center px-3 text-sm font-display font-bold shadow-sm"
+            className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-xl bg-amber-400 px-3 text-sm font-bold text-gray-900 shadow-sm transition active:scale-95 hover:bg-amber-300"
           >
             <span className="truncate">{stage.label}</span>
           </button>
@@ -103,11 +103,11 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
         <button
           onClick={() => onOpenChat(next.id)}
           aria-label={unreadHere > 0 ? `${unreadHere} unread messages` : 'Message passenger'}
-          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cream-300/30 text-cream-100 transition active:scale-95 hover:bg-white/10"
+          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-300 transition active:scale-95 hover:bg-white/10"
         >
           <MessageSquare className="h-5 w-5" />
           {unreadHere > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-sunset-coral px-1 text-[10px] font-bold text-white ring-2 ring-trust-slate">
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-gray-900">
               {unreadHere > 9 ? '9+' : unreadHere}
             </span>
           )}
@@ -119,7 +119,7 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
           <a
             href={`tel:${next.passengerPhone}`}
             aria-label="Call passenger"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cream-300/30 text-cream-100 transition active:scale-95 hover:bg-white/10"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/15 text-gray-300 transition active:scale-95 hover:bg-white/10"
           >
             <Phone className="h-5 w-5" />
           </a>
@@ -127,7 +127,7 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
           <span
             title="This passenger has no contact number on file"
             aria-label="No contact number on file"
-            className="flex h-12 w-12 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/5 text-cream-600"
+            className="flex h-12 w-12 shrink-0 cursor-not-allowed items-center justify-center rounded-xl border border-white/5 text-gray-700"
           >
             <Phone className="h-5 w-5" />
           </span>
@@ -136,7 +136,7 @@ export const DriverPinned: React.FC<DriverPinnedProps> = ({
         <button
           onClick={() => onAdvanceRideStatus(next.id, 'completed')}
           aria-label={`Complete trip and collect ₱${next.totalFare}`}
-          className="flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-sampaguita-green px-3.5 text-sm font-display font-bold text-white shadow-sm transition active:scale-95 hover:bg-sampaguita-green/90 tabular-nums"
+          className="flex h-12 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 text-sm font-bold text-white shadow-sm transition active:scale-95 hover:bg-emerald-600 tabular-nums"
         >
           <CheckCircle className="h-4 w-4 shrink-0" />₱{next.totalFare}
         </button>

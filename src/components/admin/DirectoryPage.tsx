@@ -23,9 +23,9 @@ type VerificationStatus = 'pending' | 'verified' | 'suspended' | 'declined';
 type AccountStatus = 'active' | 'suspended' | 'banned';
 
 const ACCOUNT_BADGE: Record<AccountStatus, string> = {
-  active: 'bg-sampaguita-green/15 text-sampaguita-green border-sampaguita-green/30',
-  suspended: 'bg-sunset-coral/15 text-sunset-coral border-sunset-coral/30',
-  banned: 'bg-sunset-coral text-white border-sunset-coral',
+  active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  suspended: 'bg-orange-50 text-orange-700 border-orange-200',
+  banned: 'bg-red-50 text-red-700 border-red-200',
 };
 
 /** Account-level moderation buttons (passengers, and rider account ban). */
@@ -33,26 +33,26 @@ function accountActions(status: AccountStatus): { label: string; next: AccountSt
   switch (status) {
     case 'active':
       return [
-        { label: 'Suspend', next: 'suspended', tone: 'bg-sunset-coral/15 hover:bg-sunset-coral/25 text-sunset-coral' },
-        { label: 'Ban', next: 'banned', tone: 'bg-sunset-coral text-white' },
+        { label: 'Suspend', next: 'suspended', tone: 'bg-orange-50 hover:bg-orange-100 text-orange-700' },
+        { label: 'Ban', next: 'banned', tone: 'bg-red-50 hover:bg-red-100 text-red-700' },
       ];
     case 'suspended':
       return [
-        { label: 'Reactivate', next: 'active', tone: 'bg-sampaguita-green text-white' },
-        { label: 'Ban', next: 'banned', tone: 'bg-sunset-coral text-white' },
+        { label: 'Reactivate', next: 'active', tone: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+        { label: 'Ban', next: 'banned', tone: 'bg-red-50 hover:bg-red-100 text-red-700' },
       ];
     case 'banned':
-      return [{ label: 'Reactivate', next: 'active', tone: 'bg-sampaguita-green text-white' }];
+      return [{ label: 'Reactivate', next: 'active', tone: 'bg-emerald-600 hover:bg-emerald-700 text-white' }];
     default:
       return [];
   }
 }
 
 const STATUS_STYLES: Record<VerificationStatus, string> = {
-  verified: 'bg-sampaguita-green/15 text-sampaguita-green border-sampaguita-green/30',
-  pending: 'bg-trike-gold/20 text-trust-slate border-trike-gold/40',
-  suspended: 'bg-sunset-coral/15 text-sunset-coral border-sunset-coral/30',
-  declined: 'bg-sunset-coral/20 text-sunset-coral border-sunset-coral/40',
+  verified: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  suspended: 'bg-orange-50 text-orange-700 border-orange-200',
+  declined: 'bg-red-50 text-red-700 border-red-200',
 };
 
 const STATUS_FILTERS: { id: 'all' | VerificationStatus; label: string }[] = [
@@ -68,29 +68,31 @@ function actionsFor(status: VerificationStatus): { label: string; next: Verifica
   switch (status) {
     case 'pending':
       return [
-        { label: 'Approve', next: 'verified', tone: 'bg-sampaguita-green text-white' },
-        { label: 'Decline', next: 'declined', tone: 'bg-sunset-coral/20 text-sunset-coral' },
+        { label: 'Approve', next: 'verified', tone: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+        { label: 'Decline', next: 'declined', tone: 'bg-red-50 hover:bg-red-100 text-red-700' },
       ];
     case 'verified':
-      return [{ label: 'Suspend', next: 'suspended', tone: 'bg-sunset-coral/15 text-sunset-coral' }];
+      return [{ label: 'Suspend', next: 'suspended', tone: 'bg-orange-50 hover:bg-orange-100 text-orange-700' }];
     case 'suspended':
       return [
-        { label: 'Reinstate', next: 'verified', tone: 'bg-sampaguita-green text-white' },
-        { label: 'Decline', next: 'declined', tone: 'bg-sunset-coral/20 text-sunset-coral' },
+        { label: 'Reinstate', next: 'verified', tone: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+        { label: 'Decline', next: 'declined', tone: 'bg-red-50 hover:bg-red-100 text-red-700' },
       ];
     case 'declined':
-      return [{ label: 'Approve', next: 'verified', tone: 'bg-sampaguita-green text-white' }];
+      return [{ label: 'Approve', next: 'verified', tone: 'bg-emerald-600 hover:bg-emerald-700 text-white' }];
     default:
       return [];
   }
 }
 
+// One badge per rider: a banned/suspended account overrides the verification
+// state, so we never show two conflicting statuses.
 const BADGE_STYLES: Record<string, string> = {
-  verified: 'bg-sampaguita-green/15 text-sampaguita-green border-sampaguita-green/30',
-  pending: 'bg-trike-gold/20 text-trust-slate border-trike-gold/40',
-  suspended: 'bg-sunset-coral/15 text-sunset-coral border-sunset-coral/30',
-  declined: 'bg-sunset-coral/20 text-sunset-coral border-sunset-coral/40',
-  banned: 'bg-sunset-coral text-white border-sunset-coral',
+  verified: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  suspended: 'bg-orange-50 text-orange-700 border-orange-200',
+  declined: 'bg-red-50 text-red-700 border-red-200',
+  banned: 'bg-red-100 text-red-800 border-red-300',
 };
 
 function effectiveStatus(d: any): string {
@@ -121,6 +123,15 @@ function ageFrom(birthdate?: string | null): string {
   return String(age);
 }
 
+/**
+ * Retired vehicle types stay here on purpose.
+ *
+ * Only the pedicab can be registered now, but rows written before that still
+ * say `habal_habal` or `multicab`, and this is an administrative record — a
+ * screen whose job is to show what is actually in the database. Dropping the
+ * old labels would print the raw enum at an officer reviewing a real rider's
+ * file, which is worse than naming a vehicle the app no longer signs up.
+ */
 const VEHICLE_LABELS: Record<string, string> = {
   pedicab_standard: 'Pedicab',
   habal_habal: 'Motorcycle (Habal-Habal)',
@@ -136,10 +147,10 @@ const Detail: React.FC<{
   full?: boolean;
 }> = ({ icon, label, value, capitalize, full }) => (
   <div className={`flex items-start gap-3 ${full ? 'sm:col-span-2' : ''}`}>
-    <div className="mt-0.5 p-2 rounded-card bg-trike-gold/20 text-trust-slate shrink-0">{icon}</div>
+    <div className="mt-0.5 p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0">{icon}</div>
     <div className="min-w-0">
-      <p className="kicker-label">{label}</p>
-      <p className={`text-sm font-sans font-semibold text-trust-slate break-words ${capitalize ? 'capitalize' : ''}`}>
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{label}</p>
+      <p className={`text-sm font-semibold text-gray-900 break-words ${capitalize ? 'capitalize' : ''}`}>
         {value || '—'}
       </p>
     </div>
@@ -283,38 +294,38 @@ export const DirectoryPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn font-sans text-trust-slate">
+    <div className="space-y-6 animate-fadeIn">
       {/* Directory Sub-tab Header & Search Bar */}
-      <div className="bg-cream-50 p-4 rounded-card border border-cream-300 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2 bg-cream-200 p-1 rounded-pill border border-cream-300 w-full sm:w-auto">
+      <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl w-full sm:w-auto">
           <button
             onClick={() => setActiveSubTab('drivers')}
-            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-pill text-xs font-display font-bold transition w-1/2 sm:w-auto ${
-              activeSubTab === 'drivers' ? 'bg-cream-50 text-trust-slate shadow-xs' : 'text-cream-600 hover:text-trust-slate'
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition w-1/2 sm:w-auto ${
+              activeSubTab === 'drivers' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Bike className="w-4 h-4 text-trike-gold" />
+            <Bike className="w-4 h-4 text-amber-500" />
             Pedicab Drivers
           </button>
           <button
             onClick={() => setActiveSubTab('riders')}
-            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-pill text-xs font-display font-bold transition w-1/2 sm:w-auto ${
-              activeSubTab === 'riders' ? 'bg-cream-50 text-trust-slate shadow-xs' : 'text-cream-600 hover:text-trust-slate'
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition w-1/2 sm:w-auto ${
+              activeSubTab === 'riders' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <UserIcon className="w-4 h-4 text-trust-slate" />
+            <UserIcon className="w-4 h-4 text-blue-500" />
             Passengers
           </button>
         </div>
 
         <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-cream-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search users..."
-            className="w-full pl-9 pr-4 py-2 bg-cream-50 border border-cream-300 rounded-pill text-xs font-sans text-trust-slate placeholder:text-cream-400 outline-none focus:ring-2 focus:ring-trike-gold focus:border-trike-gold"
+            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
@@ -329,17 +340,17 @@ export const DirectoryPage: React.FC = () => {
               <button
                 key={f.id}
                 onClick={() => setStatusFilter(f.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-pill text-xs font-display font-bold border transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition ${
                   isActive
-                    ? 'bg-trust-slate text-cream-50 border-trust-slate shadow-xs'
-                    : 'bg-cream-50 text-trust-slate border-cream-300 hover:bg-cream-200'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                 }`}
               >
                 {f.label}
                 {showBadge && (
                   <span
-                    className={`px-1.5 rounded-pill text-[10px] font-display font-black ${
-                      isActive ? 'bg-trike-gold text-trust-slate' : 'bg-trike-gold/30 text-trust-slate'
+                    className={`px-1.5 rounded-full text-[10px] font-black ${
+                      isActive ? 'bg-white/25 text-white' : 'bg-yellow-100 text-yellow-800'
                     }`}
                   >
                     {pendingCount}
@@ -352,13 +363,13 @@ export const DirectoryPage: React.FC = () => {
       )}
 
       {/* Directory Table */}
-      <div className="bg-cream-50 rounded-card border border-cream-300 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-xs font-display font-bold text-cream-500 animate-pulse">Loading directory...</div>
+          <div className="p-8 text-center text-xs font-bold text-gray-400 animate-pulse">Loading directory...</div>
         ) : activeSubTab === 'drivers' ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-cream-700 font-sans">
-              <thead className="bg-cream-200/50 border-b border-cream-300 text-xs font-display text-trust-slate uppercase tracking-wider font-bold">
+            <table className="w-full text-left text-sm text-gray-600">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider font-bold">
                 <tr>
                   <th className="px-6 py-4">First Name</th>
                   <th className="px-6 py-4">Last Name</th>
@@ -369,26 +380,26 @@ export const DirectoryPage: React.FC = () => {
                   <th className="px-6 py-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-cream-300/60">
+              <tbody className="divide-y divide-gray-100">
                 {visibleDrivers.map((driver) => {
                   const eff = effectiveStatus(driver);
                   const declines = driver.decline_count ?? 0;
                   return (
-                    <tr key={driver.id} className="hover:bg-cream-100/70 transition">
-                      <td className="px-6 py-4 font-bold text-trust-slate">{firstNameOf(driver)}</td>
-                      <td className="px-6 py-4 font-bold text-trust-slate">{lastNameOf(driver) || '—'}</td>
-                      <td className="px-6 py-4 font-mono text-trust-slate font-bold">{driver.unit_number}</td>
-                      <td className="px-6 py-4 font-medium text-cream-700">{driver.contact_number ?? '—'}</td>
+                    <tr key={driver.id} className="hover:bg-gray-50 transition">
+                      <td className="px-6 py-4 font-bold text-gray-900">{firstNameOf(driver)}</td>
+                      <td className="px-6 py-4 font-bold text-gray-900">{lastNameOf(driver) || '—'}</td>
+                      <td className="px-6 py-4 font-mono text-gray-600">{driver.unit_number}</td>
+                      <td className="px-6 py-4 font-medium text-gray-600">{driver.contact_number ?? '—'}</td>
                       <td className="px-6 py-4 text-center">
                         <span
-                          className={`font-bold ${declines >= 10 ? 'text-sunset-coral' : declines > 0 ? 'text-trike-gold' : 'text-cream-400'}`}
+                          className={`font-bold ${declines >= 10 ? 'text-red-600' : declines > 0 ? 'text-orange-600' : 'text-gray-400'}`}
                         >
                           {declines}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span
-                          className={`inline-block px-2.5 py-1 rounded-pill text-[11px] font-display font-bold capitalize border ${BADGE_STYLES[eff]}`}
+                          className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold capitalize border ${BADGE_STYLES[eff]}`}
                         >
                           {eff}
                         </span>
@@ -396,7 +407,7 @@ export const DirectoryPage: React.FC = () => {
                       <td className="px-6 py-4 text-center">
                         <button
                           onClick={() => handleOpenProfile(driver)}
-                          className="px-3.5 py-1.5 bg-cream-200 hover:bg-trike-gold/30 text-trust-slate font-display font-bold text-xs rounded-pill transition border border-cream-300 shadow-2xs"
+                          className="px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold text-xs rounded-lg transition"
                         >
                           View Profile
                         </button>
@@ -406,7 +417,7 @@ export const DirectoryPage: React.FC = () => {
                 })}
                 {visibleDrivers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-xs font-sans font-bold text-cream-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-xs font-bold text-gray-400">
                       No {statusFilter === 'all' ? '' : statusFilter} drivers found.
                     </td>
                   </tr>
@@ -416,8 +427,8 @@ export const DirectoryPage: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-cream-700 font-sans">
-              <thead className="bg-cream-200/50 border-b border-cream-300 text-xs font-display text-trust-slate uppercase tracking-wider font-bold">
+            <table className="w-full text-left text-sm text-gray-600">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider font-bold">
                 <tr>
                   <th className="px-6 py-4">First Name</th>
                   <th className="px-6 py-4">Last Name</th>
@@ -428,26 +439,26 @@ export const DirectoryPage: React.FC = () => {
                   <th className="px-6 py-4 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-cream-300/60">
+              <tbody className="divide-y divide-gray-100">
                 {riders.map((rider) => {
                   const acct = accountOf(rider);
                   const cancels = rider.passenger_cancellations ?? 0;
                   return (
-                    <tr key={rider.id} className="hover:bg-cream-100/70">
-                      <td className="px-6 py-4 font-bold text-trust-slate">{firstNameOf(rider)}</td>
-                      <td className="px-6 py-4 font-bold text-trust-slate">{lastNameOf(rider) || '—'}</td>
-                      <td className="px-6 py-4 font-medium text-cream-600">{rider.email ?? '—'}</td>
-                      <td className="px-6 py-4 font-medium text-cream-700">{rider.contact_number ?? '—'}</td>
+                    <tr key={rider.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-bold text-gray-900">{firstNameOf(rider)}</td>
+                      <td className="px-6 py-4 font-bold text-gray-900">{lastNameOf(rider) || '—'}</td>
+                      <td className="px-6 py-4 font-medium text-gray-500">{rider.email ?? '—'}</td>
+                      <td className="px-6 py-4 font-medium text-gray-600">{rider.contact_number ?? '—'}</td>
                       <td className="px-6 py-4 text-center">
                         <span
-                          className={`font-bold ${cancels >= 5 ? 'text-sunset-coral' : cancels > 0 ? 'text-trike-gold' : 'text-cream-400'}`}
+                          className={`font-bold ${cancels >= 5 ? 'text-red-600' : cancels > 0 ? 'text-orange-600' : 'text-gray-400'}`}
                         >
                           {cancels}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span
-                          className={`inline-block px-2.5 py-1 rounded-pill text-[11px] font-display font-bold capitalize border ${ACCOUNT_BADGE[acct]}`}
+                          className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold capitalize border ${ACCOUNT_BADGE[acct]}`}
                         >
                           {acct}
                         </span>
@@ -476,7 +487,7 @@ export const DirectoryPage: React.FC = () => {
                 })}
                 {riders.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-xs font-sans font-bold text-cream-400">
+                    <td colSpan={7} className="px-6 py-10 text-center text-xs font-bold text-gray-400">
                       No passengers found.
                     </td>
                   </tr>
@@ -487,11 +498,12 @@ export const DirectoryPage: React.FC = () => {
         )}
       </div>
 
-      {/* Driver Profile Modal */}
+      {/* Driver Profile Modal — portaled to <body> so the transformed page
+          ancestor (animate-fadeIn) can't offset the fixed overlay. */}
       {selectedDriver &&
         createPortal(
           <div
-            className="fixed z-50 bg-trust-slate/70 backdrop-blur-xs flex items-center justify-center p-4"
+            className="fixed z-50 bg-slate-900/30 flex items-center justify-center p-4"
             style={
               contentBox
                 ? {
@@ -505,14 +517,14 @@ export const DirectoryPage: React.FC = () => {
             onClick={() => setSelectedDriver(null)}
           >
             <div
-              className="bg-cream-50 rounded-[28px] w-full max-w-xl shadow-2xl border border-cream-300 overflow-hidden flex flex-col max-h-full animate-scaleUp"
+              className="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-full animate-scaleUp"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header */}
-              <div className="relative px-6 py-5 border-b border-cream-300 bg-cream-100/40">
+              {/* Header — neutral, with the operating-status actions on the right */}
+              <div className="relative px-6 py-5 border-b border-gray-200">
                 <button
                   onClick={() => setSelectedDriver(null)}
-                  className="absolute top-3 right-3 p-1.5 rounded-full text-cream-600 hover:text-trust-slate hover:bg-cream-200 transition"
+                  className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
                   aria-label="Close"
                 >
                   <X className="w-5 h-5" />
@@ -525,26 +537,26 @@ export const DirectoryPage: React.FC = () => {
                       <img
                         src={selectedDriver.avatar}
                         alt={selectedDriver.name}
-                        className="w-16 h-16 rounded-card object-cover ring-2 ring-cream-300 shrink-0 shadow-xs"
+                        className="w-16 h-16 rounded-2xl object-cover ring-2 ring-gray-200 shrink-0"
                       />
                     ) : (
-                      <div className="w-16 h-16 rounded-card bg-cream-200 ring-2 ring-cream-300 flex items-center justify-center text-cream-500 shrink-0">
+                      <div className="w-16 h-16 rounded-2xl bg-gray-100 ring-2 ring-gray-200 flex items-center justify-center text-gray-400 shrink-0">
                         <UserIcon className="w-8 h-8" />
                       </div>
                     )}
                     <div className="min-w-0">
-                      <h3 className="text-xl font-display font-black text-trust-slate tracking-tight truncate">
+                      <h3 className="text-xl font-black text-gray-900 tracking-tight truncate">
                         {firstNameOf(selectedDriver)} {lastNameOf(selectedDriver)}
                       </h3>
-                      <div className="flex items-center gap-1.5 text-cream-600 text-xs font-sans font-semibold mt-0.5">
-                        <Bike className="w-3.5 h-3.5 text-trike-gold" />
+                      <div className="flex items-center gap-1.5 text-gray-500 text-xs font-semibold mt-0.5">
+                        <Bike className="w-3.5 h-3.5" />
                         <span className="truncate">
                           {VEHICLE_LABELS[selectedDriver.vehicle_type] ?? selectedDriver.vehicle_type} · Unit{' '}
                           {selectedDriver.unit_number}
                         </span>
                       </div>
                       <span
-                        className={`inline-block mt-2 px-2.5 py-0.5 rounded-pill text-[10px] font-display font-bold capitalize border ${
+                        className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize border ${
                           BADGE_STYLES[effectiveStatus(selectedDriver)]
                         }`}
                       >
@@ -553,9 +565,10 @@ export const DirectoryPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right: operating-status actions */}
+                  {/* Right: operating-status actions (compact dropdown, so they
+                      don't crowd the rider's name/details). */}
                   <div className="shrink-0 flex items-center gap-2 self-start md:self-auto">
-                    <span className="kicker-label">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
                       Operating Status
                     </span>
                     <ActionMenu
@@ -599,7 +612,7 @@ export const DirectoryPage: React.FC = () => {
               {/* Scrollable body */}
               <div className="overflow-y-auto px-6 py-5 space-y-6">
                 <div>
-                  <h4 className="kicker-label mb-3">Personal Details</h4>
+                  <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider mb-3">Personal Details</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
                     <Detail icon={<Cake className="w-4 h-4" />} label="Age" value={ageFrom(selectedDriver.birthdate)} />
                     <Detail icon={<UserIcon className="w-4 h-4" />} label="Sex" value={selectedDriver.sex} capitalize />
@@ -610,22 +623,22 @@ export const DirectoryPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <h4 className="kicker-label mb-3">Complaint History</h4>
+                  <h4 className="font-bold text-xs text-gray-500 uppercase tracking-wider mb-3">Complaint History</h4>
                   {profileData === null ? (
-                    <p className="text-xs font-sans text-cream-500 font-medium animate-pulse">Loading…</p>
+                    <p className="text-xs text-gray-400 font-medium animate-pulse">Loading…</p>
                   ) : profileData.reports.length ? (
                     <div className="space-y-2">
                       {profileData.reports.map((rep) => (
-                        <div key={rep.id} className="p-3 bg-sunset-coral/10 rounded-card border border-sunset-coral/30 text-xs">
-                          <span className="font-display font-bold text-sunset-coral capitalize">
+                        <div key={rep.id} className="p-3 bg-red-50 rounded-xl border border-red-100 text-xs">
+                          <span className="font-bold text-red-800 capitalize">
                             {rep.violation_type.replace('_', ' ')}
                           </span>
-                          <p className="text-cream-700 font-sans mt-1">{rep.details}</p>
+                          <p className="text-gray-700 mt-1">{rep.details}</p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-xs font-display font-bold text-sampaguita-green bg-sampaguita-green/10 border border-sampaguita-green/30 rounded-card px-3 py-2.5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
                       <UserIcon className="w-4 h-4" />
                       Clean record — 0 complaints filed.
                     </div>
