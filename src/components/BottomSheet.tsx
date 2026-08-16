@@ -37,7 +37,7 @@ const SNAP_FRACTIONS: Record<Exclude<SheetSnap, 'peek'>, number> = {
 };
 
 /** Height of the grabber strip above the content. */
-const GRABBER_H = 32;
+const GRABBER_H = 36;
 
 /**
  * How much content peek shows when there is no pinned row to measure.
@@ -177,15 +177,52 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     onHeightChange?.(visibleHeight + bottomOffset);
   }, [visibleHeight, bottomOffset, onHeightChange]);
 
-  const onPointerDown = (event: React.PointerEvent) => {
+  const beginDrag = (event: React.PointerEvent) => {
     // A press on a control is a press on that control. Without this, every
-    // button in the pinned row would swallow its own tap into a drag.
+    // button in the sheet would swallow its own tap into a drag.
     if ((event.target as HTMLElement).closest('button,a,input,textarea,select')) return;
     if (dragStart.current) return; // ignore the second finger of a pinch
 
     dragStart.current = { y: event.clientY, offset: offsetRef.current };
     draggingRef.current = true;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+
+  const onPointerDown = beginDrag;
+
+  /*
+   * Dragging from the content, the way every native sheet works.
+   *
+   * The handle area is all a passenger had — they have no pinned row, so the
+   * only draggable part of the whole sheet was a 32px strip, which is exactly
+   * why the rider's sheet improved and theirs did not.
+   *
+   * A drag starts here only when the content is already scrolled to the top.
+   * Below that, the gesture belongs to the list: pulling down on a
+   * half-scrolled fare table should scroll it, not close the sheet.
+   */
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  const onContentPointerDown = (event: React.PointerEvent) => {
+    const el = scrollRef.current;
+    if (!el || el.scrollTop > 0) return;
+    beginDrag(event);
+  };
+
+  const onContentPointerMove = (event: React.PointerEvent) => {
+    const start = dragStart.current;
+    if (!start) return;
+    const delta = event.clientY - start.y;
+
+    // Pulling up from the top of a scrollable list is a scroll, not a drag —
+    // hand it back the moment the intent is clear.
+    const el = scrollRef.current;
+    if (delta < 0 && el && el.scrollHeight > el.clientHeight && offsetRef.current <= 0) {
+      dragStart.current = null;
+      draggingRef.current = false;
+      return;
+    }
+    onPointerMove(event);
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
@@ -268,7 +305,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         onPointerCancel={onPointerUp}
         className="shrink-0 cursor-grab touch-none active:cursor-grabbing"
       >
-        <div className="pb-2 pt-3">
+        <div className="pb-2.5 pt-4">
         {/* The visible grabber is 6px tall; the target around it is the whole
             strip, because a 6px target on a moving vehicle is not a target. */}
           <button
@@ -289,6 +326,11 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
           padding is the tab bar's height, so the last row can be scrolled clear
           of the floating pill instead of hiding under it. */}
       <div
+        ref={scrollRef}
+        onPointerDown={onContentPointerDown}
+        onPointerMove={onContentPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         className="gt-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 sm:px-6"
         style={{ touchAction: 'pan-y', paddingBottom: bottomOffset + 16 }}
       >

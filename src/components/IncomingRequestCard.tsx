@@ -4,15 +4,15 @@ import type { OpenRide } from '../api';
 import { isExclusiveTrip } from '../../shared/dispatch';
 
 /**
- * A trip offer, thrown over the map rather than buried in the sheet.
+ * The trip offer on top of the stack.
  *
- * A rider is driving. Asking them to open a sheet, scroll a queue, and hit a
- * small button is asking them to look away from the road for several seconds.
- * This card appears on its own, takes one gesture, and leaves — so the map is
- * hidden for as long as the decision takes and no longer.
+ * It used to float over the map, which meant covering the road it was floating
+ * on while a queue below showed the same trip again — one request, on screen
+ * twice, at two sizes. It lives in the sheet now, where the depth of the queue
+ * is drawn behind it and the map stays a map.
  *
- * Swipe right to accept, left to decline; the buttons do the same thing for
- * anyone who would rather aim than swipe.
+ * Swipe right to accept, left to decline; the buttons do the same for anyone
+ * who would rather aim than swipe.
  */
 
 /** Past this much horizontal travel, letting go commits the decision. */
@@ -81,26 +81,9 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
   const isCharter = isExclusiveTrip(ride.vehicleType);
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex justify-center px-4 pt-3">
-      <div className="pointer-events-auto w-full max-w-sm">
+    <div className="w-full">
+      <div className="w-full">
         <div className="relative">
-          {/* The rest of the queue, as a physical stack behind the top card.
-              Two slips of paper are enough to say "there are more" — a number
-              alone reads as a badge, and a rider glancing down understands a
-              pile without decoding it. */}
-          {remaining > 0 && (
-            <div
-              aria-hidden
-              className="absolute inset-x-3 -bottom-1.5 h-full rounded-2xl bg-gray-900/60 ring-1 ring-white/10"
-            />
-          )}
-          {remaining > 1 && (
-            <div
-              aria-hidden
-              className="absolute inset-x-6 -bottom-3 h-full rounded-2xl bg-gray-900/40 ring-1 ring-white/5"
-            />
-          )}
-
           {/* Intent rails: they brighten as the card is pushed toward one, so
               the gesture says what it will do before it is finished. */}
           <div

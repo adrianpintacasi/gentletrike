@@ -3,6 +3,8 @@ import { Driver, RideBooking } from '../types';
 import type { OpenRide } from '../api';
 import { isExclusiveTrip } from '../../shared/dispatch';
 import { useRouteOrderedRides } from '../hooks/useRouteOrderedRides';
+import { IncomingRequestCard } from './IncomingRequestCard';
+import { haversineKm } from '../../shared/geo';
 import { VEHICLE_DETAILS , vehicleDetail } from '../../shared/transport';
 import {
   Power,
@@ -109,6 +111,30 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
 
   // Seats booked through the app, plus anyone flagged down on the road. The
   // server applies exactly the same sum before offering a trip.
+  /*
+   * Nearest pickup first.
+   *
+   * The server ranks by how well a trip fits the rider's existing route, which
+   * is the right order for deciding *whether* to pool. For a rider with nothing
+   * accepted it reads as arbitrary — the useful order is simply which one they
+   * can reach soonest.
+   */
+  const nearestFirst = React.useMemo(
+    () =>
+      [...activeRequests].sort(
+        (a, b) =>
+          haversineKm(
+            { lat: currentDriver.currentLat, lng: currentDriver.currentLng },
+            { lat: a.pickupLocation.lat, lng: a.pickupLocation.lng }
+          ) -
+          haversineKm(
+            { lat: currentDriver.currentLat, lng: currentDriver.currentLng },
+            { lat: b.pickupLocation.lat, lng: b.pickupLocation.lng }
+          )
+      ),
+    [activeRequests, currentDriver.currentLat, currentDriver.currentLng]
+  );
+
   const walkIn = currentDriver.walkInSeats ?? 0;
   const bookedSeats = currentCapacityCount;
   const seatsFree = Math.max(0, seatCapacity - bookedSeats - walkIn);
@@ -130,16 +156,16 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
           aria-pressed={currentDriver.isOnline}
           aria-label={currentDriver.isOnline ? 'End shift' : 'Start shift'}
           title={currentDriver.isOnline ? 'On duty — tap to end shift' : 'Off duty — tap to start'}
-          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-sm transition active:scale-95 ${
             currentDriver.isOnline
               ? 'bg-emerald-600 text-white hover:bg-emerald-700'
               : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
           } ${isTogglingOnline ? 'cursor-not-allowed opacity-60' : ''}`}
         >
           {isTogglingOnline ? (
-            <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
           ) : (
-            <Power className="h-6 w-6" />
+            <Power className="h-5 w-5" />
           )}
         </button>
 
@@ -167,7 +193,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
             onClick={() => onSetWalkInSeats?.(Math.max(0, walkIn - 1))}
             disabled={walkIn === 0}
             aria-label="Remove a walk-in passenger"
-            className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
           >
             <Minus className="h-4 w-4" />
           </button>
@@ -181,7 +207,7 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
             onClick={() => onSetWalkInSeats?.(Math.min(seatCapacity, walkIn + 1))}
             disabled={walkIn >= seatCapacity - bookedSeats}
             aria-label="Add a walk-in passenger"
-            className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition active:scale-95 hover:bg-gray-100 disabled:text-gray-200 disabled:hover:bg-transparent"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -202,19 +228,29 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
       )}
 
       {/* Accepted Passengers Pool — the rider drives each trip through its stages */}
-      {acceptedPooledRides.length > 0 && (
-        <div className="space-y-2.5 rounded-xl border border-gray-800 bg-gray-900 p-3 text-white">
+      {/*
+        Every trip except the one the pinned row is already driving.
+        
+        The pinned row carries the next stop and its action — the same trip, the
+        same button, the same fare — and this block repeated all of it directly
+        underneath, in the same colours, so a rider with one passenger saw the
+        card twice. It now lists what the pinned row cannot: the trips queued
+        behind the current one. With a single passenger there are none, and the
+        block disappears entirely.
+      */}
+      {routeOrderedRides.length > 1 && (
+        <div className="space-y-2.5 rounded-2xl bg-gray-900 p-3 text-white">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
-              Passengers Onboard
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              After this stop
             </h4>
             <span className="rounded-md bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-gray-900">
-              {acceptedPooledRides.length} active
+              {routeOrderedRides.length - 1} more
             </span>
           </div>
 
           <div className="space-y-2">
-            {routeOrderedRides.map((ride, idx) => {
+            {routeOrderedRides.slice(1).map((ride, idx) => {
               const nextStage = NEXT_STAGE[ride.status];
 
               return (
@@ -399,46 +435,32 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
             </div>
           ) : (
             /*
-              A list, not a stack of cards.
+              A stack, dealt one at a time.
               
-              Each offer used to be a full card with its own header, route
-              block, metadata row and pair of buttons — repeated below the
-              floating card showing the same trip, so the top request appeared
-              twice on one screen at two different sizes. This is the parked
-              view: one scannable row per offer, with the same two decisions.
+              Nearest pickup first, because the trip a rider can reach soonest
+              is the one worth deciding on soonest. Swipe right to take it, left
+              to pass; the next card is already visible behind this one, so the
+              queue's depth is legible without a number.
             */
-            <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200">
-              {activeRequests.map((req) => (
-                <div key={req.id} className="flex items-center gap-3 px-3.5 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] font-semibold text-gray-500">
-                      {req.pickupLocation.name}
-                    </p>
-                    <p className="truncate text-sm font-bold text-gray-900">
-                      {req.dropoffLocation.name}
-                    </p>
-                    <p className="mt-0.5 text-[11px] font-semibold text-gray-400 tabular-nums">
-                      ₱{req.totalFare} · {req.distanceKm} km · {req.passengers} pax
-                      {isExclusiveTrip(req.vehicleType) ? ' · pakyaw' : ''}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => onDeclineRequest(req.id)}
-                    aria-label="Decline this trip"
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-400 transition active:scale-95 hover:bg-gray-50"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => onAcceptRequest(req.id)}
-                    className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-white transition active:scale-95 hover:bg-emerald-600"
-                  >
-                    <Check className="h-4 w-4" />
-                    Accept
-                  </button>
-                </div>
-              ))}
+            <div className="relative pb-3">
+              {activeRequests.length > 1 && (
+                <div
+                  aria-hidden
+                  className="absolute inset-x-3 top-2 h-full rounded-2xl bg-gray-900/50 ring-1 ring-white/10"
+                />
+              )}
+              {activeRequests.length > 2 && (
+                <div
+                  aria-hidden
+                  className="absolute inset-x-6 top-4 h-full rounded-2xl bg-gray-900/30 ring-1 ring-white/5"
+                />
+              )}
+              <IncomingRequestCard
+                ride={nearestFirst[0]}
+                remaining={nearestFirst.length - 1}
+                onAccept={onAcceptRequest}
+                onDecline={onDeclineRequest}
+              />
             </div>
           )}
         </div>

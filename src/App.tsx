@@ -34,7 +34,6 @@ import { simulatedLocation, LOCATION_PRESETS } from './utils/simulatedLocation';
 import { vehicleDetail } from '../shared/transport';
 import { SectionTabs } from './components/SectionTabs';
 import { DriverPinned } from './components/SheetPinned';
-import { IncomingRequestCard } from './components/IncomingRequestCard';
 import { RiderChatPanel } from './components/RiderChatPanel';
 import { HomeRider } from './components/HomeRider';
 import { HomePassenger } from './components/HomePassenger';
@@ -988,7 +987,9 @@ function MainApp({
           { lat: place.lat, lng: place.lng },
           { lat: passengerPosition.lat, lng: passengerPosition.lng }
         ) < 0.03;
-      return atFix ? { ...place, name: 'Current Location', address: place.name } : place;
+      // Keep the real name; note only that it is where they are standing. The
+      // rider reads this name to find them.
+      return atFix ? { ...place, address: 'Your current location' } : place;
     },
     [passengerPosition?.lat, passengerPosition?.lng]
   );
@@ -1042,8 +1043,16 @@ function MainApp({
         if (cancelled || !inServiceArea) return;
         setPickup({
           id: `gps_${Date.now()}`,
-          name: 'Current Location',
-          address: place.name,
+          /*
+           * The place, not the word "Current Location".
+           *
+           * The passenger knows where they are standing; the rider driving to
+           * collect them does not, and this name is what the offer card, the
+           * pinned row and Trip History all display. "Current Location ->
+           * SM Seaside" tells the one person who needs it nothing at all.
+           */
+          name: place.name,
+          address: 'Your current location',
           lat,
           lng,
           isCustomPinned: true,
@@ -1053,8 +1062,9 @@ function MainApp({
         if (cancelled) return;
         setPickup({
           id: `gps_${Date.now()}`,
-          name: 'Current Location',
-          address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+          // Lookup failed, so coordinates are the most honest name available.
+          name: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+          address: 'Your current location',
           lat,
           lng,
           isCustomPinned: true,
@@ -1703,16 +1713,14 @@ function MainApp({
             </button>
           )}
 
-          {/* One offer at a time, over the map, decided with a single gesture.
-              The rest of the queue stays in the sheet for when they are parked. */}
-          {isDriverMode && incomingRequests.length > 0 && (
-            <IncomingRequestCard
-              ride={incomingRequests[0]}
-              remaining={incomingRequests.length - 1}
-              onAccept={handleAcceptDriverRequest}
-              onDecline={handleDeclineDriverRequest}
-            />
-          )}
+          {/*
+            The offer card used to float here, over the map.
+            
+            It covered the road it was floating on and repeated the queue open
+            below it, so the same trip was on screen twice at two sizes. Offers
+            live in the sheet now — one place, swipeable, and the map stays a
+            map.
+          */}
 
           <BottomSheet
             snap={sheetSnap}
