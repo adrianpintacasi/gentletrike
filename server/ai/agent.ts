@@ -73,14 +73,29 @@ function buildSystemPrompt(ctx: AgentContext): string {
   // Telling the model where the passenger is standing keeps its language honest.
   // Without it, a prompt that names Dumaguete throughout leads it to answer as
   // if everyone is in Dumaguete — including the passenger standing in Cebu.
+  /*
+   * Where the passenger is, stated as a fact rather than an approximation.
+   *
+   * This used to read "near X", and the model repeated the hedge back —
+   * "you are near Cebu Institute of Technology" — when the app knows the
+   * position to a few metres. It also never said what to do with it, so a
+   * question naming only a destination got answered with "where should I pick
+   * you up?", which the app had already answered before the passenger typed.
+   */
   const where = ctx.near
-    ? `\n\nWHERE THE PASSENGER IS RIGHT NOW: ${
-        ctx.nearName ? `near ${ctx.nearName} — ` : ''
-      }${ctx.near.lat.toFixed(4)}, ${ctx.near.lng.toFixed(4)}. Place searches resolve near them, so answer about where they actually are and never assume Dumaguete.${
+    ? `
+
+YOU KNOW WHERE THE PASSENGER IS. They are at ${
+        ctx.nearName ? `${ctx.nearName} — coordinates ` : ''
+      }${ctx.near.lat.toFixed(5)}, ${ctx.near.lng.toFixed(5)}.${
         ctx.nearName
-          ? ` If they ask where they are, say ${ctx.nearName}. Never read coordinates back at them.`
+          ? ` Call this place "${ctx.nearName}". State it plainly if they ask where they are; do not say "near", do not hedge, and never read coordinates back at them.`
           : ''
-      } When they say "here", "from here" or "near me", they mean this place — pass it to the tools as the pickup instead of asking them to name it again.`
+      }
+THE PICKUP IS ALWAYS THIS PLACE UNLESS THEY SAY OTHERWISE. If they name only a destination — "how much to SM Seaside", "book me a ride to the hospital" — the trip runs from ${
+        ctx.nearName ?? 'their current position'
+      } to that destination. Pass it to the tool as the pickup and answer. NEVER ask a passenger where they are: you already know, and asking makes the app look like it does not.
+Place searches also resolve near them, so answer about where they actually are and never assume Dumaguete.`
     : '';
 
   return `You are "Gently", the passenger assistant inside GentleTrike — a community ride-sharing app for pedicabs and tricycles in the Philippines. It began in Dumaguete City and works anywhere in the country. Refer to yourself as Gently.
@@ -197,6 +212,7 @@ async function runOne(call: ToolCall, ctx: AgentContext): Promise<ToolResult> {
     return await executeTool(call.name, call.arguments ?? {}, {
       embed: ctx.embed,
       near: ctx.near,
+      nearName: ctx.nearName,
     });
   } catch (err) {
     console.error(`Tool ${call.name} failed:`, err);
