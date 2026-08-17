@@ -44,7 +44,7 @@ import { FareMatrixPage } from './components/FareMatrixPage';
 import { useIsDesktop } from './hooks/useMediaQuery';
 import { useTheme } from './hooks/useTheme';
 import { useUnreadMessages } from './hooks/useUnreadMessages';
-import { Bell, X, ArrowLeft, Sparkles } from 'lucide-react';
+import { Bell, X, ArrowLeft, Sparkles, Menu } from 'lucide-react';
 
 /** How often each role asks the server what changed. */
 /**
@@ -1684,6 +1684,62 @@ function MainApp({
       panelContent
     );
 
+
+  /*
+   * Gently, and the rider's way in and out of the menu.
+   *
+   * A rider's tab bar held two things: Drive, which was wherever they already
+   * were, and Menu. A whole floating pill across the bottom of the map to carry
+   * one real destination — and it sat over the sheet it was meant to sit beside.
+   *
+   * So the menu became a circle next to Gently, at the top, out of the road's
+   * way. It has to toggle: the menu's own back arrow only walks up to the menu
+   * root, so with Drive gone this button is the only way back to the map.
+   *
+   * Passengers keep their bar. Theirs has three real destinations, and Home and
+   * Fares have nowhere else to live.
+   */
+  const menuOpen = effectiveTab === 'menu';
+  const toggleMenu = () => {
+    const next = menuOpen ? 'home' : 'menu';
+    setNavTab(next);
+    if (!committed) setBookingStage('idle');
+    if (next !== 'menu') setMenuScreen('root');
+  };
+
+  const gentlyControls = (
+    <>
+      {isDriverMode && (
+        <button
+          onClick={toggleMenu}
+          aria-label={menuOpen ? 'Back to driving' : 'Menu'}
+          aria-expanded={menuOpen}
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white shadow-lg transition active:scale-95 hover:bg-gray-800"
+        >
+          {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          {/* The count the tab bar used to carry. With no bar, this is how a
+              rider in the menu learns an offer came in. */}
+          {menuOpen && incomingRequests.length > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white ring-2 ring-gray-900">
+              {incomingRequests.length > 9 ? '9+' : incomingRequests.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      <button
+        onClick={() => setIsAiGuideOpen(true)}
+        className="flex items-center gap-1.5 rounded-xl gt-gently px-3.5 py-2.5 text-xs font-semibold text-gray-900 shadow-lg transition active:scale-95"
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        Ask Gently
+      </button>
+    </>
+  );
+
+  /* No bar under a rider, so the sheet and the scroll screens reclaim it. */
+  const navOffset = isDriverMode ? 16 : BOTTOM_NAV_HEIGHT;
+
   return (
     <div
       className={
@@ -1754,8 +1810,7 @@ function MainApp({
                     if (!committed) setBookingStage('idle');
                     if (next !== 'menu') setMenuScreen('root');
                   }}
-                  badgeCount={isDriverMode ? incomingRequests.length : 0}
-                />
+                    />
 
                 {/* Beside the strip, not inside it: Gently is not a fourth tab.
                     It goes with the strip during a booking — a passenger
@@ -1846,13 +1901,9 @@ function MainApp({
               app-name-and-user pill that used to sit here told the user two
               things they already knew, in the space the map needed. */}
           {showNavbar && (
-            <button
-              onClick={() => setIsAiGuideOpen(true)}
-              className="absolute left-4 top-4 z-20 flex items-center gap-1.5 rounded-xl gt-gently px-3.5 py-2.5 text-xs font-semibold text-gray-900 shadow-lg transition active:scale-95"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Ask Gently
-            </button>
+            <div className="absolute left-4 top-4 z-20 flex items-center gap-2">
+              {gentlyControls}
+            </div>
           )}
 
           {/*
@@ -1867,16 +1918,15 @@ function MainApp({
           <BottomSheet
             snap={sheetSnap}
             onSnapChange={setSheetSnap}
-            bottomOffset={BOTTOM_NAV_HEIGHT}
+            bottomOffset={navOffset}
             onHeightChange={setSheetHeight}
             pinned={pinnedRow}
           >
             {sheetContent}
           </BottomSheet>
 
-          {showNavbar && (
+          {showNavbar && !isDriverMode && (
             <BottomNav
-              variant={isDriverMode ? 'rider' : 'passenger'}
               tab={effectiveTab}
               onTabChange={(next) => {
                 setNavTab(next);
@@ -1885,7 +1935,6 @@ function MainApp({
                 if (!committed) setBookingStage('idle');
                 if (next !== 'menu') setMenuScreen('root');
               }}
-              badgeCount={isDriverMode ? incomingRequests.length : 0}
             />
           )}
         </>
@@ -1896,24 +1945,19 @@ function MainApp({
         <>
           <div
             className="gt-scroll h-[100dvh] overflow-y-auto overscroll-contain px-5 pt-5 sm:px-6"
-            style={{ paddingBottom: BOTTOM_NAV_HEIGHT + 16 }}
+            style={{ paddingBottom: navOffset + 16 }}
           >
             {sheetContent}
           </div>
 
           {showNavbar && (
-            <button
-              onClick={() => setIsAiGuideOpen(true)}
-              className="fixed right-4 top-4 z-30 flex items-center gap-1.5 rounded-xl gt-gently px-3.5 py-2.5 text-xs font-semibold text-gray-900 shadow-lg transition active:scale-95"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Ask Gently
-            </button>
+            <div className="fixed right-4 top-4 z-30 flex items-center gap-2">
+              {gentlyControls}
+            </div>
           )}
 
-          {showNavbar && (
+          {showNavbar && !isDriverMode && (
             <BottomNav
-              variant={isDriverMode ? 'rider' : 'passenger'}
               tab={effectiveTab}
               onTabChange={(next) => {
                 setNavTab(next);
@@ -1922,7 +1966,6 @@ function MainApp({
                 if (!committed) setBookingStage('idle');
                 if (next !== 'menu') setMenuScreen('root');
               }}
-              badgeCount={isDriverMode ? incomingRequests.length : 0}
             />
           )}
         </>

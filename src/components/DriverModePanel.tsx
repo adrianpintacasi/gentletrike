@@ -109,6 +109,21 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
    */
   const routeOrderedRides = useRouteOrderedRides(currentDriver, acceptedPooledRides);
 
+  /* Which queued stop is opened out. Null keeps the strip at one row. */
+  const [expandedRideId, setExpandedRide] = React.useState<string | null>(null);
+
+  /*
+   * The opened stop, resolved from the queue rather than held as an object.
+   *
+   * Sliced past the head for the same reason the strip is: the current stop is
+   * the pinned row's job, and expanding it here would put the same trip on
+   * screen twice. Resolving by id each render also means a stop that completes,
+   * or that the route reorders away, simply closes instead of leaving a stale
+   * card open on a trip the rider has already finished.
+   */
+  const expandedRide =
+    routeOrderedRides.slice(1).find((r) => r.id === expandedRideId) ?? null;
+
   // Seats booked through the app, plus anyone flagged down on the road. The
   // server applies exactly the same sum before offering a trip.
   /*
@@ -134,6 +149,27 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
       ),
     [activeRequests, currentDriver.currentLat, currentDriver.currentLng]
   );
+
+  /*
+   * Which offer is on top of the pile.
+   *
+   * Null means "the nearest", which is the sensible default and what a rider
+   * gets without touching anything. Tapping a card behind, or a name in the row
+   * beneath, promotes that one instead.
+   */
+  const [topOfferId, setTopOffer] = React.useState<string | null>(null);
+
+  const top =
+    nearestFirst.find((r) => r.id === topOfferId) ?? nearestFirst[0];
+  const behind = nearestFirst.filter((r) => r.id !== top?.id);
+
+  // A promoted offer that has since been taken or withdrawn must not pin the
+  // stack to a card that no longer exists.
+  React.useEffect(() => {
+    if (topOfferId && !nearestFirst.some((r) => r.id === topOfferId)) {
+      setTopOffer(null);
+    }
+  }, [nearestFirst, topOfferId]);
 
   const walkIn = currentDriver.walkInSeats ?? 0;
   const bookedSeats = currentCapacityCount;
@@ -227,16 +263,170 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
         </div>
       )}
 
-      {/* Accepted Passengers Pool — the rider drives each trip through its stages */}
+      {/* Offers first. See the strip below for why. */}
+      {/* Incoming Requests Queue or Offline Banner */}
+      {!currentDriver.isOnline ? (
+        /* OFFLINE STATUS CARD - Nothing / No requests appear when offline */
+        <div className="p-8 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-3 shadow-xs">
+          <button
+            onClick={handleToggleOnline}
+            disabled={isTogglingOnline}
+            className={`w-12 h-12 bg-rose-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {isTogglingOnline ? (
+              <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Power className="w-6 h-6" />
+            )}
+          </button>
+          <div>
+            <h4 className="font-extrabold text-base text-rose-950">Rider Status: OFFLINE</h4>
+            <p className="text-xs text-rose-800 mt-1 max-w-sm mx-auto font-medium">
+              You are currently offline. Turn ON your status to start receiving passenger trip requests across Dumaguete.
+            </p>
+          </div>
+          <button
+            onClick={handleToggleOnline}
+            disabled={isTogglingOnline}
+            className={`mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-sm transition active:scale-95 inline-flex items-center gap-1.5 ${
+              isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
+          >
+            {isTogglingOnline ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Going Online...</span>
+              </>
+            ) : (
+              <>
+                <Power className="w-3.5 h-3.5" />
+                <span>Go Online Now</span>
+              </>
+            )}
+          </button>
+        </div>
+      ) : (
+        /* ONLINE REQUESTS QUEUE */
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              {activeRequests.length === 0
+                ? 'Waiting for requests'
+                : `${activeRequests.length} request${activeRequests.length > 1 ? 's' : ''}`}
+            </h4>
+            {seatsFree === 0 && (
+              <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                Full
+              </span>
+            )}
+          </div>
+
+          {activeRequests.length === 0 ? (
+            /* The old empty state named Dumaguete and listed four Dumaguete
+               landmarks as "popular zones", which is wrong everywhere else and
+               was never true anywhere — nothing measured them. It now says only
+               what is actually known: whether there is room, and that the app is
+               listening. */
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
+              <span className="mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-xs">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+              </span>
+              <p className="text-sm font-bold text-gray-900">
+                {seatsFree === 0 ? 'No seats free' : 'Listening for nearby trips'}
+              </p>
+              <p className="mx-auto mt-1 max-w-[16rem] text-[11px] font-medium text-gray-500">
+                {seatsFree === 0
+                  ? 'Set a passenger down, or lower the walk-in count, to start receiving offers again.'
+                  : 'Offers appear here the moment a passenger books nearby. You do not need to keep this open.'}
+              </p>
+            </div>
+          ) : (
+            /*
+              A stack, with every card reachable.
+              
+              A plain list showed all the offers but cost a row each, pushing
+              the queue off a phone screen after two. A stack that only ever
+              showed its top card was compact and hid the others entirely — a
+              rider had to decide on one before learning another existed.
+              
+              This is both: the cards behind are drawn as edges, so the depth of
+              the queue is legible at a glance, and tapping one brings it to the
+              front. Compact, and nothing is hidden behind a gesture.
+            */
+            <div className="pb-3">
+              <div
+                className="relative"
+                style={{ marginBottom: Math.min(behind.length, 2) * 7 }}
+              >
+                {/* Each edge is anchored to the card's own box and pushed below
+                    it, so only the 7px lip shows. The card is lifted above them
+                    because an absolutely positioned sibling would otherwise
+                    paint over a static one — and no negative z-index is used,
+                    which would drop these behind the sheet's own background. */}
+                {behind.slice(0, 2).map((req, i) => {
+                  const depth = Math.min(behind.length, 2) - i;
+                  return (
+                    <button
+                      key={req.id}
+                      onClick={() => setTopOffer(req.id)}
+                      aria-label={`Show the offer to ${req.dropoffLocation.name}`}
+                      className="absolute inset-x-0 top-0 rounded-2xl bg-gray-900 transition"
+                      style={{
+                        bottom: -depth * 7,
+                        transform: `scaleX(${1 - depth * 0.04})`,
+                        opacity: 1 - depth * 0.4,
+                      }}
+                    />
+                  );
+                })}
+
+                <div className="relative z-10">
+                  <IncomingRequestCard
+                    ride={top}
+                    remaining={behind.length}
+                    onAccept={onAcceptRequest}
+                    onDecline={onDeclineRequest}
+                  />
+                </div>
+              </div>
+
+              {/* One line, not a list. Tapping a name promotes that offer. */}
+              {behind.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 px-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Also
+                  </span>
+                  {behind.map((req) => (
+                    <button
+                      key={req.id}
+                      onClick={() => setTopOffer(req.id)}
+                      className="max-w-[10rem] truncate rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-600 transition active:scale-95 hover:border-amber-300 hover:text-gray-900"
+                    >
+                      {req.dropoffLocation.name} · ₱{req.totalFare}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {/*
-        Every trip except the one the pinned row is already driving.
-        
-        The pinned row carries the next stop and its action — the same trip, the
-        same button, the same fare — and this block repeated all of it directly
-        underneath, in the same colours, so a rider with one passenger saw the
-        card twice. It now lists what the pinned row cannot: the trips queued
-        behind the current one. With a single passenger there are none, and the
-        block disappears entirely.
+        The queue behind the current stop, as a route — not a stack of cards.
+
+        A card per passenger meant three passengers cost three cards, and the
+        offers below them went off the bottom of the phone. But a rider is not
+        holding a list of people; they are driving a sequence of stops, which is
+        exactly what useRouteOrderedRides already computes. So the queue is one
+        strip of nodes — as tall with five passengers as with one — and a stop
+        opens into its full controls only when it is tapped.
+
+        Which place a node names is derived from the trip's own status: a trip
+        already in transit is going to its dropoff, anything earlier is going to
+        its pickup. No stop is invented.
       */}
       {routeOrderedRides.length > 1 && (
         <div className="space-y-2.5 rounded-2xl bg-gray-900 p-3 text-white">
@@ -249,11 +439,61 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
             </span>
           </div>
 
-          <div className="space-y-2">
+          {/* Scrolls sideways past a handful of stops rather than growing down,
+              which is the whole point of the strip. */}
+          <div className="gt-scroll -mx-1 flex items-start gap-0 overflow-x-auto px-1 pb-1">
             {routeOrderedRides.slice(1).map((ride, idx) => {
-              const nextStage = NEXT_STAGE[ride.status];
+              const open = expandedRideId === ride.id;
+              const heading =
+                ride.status === 'in_transit'
+                  ? ride.dropoffLocation.name
+                  : ride.pickupLocation.name;
 
               return (
+                <React.Fragment key={ride.id}>
+                  {idx > 0 && (
+                    <span className="mt-2.5 h-0.5 w-5 shrink-0 bg-gray-700" aria-hidden />
+                  )}
+                  <button
+                    onClick={() => setExpandedRide(open ? null : ride.id)}
+                    aria-expanded={open}
+                    className="flex w-[5.5rem] shrink-0 flex-col items-center gap-1 text-center transition active:scale-95"
+                  >
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-black ring-2 transition ${
+                        open
+                          ? 'bg-amber-400 text-gray-900 ring-amber-400/40'
+                          : 'bg-gray-700 text-amber-300 ring-transparent'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span className="w-full truncate text-[10px] font-bold leading-tight text-white">
+                      {heading}
+                    </span>
+                    <span className="w-full truncate text-[10px] leading-tight text-gray-400">
+                      {ride.passengerName ?? `${ride.passengers} pax`}
+                    </span>
+                    {(unread[ride.id] ?? 0) > 0 && (
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black text-white">
+                        {unread[ride.id]}
+                      </span>
+                    )}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* One expanded stop at a time, with everything the card always had:
+              names in full, call, chat, stage and completion. */}
+          {expandedRide && (() => {
+            const ride = expandedRide;
+            // Counted within the queue, not the whole route, so this badge
+            // reads the same number as the strip node that opened it.
+            const idx = routeOrderedRides.slice(1).findIndex((r) => r.id === ride.id);
+            const nextStage = NEXT_STAGE[ride.status];
+            return (
                 <div
                   key={ride.id}
                   className="space-y-2 rounded-lg border border-gray-700 bg-gray-800 p-2.5"
@@ -348,154 +588,8 @@ export const DriverModePanel: React.FC<DriverModePanelProps> = ({
                     </button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Incoming Requests Queue or Offline Banner */}
-      {!currentDriver.isOnline ? (
-        /* OFFLINE STATUS CARD - Nothing / No requests appear when offline */
-        <div className="p-8 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-3 shadow-xs">
-          <button
-            onClick={handleToggleOnline}
-            disabled={isTogglingOnline}
-            className={`w-12 h-12 bg-rose-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm ${isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''}`}
-          >
-            {isTogglingOnline ? (
-              <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Power className="w-6 h-6" />
-            )}
-          </button>
-          <div>
-            <h4 className="font-extrabold text-base text-rose-950">Rider Status: OFFLINE</h4>
-            <p className="text-xs text-rose-800 mt-1 max-w-sm mx-auto font-medium">
-              You are currently offline. Turn ON your status to start receiving passenger trip requests across Dumaguete.
-            </p>
-          </div>
-          <button
-            onClick={handleToggleOnline}
-            disabled={isTogglingOnline}
-            className={`mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl shadow-sm transition active:scale-95 inline-flex items-center gap-1.5 ${
-              isTogglingOnline ? 'opacity-60 cursor-not-allowed' : ''
-            }`}
-          >
-            {isTogglingOnline ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Going Online...</span>
-              </>
-            ) : (
-              <>
-                <Power className="w-3.5 h-3.5" />
-                <span>Go Online Now</span>
-              </>
-            )}
-          </button>
-        </div>
-      ) : (
-        /* ONLINE REQUESTS QUEUE */
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              {activeRequests.length === 0
-                ? 'Waiting for requests'
-                : `${activeRequests.length} request${activeRequests.length > 1 ? 's' : ''}`}
-            </h4>
-            {seatsFree === 0 && (
-              <span className="rounded-md bg-gray-900 px-2 py-0.5 text-[10px] font-bold text-amber-400">
-                Full
-              </span>
-            )}
-          </div>
-
-          {activeRequests.length === 0 ? (
-            /* The old empty state named Dumaguete and listed four Dumaguete
-               landmarks as "popular zones", which is wrong everywhere else and
-               was never true anywhere — nothing measured them. It now says only
-               what is actually known: whether there is room, and that the app is
-               listening. */
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-5 py-8 text-center">
-              <span className="mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-xs">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
-              </span>
-              <p className="text-sm font-bold text-gray-900">
-                {seatsFree === 0 ? 'No seats free' : 'Listening for nearby trips'}
-              </p>
-              <p className="mx-auto mt-1 max-w-[16rem] text-[11px] font-medium text-gray-500">
-                {seatsFree === 0
-                  ? 'Set a passenger down, or lower the walk-in count, to start receiving offers again.'
-                  : 'Offers appear here the moment a passenger books nearby. You do not need to keep this open.'}
-              </p>
-            </div>
-          ) : (
-            /*
-              The top offer, then every other one under it.
-
-              This was a stack showing only the first card, which meant a second
-              request existed and could not be seen — the rider had to decide on
-              one before learning another was there. Pooling is the whole point
-              of the app, and it was hidden behind a gesture.
-
-              The top card keeps the swipe, because that is the one a rider
-              takes without looking. The rest are listed plainly and can be
-              accepted straight from the row, in any order.
-            */
-            <div className="space-y-2.5 pb-3">
-              <IncomingRequestCard
-                ride={nearestFirst[0]}
-                remaining={nearestFirst.length - 1}
-                onAccept={onAcceptRequest}
-                onDecline={onDeclineRequest}
-              />
-
-              {nearestFirst.length > 1 && (
-                <>
-                  <p className="px-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    Also waiting
-                  </p>
-                  <div className="divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200">
-                    {nearestFirst.slice(1).map((req) => (
-                      <div key={req.id} className="flex items-center gap-3 px-3.5 py-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[11px] font-semibold text-gray-500">
-                            {req.pickupLocation.name}
-                          </p>
-                          <p className="truncate text-sm font-bold text-gray-900">
-                            {req.dropoffLocation.name}
-                          </p>
-                          <p className="mt-0.5 text-[11px] font-semibold text-gray-400 tabular-nums">
-                            ₱{req.totalFare} · {req.distanceKm} km · {req.passengers} pax
-                            {isExclusiveTrip(req.vehicleType) ? ' · pakyaw' : ''}
-                          </p>
-                        </div>
-
-                        <button
-                          onClick={() => onDeclineRequest(req.id)}
-                          aria-label="Decline this trip"
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-400 transition active:scale-95 hover:bg-gray-50"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => onAcceptRequest(req.id)}
-                          className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-white transition active:scale-95 hover:bg-emerald-600"
-                        >
-                          <Check className="h-4 w-4" />
-                          Accept
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
     </div>
