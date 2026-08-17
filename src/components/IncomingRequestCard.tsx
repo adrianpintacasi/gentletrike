@@ -65,17 +65,37 @@ export const IncomingRequestCard: React.FC<IncomingRequestCardProps> = ({
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (committing) return;
+
+    /*
+     * A press on a button is a press on that button.
+     *
+     * This captured the pointer on the card for every press, including one that
+     * landed on Accept — and a captured pointer sends its pointerup to the card
+     * rather than the button, so the click was never completed. The buttons
+     * looked live and did nothing.
+     */
+    if ((event.target as HTMLElement).closest('button,a')) return;
+
+    /*
+     * And the card now sits inside the sheet's scrollable area, which starts a
+     * sheet drag on a press at the top of its scroll. Without this the same
+     * gesture would swipe the offer and drag the sheet at once.
+     */
+    event.stopPropagation();
+
     dragStart.current = event.clientX;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
     if (dragStart.current === null || committing) return;
+    event.stopPropagation();
     setDragX(event.clientX - dragStart.current);
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (event: React.PointerEvent) => {
     if (dragStart.current === null || committing) return;
+    event.stopPropagation();
     dragStart.current = null;
 
     if (dragX > COMMIT_PX) commit('accept');
