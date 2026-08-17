@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { readLastKnownPosition } from '../utils/lastKnownPosition';
 import { Driver, LocationPoint, PooledStop, RideBooking } from '../types';
 import { bearingDegrees, getStreetRoute, haversineKm, LatLng } from '../utils/dumagueteRouting';
 import { sequenceStops } from '../../shared/dispatch';
@@ -22,6 +23,13 @@ const getCategoryStyles = (category?: string) => {
   }
 };
 
+/*
+ * The last-resort opening centre.
+ *
+ * Reached only on a phone that has never had a fix and has no stored one — a
+ * first run with location denied. Everything else opens on the live fix, or on
+ * where the phone was last time. See readLastKnownPosition.
+ */
 const DUMAGUETE_CENTRE = { lat: 9.3082, lng: 123.3075 };
 
 /** How long the camera takes to settle on a newly framed trip. */
@@ -753,7 +761,8 @@ export const DumagueteMap: React.FC<DumagueteMapProps> = ({
            * that, and Dumaguete was the wrong answer for anyone who is not
            * there.
            */
-          center: openingCentreRef.current ?? DUMAGUETE_CENTRE,
+          center:
+            openingCentreRef.current ?? readLastKnownPosition() ?? DUMAGUETE_CENTRE,
           zoom: 15,
           // Advanced markers require a Map ID; styling now lives in the cloud
           // console rather than in a tile URL.

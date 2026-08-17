@@ -30,6 +30,7 @@ import { DriverModePanel } from './components/DriverModePanel';
 import { RideCompleteModal } from './components/RideCompleteModal';
 import { BottomSheet, type SheetSnap } from './components/BottomSheet';
 import { BottomNav, BOTTOM_NAV_HEIGHT, type NavTab } from './components/BottomNav';
+import { writeLastKnownPosition } from './utils/lastKnownPosition';
 import { simulatedLocation, LOCATION_PRESETS } from './utils/simulatedLocation';
 import { vehicleDetail } from '../shared/transport';
 import { SectionTabs } from './components/SectionTabs';
@@ -479,9 +480,25 @@ function MainApp({
       (pos) => {
         if (cancelled) return;
         const seed = { lat: pos.coords.latitude, lng: pos.coords.longitude, heading: null };
-        // Seeds only what is still empty — never overwrites a live fix.
-        if (isDriverMode) setMyPosition((cur) => cur ?? seed);
-        else setPassengerPosition((cur) => cur ?? seed);
+
+        /*
+         * Both slots, not just the current role's.
+         *
+         * This effect re-runs when the role changes, and signing in as a rider
+         * flips it — so the coarse fix taken moments earlier went into the
+         * passenger slot and was thrown away, leaving the rider's map to open on
+         * the fallback centre while a fresh fix was requested from scratch. The
+         * two slots answer the same question about the same phone; seeding both
+         * costs nothing and means switching role never blinds the map.
+         *
+         * Still seeds only what is empty, so a live watch is never overwritten.
+         */
+        setMyPosition((cur) => cur ?? seed);
+        setPassengerPosition((cur) => cur ?? seed);
+
+        // Remembered for the next cold open, when the map has to choose a centre
+        // before any fix can arrive.
+        writeLastKnownPosition(seed.lat, seed.lng);
       },
       () => {
         /* denied or unavailable — the accurate watch will report it properly */
@@ -524,6 +541,7 @@ function MainApp({
         lastFixRef.current = { lat, lng };
 
         setMyPosition({ lat, lng, heading: lastHeadingRef.current });
+        writeLastKnownPosition(lat, lng);
 
         api.updateDriver(driverId, { lat, lng }).catch(() => {
           /* a dropped GPS ping is not worth interrupting the driver over */
@@ -578,6 +596,7 @@ function MainApp({
         passengerFixRef.current = { lat, lng };
 
         setPassengerPosition({ lat, lng, heading: passengerHeadingRef.current });
+        writeLastKnownPosition(lat, lng);
       },
       () => {
         /* denied or unavailable — the map simply shows no arrow */
