@@ -1,7 +1,3 @@
-<div align="center">
-
-<img src="public/GentleTrike.png" alt="GentleTrike logo" width="160" />
-
 # GentleTrike
 
 **Real-time pedicab hailing and ride-pooling for Philippine towns — fair fares, findable rides, full seats.**
