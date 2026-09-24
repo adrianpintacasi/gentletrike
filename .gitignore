@@ -16,3 +16,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Internal notes kept out of the public repo (architecture, auth, onboarding,
+# hackathon mind map). They live locally only.
+/private-docs/
